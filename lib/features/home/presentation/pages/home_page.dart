@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/widgets/full_screen_image_viewer.dart';
 import '../../../../features/reels/presentation/pages/reels_page.dart';
 
 class WorkHomePage extends StatefulWidget {
@@ -21,7 +22,8 @@ class _WorkHomePageState extends State<WorkHomePage> {
         "id": DateTime.now().millisecondsSinceEpoch,
         "author": "Phùng Hoàng Long",
         "role": "KỸ THUẬT",
-        "time": "Vừa xong",
+        "time":
+            "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
         "content": content,
         "bgColor": bgColor,
         "likes": 0,
@@ -57,7 +59,8 @@ class _WorkHomePageState extends State<WorkHomePage> {
         "author": "Long Phùng",
         "text": commentText,
         "mediaPath": mediaPath,
-        "time": "Vừa xong",
+        "time":
+            "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
         "isLiked": false,
         "likes": 0,
         "replies": <Map<String, dynamic>>[],
@@ -284,6 +287,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
     if (file != null) setState(() => _mediaPath = file.path);
   }
 
+  Future<void> _pickVideo() async {
+    final XFile? file = await _picker.pickVideo(source: ImageSource.gallery);
+    if (file != null) setState(() => _mediaPath = file.path);
+  }
+
   void _insertEmoji(String emoji) {
     final text = _contentController.text;
     final selection = _contentController.selection;
@@ -386,15 +394,26 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                             width: 80,
                             height: 80,
                             decoration: BoxDecoration(
+                              color: Colors.black26,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.white, width: 2),
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.file(
-                                File(_mediaPath!),
-                                fit: BoxFit.cover,
-                              ),
+                              child:
+                                  _mediaPath!.toLowerCase().endsWith('.mp4') ||
+                                      _mediaPath!.toLowerCase().endsWith('.mov')
+                                  ? const Center(
+                                      child: Icon(
+                                        Icons.play_circle_outline,
+                                        color: Colors.white,
+                                        size: 40,
+                                      ),
+                                    )
+                                  : Image.file(
+                                      File(_mediaPath!),
+                                      fit: BoxFit.cover,
+                                    ),
                             ),
                           ),
                         ),
@@ -403,7 +422,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                   const SizedBox(height: 16),
                   _BuildMediaAttachmentsTool(
                     onImage: () => _pickMedia(ImageSource.gallery),
-                    onCamera: () => _pickMedia(ImageSource.camera),
+                    onCamera: _pickVideo,
                     onEmoji: _toggleEmoji,
                   ),
                   if (_showEmoji)
@@ -573,12 +592,27 @@ class _PostCardState extends State<_PostCard> {
             onDelete: widget.onDelete,
           ),
           if (widget.post["mediaPath"] != null)
-            SizedBox(
-              width: double.infinity,
-              height: 300,
-              child: Image.file(
-                File(widget.post["mediaPath"]),
-                fit: BoxFit.cover,
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FullScreenImageViewer(
+                      imagePath: widget.post["mediaPath"],
+                    ),
+                  ),
+                );
+              },
+              child: SizedBox(
+                width: double.infinity,
+                height: 300,
+                child: Hero(
+                  tag: widget.post["mediaPath"],
+                  child: Image.file(
+                    File(widget.post["mediaPath"]),
+                    fit: BoxFit.cover,
+                  ),
+                ),
               ),
             )
           else
@@ -709,13 +743,28 @@ class _CommentTile extends StatelessWidget {
                 if (comment["mediaPath"] != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.file(
-                        File(comment["mediaPath"]),
-                        height: 120,
-                        width: 120,
-                        fit: BoxFit.cover,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FullScreenImageViewer(
+                              imagePath: comment["mediaPath"],
+                            ),
+                          ),
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Hero(
+                          tag: comment["mediaPath"],
+                          child: Image.file(
+                            File(comment["mediaPath"]),
+                            height: 120,
+                            width: 120,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
                     ),
                   ),

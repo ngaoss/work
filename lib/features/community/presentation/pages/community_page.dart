@@ -68,11 +68,24 @@ class CommunityPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 56),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                "Bạn chưa tham gia nhóm nào",
-                style: TextStyle(color: Colors.grey, fontSize: 13),
+            Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.groups_outlined,
+                    color: Colors.grey.shade300,
+                    size: 60,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Chưa có nhóm cộng đồng nào",
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 48),

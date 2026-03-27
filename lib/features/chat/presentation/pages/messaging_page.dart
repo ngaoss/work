@@ -10,6 +10,59 @@ class MessagingPage extends StatefulWidget {
 
 class _MessagingPageState extends State<MessagingPage> {
   final List<Map<String, dynamic>> _chats = [];
+  int _currentTab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Thêm một số màn hình giả lập có tin nhắn chưa đọc
+    _chats.addAll([
+      {
+        "id": 1001,
+        "name": "Nguyên Tuấn",
+        "status": "Developer",
+        "lastMsg": "Xem giúp mình bài viết này với!",
+        "time": "5 phút trước",
+        "isOnline": true,
+        "initials": "NT",
+        "color": Colors.blue,
+        "isGroup": false,
+        "hasUnread": true,
+        "messages": [
+          {
+            "id": 1,
+            "text": "Xem giúp mình bài viết này với!",
+            "isSender": false,
+            "time": "5 phút trước",
+          },
+        ],
+      },
+      {
+        "id": 1002,
+        "name": "Dự án WWork App",
+        "status": "5 thành viên",
+        "lastMsg": "Bản thiết kế mới đã được cập nhật nha anh em",
+        "time": "1 giờ trước",
+        "isOnline": false,
+        "initials": "DA",
+        "color": Colors.orange,
+        "isGroup": true,
+        "hasUnread": true,
+        "messages": [
+          {
+            "id": 2,
+            "text": "Bản thiết kế mới đã được cập nhật nha anh em",
+            "isSender": false,
+            "time": "1 giờ trước",
+          },
+        ],
+        "members": [
+          {"name": "Phùng Hoàng Long", "role": "CHỦ NHÓM", "isOwner": "true"},
+          {"name": "Mai Anh", "role": "DESIGNER", "isOwner": "false"},
+        ],
+      },
+    ]);
+  }
 
   void _upsertGroup({int? id, required String name}) {
     setState(() {
@@ -33,32 +86,68 @@ class _MessagingPageState extends State<MessagingPage> {
       if (selectedUsers.length == 1) {
         // Direct format
         final user = selectedUsers.first;
-        _chats.insert(0, {
+        final existingIndex = _chats.indexWhere(
+          (c) =>
+              (c["isGroup"] == false || c["isGroup"] == null) &&
+              c["name"] == user["name"],
+        );
+
+        if (existingIndex != -1) {
+          _openChatDetailScreen(_chats[existingIndex]);
+          return;
+        }
+
+        final newChat = {
           "id": DateTime.now().millisecondsSinceEpoch,
           "name": user["name"],
           "status": user["role"],
           "lastMsg": "Bắt đầu cuộc trò chuyện",
-          "time": "Vừa xong",
+          "time":
+              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
           "isOnline": true,
           "initials": user["name"].substring(0, 2).toUpperCase(),
           "color": Colors.blue,
           "isGroup": false,
+          "hasUnread": false,
           "messages": [],
-        });
+        };
+        _chats.insert(0, newChat);
+        _openChatDetailScreen(newChat);
       } else {
         // Group format
-        _chats.insert(0, {
+        List<Map<String, String>> initialMembers = selectedUsers
+            .map(
+              (u) => {
+                "name": u["name"] as String,
+                "role": (u["role"] as String).toUpperCase(),
+                "isOwner": "false",
+              },
+            )
+            .toList();
+
+        initialMembers.insert(0, {
+          "name": "Phùng Hoàng Long",
+          "role": "CHỦ NHÓM",
+          "isOwner": "true",
+        });
+
+        final newGroup = {
           "id": DateTime.now().millisecondsSinceEpoch,
           "name": "Nhóm mới",
           "status": "${selectedUsers.length + 1} thành viên",
           "lastMsg": "Bạn đã tạo nhóm mới",
-          "time": "Vừa xong",
+          "time":
+              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
           "isOnline": false,
           "initials": "NM",
           "color": Colors.orange,
           "isGroup": true,
+          "hasUnread": false,
           "messages": [],
-        });
+          "members": initialMembers,
+        };
+        _chats.insert(0, newGroup);
+        _openChatDetailScreen(newGroup);
       }
     });
   }
@@ -388,53 +477,119 @@ class _MessagingPageState extends State<MessagingPage> {
           const SizedBox(height: 24),
           _SearchBar(),
           const SizedBox(height: 32),
-          _Tabs(),
+          _Tabs(
+            selectedIndex: _currentTab,
+            onChanged: (index) => setState(() => _currentTab = index),
+          ),
           const SizedBox(height: 24),
-          ..._chats.map(
-            (chat) => _ChatItem(
-              name: chat["name"],
-              status: chat["status"],
-              lastMsg: chat["lastMsg"],
-              time: chat["time"],
-              isOnline: chat["isOnline"],
-              initials: chat["initials"],
-              color: chat["color"],
-              onLongPress: () => _showChatOptions(chat),
-              onTap: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatDetailScreen(
-                      name: chat["name"],
-                      isOnline: chat["isOnline"],
-                      initials: chat["initials"],
-                      color: chat["color"],
-                      initialMessages: (chat["messages"] as List?)
-                          ?.cast<Map<String, dynamic>>(),
+          Builder(
+            builder: (context) {
+              final filteredChats = _chats.where((c) {
+                if (_currentTab == 1) return c["hasUnread"] == true;
+                if (_currentTab == 2) return c["isGroup"] == true;
+                return true;
+              }).toList();
+
+              if (filteredChats.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.question_answer_outlined,
+                          color: Colors.grey.shade300,
+                          size: 60,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Chưa có tin nhắn nào",
+                          style: TextStyle(
+                            color: Colors.grey.shade500,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
-                if (result != null && result is Map<String, dynamic>) {
-                  setState(() {
-                    final index = _chats.indexWhere(
-                      (c) => c["id"] == chat["id"],
-                    );
-                    if (index != -1) {
-                      _chats[index]["lastMsg"] = result["lastMsg"];
-                      _chats[index]["time"] = result["time"];
-                      if (result["messages"] != null) {
-                        _chats[index]["messages"] = result["messages"];
-                      }
-                    }
-                  });
-                }
-              },
-            ),
+              }
+
+              return Column(
+                children: filteredChats
+                    .map(
+                      (chat) => _ChatItem(
+                        name: chat["name"],
+                        status: chat["status"],
+                        lastMsg: chat["lastMsg"],
+                        time: chat["time"],
+                        isOnline: chat["isOnline"],
+                        initials: chat["initials"],
+                        color: chat["color"],
+                        hasUnread: chat["hasUnread"] ?? false,
+                        onLongPress: () => _showChatOptions(chat),
+                        onTap: () => _openChatDetailScreen(chat),
+                      ),
+                    )
+                    .toList(),
+              );
+            },
           ),
           const SizedBox(height: 100),
         ],
       ),
     );
+  }
+
+  Future<void> _openChatDetailScreen(Map<String, dynamic> chat) async {
+    setState(() {
+      final index = _chats.indexWhere((c) => c["id"] == chat["id"]);
+      if (index != -1) _chats[index]["hasUnread"] = false;
+    });
+
+    if (!mounted) return;
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatDetailScreen(
+          name: chat["name"],
+          isOnline: chat["isOnline"],
+          initials: chat["initials"],
+          color: chat["color"],
+          isGroup: chat["isGroup"] ?? false,
+          initialMessages: (chat["messages"] as List?)
+              ?.cast<Map<String, dynamic>>(),
+          initialMembers: (chat["members"] as List?)
+              ?.map((e) => Map<String, String>.from(e as Map))
+              .toList(),
+        ),
+      ),
+    );
+
+    if (result != null && result is Map<String, dynamic>) {
+      if (result["action"] == 'leave' || result["action"] == 'disband') {
+        setState(() {
+          _chats.removeWhere((c) => c["id"] == chat["id"]);
+        });
+        return;
+      }
+      setState(() {
+        final index = _chats.indexWhere((c) => c["id"] == chat["id"]);
+        if (index != -1) {
+          _chats[index]["lastMsg"] = result["lastMsg"];
+          _chats[index]["time"] = result["time"];
+          if (result["name"] != null) _chats[index]["name"] = result["name"];
+          if (result["color"] != null) _chats[index]["color"] = result["color"];
+          if (result["initials"] != null)
+            _chats[index]["initials"] = result["initials"];
+          if (result["messages"] != null)
+            _chats[index]["messages"] = result["messages"];
+          if (result["members"] != null)
+            _chats[index]["members"] = result["members"];
+        }
+      });
+    }
   }
 }
 
@@ -463,6 +618,10 @@ class _SearchBar extends StatelessWidget {
 }
 
 class _Tabs extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+  const _Tabs({required this.selectedIndex, required this.onChanged});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -471,11 +630,23 @@ class _Tabs extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _TabItem(label: "TẤT CẢ", isActive: true),
+          _TabItem(
+            label: "TẤT CẢ",
+            isActive: selectedIndex == 0,
+            onTap: () => onChanged(0),
+          ),
           const SizedBox(width: 24),
-          _TabItem(label: "CHƯA ĐỌC", isActive: false),
+          _TabItem(
+            label: "CHƯA ĐỌC",
+            isActive: selectedIndex == 1,
+            onTap: () => onChanged(1),
+          ),
           const SizedBox(width: 24),
-          _TabItem(label: "NHÓM", isActive: false),
+          _TabItem(
+            label: "NHÓM",
+            isActive: selectedIndex == 2,
+            onTap: () => onChanged(2),
+          ),
         ],
       ),
     );
@@ -485,31 +656,42 @@ class _Tabs extends StatelessWidget {
 class _TabItem extends StatelessWidget {
   final String label;
   final bool isActive;
-  const _TabItem({required this.label, required this.isActive});
+  final VoidCallback onTap;
+  const _TabItem({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-            color: isActive ? const Color(0xFF3B82F6) : Colors.grey,
-          ),
-        ),
-        if (isActive) ...[
-          const SizedBox(height: 6),
-          Container(
-            width: 40,
-            height: 3,
-            decoration: BoxDecoration(
-              color: const Color(0xFF3B82F6),
-              borderRadius: BorderRadius.circular(2),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: isActive ? const Color(0xFF3B82F6) : Colors.grey,
             ),
           ),
+          if (isActive) ...[
+            const SizedBox(height: 6),
+            Container(
+              width: 40,
+              height: 3,
+              decoration: BoxDecoration(
+                color: const Color(0xFF3B82F6),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ] else
+            const SizedBox(height: 9), // Placeholder for animation consistency
         ],
-      ],
+      ),
     );
   }
 }
@@ -522,6 +704,7 @@ class _ChatItem extends StatelessWidget {
   final bool isOnline;
   final String? initials;
   final Color? color;
+  final bool hasUnread;
   final VoidCallback onLongPress;
   final VoidCallback onTap;
 
@@ -533,6 +716,7 @@ class _ChatItem extends StatelessWidget {
     required this.isOnline,
     this.initials,
     this.color,
+    required this.hasUnread,
     required this.onLongPress,
     required this.onTap,
   });
@@ -542,8 +726,14 @@ class _ChatItem extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+      splashColor: color?.withOpacity(0.1) ?? Colors.blue.withOpacity(0.1),
+      highlightColor: color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05),
+      child: Container(
+        color: hasUnread
+            ? (color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05))
+            : Colors.transparent,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        margin: const EdgeInsets.only(bottom: 4),
         child: Row(
           children: [
             Stack(
@@ -593,20 +783,44 @@ class _ChatItem extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 13,
-                          color: Color(0xFF1E293B),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                style: TextStyle(
+                                  fontWeight: hasUnread
+                                      ? FontWeight.w900
+                                      : FontWeight.bold,
+                                  fontSize: 13,
+                                  color: const Color(0xFF1E293B),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (hasUnread)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       Text(
                         time,
-                        style: const TextStyle(
-                          color: Colors.grey,
+                        style: TextStyle(
+                          color: hasUnread ? Colors.blueAccent : Colors.grey,
                           fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: hasUnread
+                              ? FontWeight.w900
+                              : FontWeight.bold,
                         ),
                       ),
                     ],
@@ -624,9 +838,12 @@ class _ChatItem extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     lastMsg,
-                    style: const TextStyle(
-                      color: Colors.blueGrey,
+                    style: TextStyle(
+                      color: hasUnread ? Colors.black87 : Colors.blueGrey,
                       fontSize: 12,
+                      fontWeight: hasUnread
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),

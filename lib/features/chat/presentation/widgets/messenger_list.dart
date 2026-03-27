@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:animate_do/animate_do.dart';
 
 class MessengerList extends StatelessWidget {
   final Function(String userId, String userName) onChatSelected;

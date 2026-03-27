@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:animate_do/animate_do.dart';
 
 class ChatWindowFB extends StatefulWidget {
   final String userName;

@@ -1,13 +1,17 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/widgets/full_screen_image_viewer.dart';
+import '../widgets/chat_settings_sheet.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
   final bool isOnline;
   final String? initials;
   final Color? color;
+  final bool isGroup;
   final List<Map<String, dynamic>>? initialMessages;
+  final List<Map<String, String>>? initialMembers;
 
   const ChatDetailScreen({
     super.key,
@@ -15,7 +19,9 @@ class ChatDetailScreen extends StatefulWidget {
     required this.isOnline,
     this.initials,
     this.color,
+    this.isGroup = false,
     this.initialMessages,
+    this.initialMembers,
   });
 
   @override
@@ -29,13 +35,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   bool _showEmoji = false;
   late List<Map<String, dynamic>> _messages;
+  late List<Map<String, String>> _members;
+
+  late String _currentName;
+  late String? _currentInitials;
+  late Color? _currentColor;
+  String? _currentAvatarPath; // Added _currentAvatarPath state
 
   int? _editingMessageId;
 
   @override
   void initState() {
     super.initState();
+    _currentName = widget.name;
+    _currentInitials = widget.initials;
+    _currentColor = widget.color;
     _messages = List.from(widget.initialMessages ?? []);
+    _members = List.from(widget.initialMembers ?? []);
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) {
         setState(() => _showEmoji = false);
@@ -61,6 +77,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             "imagePath": file.path,
             "isSender": true,
             "isEdited": false,
+            "time":
+                "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
           });
         });
       }
@@ -115,6 +133,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           "text": text,
           "isSender": true,
           "isEdited": false,
+          "time":
+              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
         });
       }
       _controller.clear();
@@ -197,7 +217,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           onPressed: () {
             final lastRecord = _messages.isNotEmpty ? _messages.last : null;
             String preview = "";
+            String updatedTime =
+                "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
             if (lastRecord != null) {
+              updatedTime = lastRecord["time"] ?? updatedTime;
               if (lastRecord["imagePath"] != null) {
                 preview = lastRecord["isSender"]
                     ? "Bạn: [Đã gửi một ảnh]"
@@ -209,8 +232,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             }
             Navigator.pop(context, {
               "lastMsg": preview,
-              "time": "Vừa xong",
+              "time": updatedTime,
               "messages": _messages,
+              "members": _members,
+              "name": _currentName,
+              "color": _currentColor,
+              "initials": _currentInitials,
             });
           },
         ),
@@ -218,15 +245,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           children: [
             _HeaderAvatar(
               isOnline: widget.isOnline,
-              initials: widget.initials,
-              color: widget.color,
+              initials: _currentInitials,
+              color: _currentColor,
+              avatarPath: _currentAvatarPath,
             ),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.name,
+                  _currentName,
                   style: const TextStyle(
                     color: Colors.black87,
                     fontSize: 15,
@@ -245,6 +273,44 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.more_horiz, color: Colors.blueAccent),
+            onPressed: () async {
+              final result = await showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => ChatSettingsSheet(
+                  name: _currentName,
+                  initials: _currentInitials ?? "",
+                  color: _currentColor ?? Colors.blue,
+                  isGroup: widget.isGroup,
+                  initialMembers: _members,
+                  onUpdate: (newName, newColor, newAvatar) {
+                    setState(() {
+                      _currentName = newName;
+                      _currentColor = newColor;
+                      _currentAvatarPath = newAvatar;
+                      _currentInitials = newName.length >= 2
+                          ? newName.substring(0, 2).toUpperCase()
+                          : newName.toUpperCase();
+                    });
+                  },
+                  onUpdateMembers: (newMembers) {
+                    setState(() {
+                      _members = newMembers;
+                    });
+                  },
+                ),
+              );
+              if (result == 'leave' || result == 'disband') {
+                Navigator.pop(context, {"action": result});
+              }
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: WillPopScope(
         onWillPop: () {
@@ -268,6 +334,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             "lastMsg": preview,
             "time": "Vừa xong",
             "messages": _messages,
+            "name": _currentName,
+            "color": _currentColor,
+            "initials": _currentInitials,
           });
           return Future.value(false);
         },
@@ -290,6 +359,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       isSender: msg["isSender"],
                       isEdited: msg["isEdited"] ?? false,
                       imagePath: msg["imagePath"],
+                      bubbleColor: _currentColor ?? Colors.blue,
+                      time: msg["time"] ?? "Vừa xong",
                     ),
                   );
                 },
@@ -297,6 +368,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
             if (_editingMessageId != null)
               _EditingBanner(
+                themeColor: _currentColor ?? const Color(0xFF3B82F6),
                 onCancel: () => setState(() {
                   _editingMessageId = null;
                   _controller.clear();
@@ -306,14 +378,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             _ChatInputArea(
               controller: _controller,
               focusNode: _focusNode,
+              isEmojiVisible: _showEmoji,
+              onEmoji: _toggleEmoji,
               onSend: _sendMessage,
               onCamera: () => _pickMedia(ImageSource.camera),
               onGallery: () => _pickMedia(ImageSource.gallery),
-              onEmoji: _toggleEmoji,
-              isEmojiVisible: _showEmoji,
+              themeColor: _currentColor ?? const Color(0xFF3B82F6),
             ),
-
-            if (_showEmoji) _EmojiPickerSheet(onSelected: _insertEmoji),
+            if (_showEmoji)
+              _EmojiPickerSheet(
+                onSelected: (emoji) {
+                  _insertEmoji(emoji);
+                },
+              ),
           ],
         ),
       ),
@@ -405,11 +482,15 @@ class _ChatBubble extends StatelessWidget {
   final bool isSender;
   final bool isEdited;
   final String? imagePath;
+  final Color bubbleColor;
+  final String time;
   const _ChatBubble({
     required this.message,
     required this.isSender,
     this.isEdited = false,
     this.imagePath,
+    this.bubbleColor = const Color(0xFF3B82F6),
+    required this.time,
   });
 
   @override
@@ -422,14 +503,27 @@ class _ChatBubble extends StatelessWidget {
             : CrossAxisAlignment.start,
         children: [
           if (imagePath != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.7,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.file(File(imagePath!), fit: BoxFit.cover),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FullScreenImageViewer(imagePath: imagePath),
+                  ),
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.7,
+                ),
+                child: Hero(
+                  tag: imagePath!,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.file(File(imagePath!), fit: BoxFit.cover),
+                  ),
+                ),
               ),
             )
           else
@@ -440,9 +534,7 @@ class _ChatBubble extends StatelessWidget {
                 maxWidth: MediaQuery.of(context).size.width * 0.7,
               ),
               decoration: BoxDecoration(
-                color: isSender
-                    ? const Color(0xFF3B82F6)
-                    : const Color(0xFFF1F5F9),
+                color: isSender ? bubbleColor : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(20),
                   topRight: const Radius.circular(20),
@@ -459,20 +551,33 @@ class _ChatBubble extends StatelessWidget {
                 ),
               ),
             ),
-          if (isEdited && imagePath == null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14, right: 6, left: 6),
-              child: Text(
-                "Đã sửa",
-                style: TextStyle(
-                  color: Colors.blueGrey.withOpacity(0.6),
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14, right: 6, left: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  time,
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            )
-          else
-            const SizedBox(height: 14),
+                if (isEdited && imagePath == null) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    "• Đã sửa",
+                    style: TextStyle(
+                      color: Colors.blueGrey.withOpacity(0.6),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -483,19 +588,21 @@ class _ChatInputArea extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSend;
-  final VoidCallback onCamera;
-  final VoidCallback onGallery;
   final VoidCallback onEmoji;
   final bool isEmojiVisible;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final Color themeColor;
 
   const _ChatInputArea({
     required this.controller,
     required this.focusNode,
     required this.onSend,
-    required this.onCamera,
-    required this.onGallery,
     required this.onEmoji,
     required this.isEmojiVisible,
+    required this.onCamera,
+    required this.onGallery,
+    this.themeColor = const Color(0xFF3B82F6),
   });
 
   @override
@@ -515,15 +622,15 @@ class _ChatInputArea extends StatelessWidget {
         children: [
           IconButton(
             onPressed: () {},
-            icon: const Icon(Icons.add_circle, color: Color(0xFF3B82F6)),
+            icon: Icon(Icons.add_circle, color: themeColor),
           ),
           IconButton(
             onPressed: onCamera,
-            icon: const Icon(Icons.camera_alt, color: Color(0xFF3B82F6)),
+            icon: Icon(Icons.camera_alt, color: themeColor),
           ),
           IconButton(
             onPressed: onGallery,
-            icon: const Icon(Icons.image, color: Color(0xFF3B82F6)),
+            icon: Icon(Icons.image, color: themeColor),
           ),
           Expanded(
             child: Container(
@@ -555,7 +662,7 @@ class _ChatInputArea extends StatelessWidget {
                           ? Icons.keyboard
                           : Icons.emoji_emotions_outlined,
                       size: 20,
-                      color: isEmojiVisible ? Colors.blue : Colors.blueGrey,
+                      color: isEmojiVisible ? themeColor : Colors.blueGrey,
                     ),
                   ),
                 ],
@@ -565,7 +672,7 @@ class _ChatInputArea extends StatelessWidget {
           const SizedBox(width: 8),
           IconButton(
             onPressed: onSend,
-            icon: const Icon(Icons.send_rounded, color: Color(0xFF3B82F6)),
+            icon: Icon(Icons.send_rounded, color: themeColor),
           ),
         ],
       ),
@@ -575,29 +682,32 @@ class _ChatInputArea extends StatelessWidget {
 
 class _EditingBanner extends StatelessWidget {
   final VoidCallback onCancel;
-  const _EditingBanner({required this.onCancel});
+  final Color themeColor;
+  const _EditingBanner({required this.onCancel, required this.themeColor});
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.blue.withOpacity(0.05),
+      color: themeColor.withOpacity(0.05),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          const Icon(Icons.edit_outlined, size: 16, color: Colors.blue),
+          Icon(Icons.edit_outlined, size: 16, color: themeColor),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
               "Đang chỉnh sửa tin nhắn...",
               style: TextStyle(
-                color: Colors.blue,
-                fontWeight: FontWeight.bold,
+                color: themeColor,
                 fontSize: 12,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
-          GestureDetector(
-            onTap: onCancel,
-            child: const Icon(Icons.close, size: 16, color: Colors.blueGrey),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            constraints: const BoxConstraints(),
+            padding: EdgeInsets.zero,
+            onPressed: onCancel,
           ),
         ],
       ),
@@ -609,7 +719,13 @@ class _HeaderAvatar extends StatelessWidget {
   final bool isOnline;
   final String? initials;
   final Color? color;
-  const _HeaderAvatar({required this.isOnline, this.initials, this.color});
+  final String? avatarPath;
+  const _HeaderAvatar({
+    required this.isOnline,
+    this.initials,
+    this.color,
+    this.avatarPath,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -619,7 +735,10 @@ class _HeaderAvatar extends StatelessWidget {
         CircleAvatar(
           radius: 18,
           backgroundColor: color?.withOpacity(0.2) ?? Colors.blueGrey.shade50,
-          child: initials != null
+          backgroundImage: avatarPath != null
+              ? FileImage(File(avatarPath!))
+              : null,
+          child: avatarPath == null && initials != null
               ? Text(
                   initials!,
                   style: TextStyle(
