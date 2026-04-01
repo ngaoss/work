@@ -20,29 +20,7 @@ class _ChatWindowFBState extends State<ChatWindowFB> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final List<Map<String, dynamic>> _messages = [
-    {
-      "text": "Hello! How can I help you with your development today?",
-      "isMe": false,
-      "time": "10:15 AM",
-    },
-    {
-      "text": "I'm looking for some advice on Flutter state management.",
-      "isMe": true,
-      "time": "10:16 AM",
-    },
-    {
-      "text":
-          "Sure, for large apps we recommend Riverpod or Bloc. For simpler ones, Provider works great!",
-      "isMe": false,
-      "time": "10:17 AM",
-    },
-    {
-      "text": "Got it. What about Clean Architecture?",
-      "isMe": true,
-      "time": "10:18 AM",
-    },
-  ];
+  final List<Map<String, dynamic>> _messages = [];
 
   void _sendMessage() {
     if (_controller.text.isEmpty) return;

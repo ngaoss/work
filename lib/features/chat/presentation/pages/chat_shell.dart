@@ -7,6 +7,7 @@ import '../../../reels/presentation/pages/reels_page.dart';
 import '../../../documents/presentation/pages/documents_page.dart';
 import 'messaging_page.dart';
 import '../../../../core/security.dart';
+import '../../../../core/api_service.dart';
 
 class ChatShell extends StatefulWidget {
   const ChatShell({super.key});
@@ -18,10 +19,38 @@ class ChatShell extends StatefulWidget {
 class _ChatShellState extends State<ChatShell> {
   int _currentIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  List<Map<String, dynamic>> _allReels = [];
+  int _initialReelIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchGlobalReels();
+  }
+
+  Future<void> _fetchGlobalReels() async {
+    final reels = await ApiService.getReels();
+    if (mounted) {
+      setState(() {
+        _allReels = List<Map<String, dynamic>>.from(reels);
+      });
+    }
+  }
 
   List<Widget> get _pages => [
-    WorkHomePage(onNavigateToReels: () => _onItemTapped(1)), // 0: BẨNG TIN
-    const ReelsPage(), // 1: REELS
+    WorkHomePage(
+      onNavigateToReels: (idx) {
+        setState(() => _initialReelIndex = idx);
+        _onItemTapped(1);
+      },
+      reels: _allReels,
+    ), // 0: BẢNG TIN
+    ReelsPage(
+      key: ValueKey('reels_$_initialReelIndex'),
+      isActive: _currentIndex == 1,
+      initialIndex: _initialReelIndex,
+      onClose: () => _onItemTapped(0), // back to news feed
+    ), // 1: REELS
     const DocumentsPage(), // 2: TÀI LIỆU
     const PersonnelPage(), // 3: NHÂN SỰ
     const CommunityPage(), // 4: NHÓM

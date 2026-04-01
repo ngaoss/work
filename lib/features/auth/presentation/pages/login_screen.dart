@@ -1,8 +1,44 @@
 import 'package:flutter/material.dart';
+import '../../../../core/security.dart';
 
-class LoginScreen extends StatelessWidget {
-  final VoidCallback onLogin;
-  const LoginScreen({super.key, required this.onLogin});
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = "Vui lòng nhập đầy đủ email và mật khẩu");
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final success = await AuthService().login(email, password);
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        if (!success) {
+          _errorMessage = "Sai email hoặc mật khẩu";
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,11 +53,8 @@ class LoginScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 120),
-              // 1. Logo (DC DEEPCODE Placeholder)
               _LogoWidget(),
               const SizedBox(height: 60),
-
-              // 2. Greeting
               Text("Chào mừng trở lại", style: theme.textTheme.headlineLarge),
               const SizedBox(height: 12),
               const Text(
@@ -34,29 +67,56 @@ class LoginScreen extends StatelessWidget {
               ),
               const SizedBox(height: 48),
 
-              // 3. Email Field
               _InputField(
+                controller: _emailController,
                 label: "ĐỊA CHỈ EMAIL",
                 hint: "name@deepcode.vn",
                 icon: Icons.alternate_email,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 24),
 
-              // 4. Password Field
               _InputField(
+                controller: _passwordController,
                 label: "MẬT KHẨU",
                 hint: "••••••••",
                 icon: Icons.lock_outline,
                 obscure: true,
+                keyboardType: TextInputType.visiblePassword,
+                textInputAction: TextInputAction.done,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 24),
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF1F2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: Color(0xFFE11D48),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
 
-              // 5. Login Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: onLogin,
+                  onPressed: _isLoading ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF3B82F6),
                     foregroundColor: Colors.white,
@@ -66,19 +126,27 @@ class LoginScreen extends StatelessWidget {
                     elevation: 10,
                     shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
                   ),
-                  child: const Text(
-                    "ĐĂNG NHẬP HỆ THỐNG",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          "ĐĂNG NHẬP HỆ THỐNG",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                 ),
               ),
 
               const SizedBox(height: 160),
-
               const Text(
                 "POWERED BY DEEPCODE © 2026",
                 style: TextStyle(
@@ -137,16 +205,22 @@ class _LogoWidget extends StatelessWidget {
 }
 
 class _InputField extends StatelessWidget {
+  final TextEditingController controller;
   final String label;
   final String hint;
   final IconData icon;
   final bool obscure;
+  final TextInputType keyboardType;
+  final TextInputAction textInputAction;
 
   const _InputField({
+    required this.controller,
     required this.label,
     required this.hint,
     required this.icon,
     this.obscure = false,
+    this.keyboardType = TextInputType.text,
+    this.textInputAction = TextInputAction.next,
   });
 
   @override
@@ -178,7 +252,10 @@ class _InputField extends StatelessWidget {
             ],
           ),
           child: TextField(
+            controller: controller,
             obscureText: obscure,
+            keyboardType: keyboardType,
+            textInputAction: textInputAction,
             decoration: InputDecoration(
               prefixIcon: Icon(
                 icon,

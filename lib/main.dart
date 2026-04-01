@@ -6,7 +6,10 @@ import 'features/chat/presentation/pages/chat_shell.dart';
 
 import 'core/security.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final authService = AuthService();
+  await authService.checkSession();
   runApp(const ProviderScope(child: DeepCodeApp()));
 }
 
@@ -22,12 +25,7 @@ class DeepCodeApp extends StatelessWidget {
           title: 'DeepCode Work',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
-          home: isAuthenticated
-              ? const ChatShell()
-              : LoginScreen(
-                  onLogin: () =>
-                      AuthService().login("user@deepcode.vn", "123456"),
-                ),
+          home: isAuthenticated ? const ChatShell() : const LoginScreen(),
         );
       },
     );

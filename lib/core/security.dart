@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -7,23 +10,86 @@ class AuthService {
 
   final ValueNotifier<bool> isAuthenticated = ValueNotifier<bool>(false);
   final ValueNotifier<String?> authToken = ValueNotifier<String?>(null);
+  final ValueNotifier<Map<String, dynamic>?> userProfile =
+      ValueNotifier<Map<String, dynamic>?>(null);
 
-  Future<void> login(String email, String password) async {
-    // Mock secure login with artificial delay
-    await Future.delayed(const Duration(milliseconds: 800));
+  Future<void> checkSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    final profileStr = prefs.getString('user_profile');
 
-    // Simulate encryption/token generation
-    final mockToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${email.hashCode}";
-
-    authToken.value = mockToken;
-    isAuthenticated.value = true;
-
-    debugPrint("Security: Session established for $email (Token: $mockToken)");
+    if (token != null) {
+      authToken.value = token;
+      isAuthenticated.value = true;
+      if (profileStr != null) {
+        userProfile.value = jsonDecode(profileStr);
+      }
+    }
   }
 
-  void logout() {
+  Future<bool> login(String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://work.deepcode.vn/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint("Login success body: ${response.body}");
+        final Map<String, dynamic> rawData = jsonDecode(response.body);
+        final Map<String, dynamic> data =
+            (rawData.containsKey('data') && rawData['data'] is Map)
+            ? rawData['data']
+            : rawData;
+
+        final token =
+            data['token'] ??
+            data['access_token'] ??
+            rawData['token'] ??
+            rawData['access_token'] ??
+            'authenticated_session';
+        final user =
+            data['user'] ??
+            rawData['user'] ??
+            (rawData.containsKey('data') && rawData['data'] is Map
+                ? rawData['data']
+                : null);
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('auth_token', token.toString());
+        if (user != null && user is Map) {
+          await prefs.setString('user_profile', jsonEncode(user));
+          userProfile.value = user as Map<String, dynamic>;
+        }
+
+        authToken.value = token.toString();
+        isAuthenticated.value = true;
+        return true;
+      } else {
+        debugPrint("Login failed: ${response.statusCode} - ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      debugPrint("Login error: $e");
+      return false;
+    }
+  }
+
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    await prefs.remove('user_profile');
+
     authToken.value = null;
+    userProfile.value = null;
     isAuthenticated.value = false;
     debugPrint("Security: Session cleared.");
+  }
+
+  Future<void> updateLocalProfile(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_profile', jsonEncode(data));
+    userProfile.value = data;
   }
 }

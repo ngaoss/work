@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'chat_detail_screen.dart';
+import '../../../../core/api_service.dart';
 
 class MessagingPage extends StatefulWidget {
   const MessagingPage({super.key});
@@ -12,62 +14,26 @@ class _MessagingPageState extends State<MessagingPage> {
   final List<Map<String, dynamic>> _chats = [];
   int _currentTab = 0;
 
+  List<dynamic> _realUsers = [];
+
   @override
   void initState() {
     super.initState();
-    // Thêm một số màn hình giả lập có tin nhắn chưa đọc
-    _chats.addAll([
-      {
-        "id": 1001,
-        "name": "Nguyên Tuấn",
-        "status": "Developer",
-        "lastMsg": "Xem giúp mình bài viết này với!",
-        "time": "5 phút trước",
-        "isOnline": true,
-        "initials": "NT",
-        "color": Colors.blue,
-        "isGroup": false,
-        "hasUnread": true,
-        "messages": [
-          {
-            "id": 1,
-            "text": "Xem giúp mình bài viết này với!",
-            "isSender": false,
-            "time": "5 phút trước",
-          },
-        ],
-      },
-      {
-        "id": 1002,
-        "name": "Dự án WWork App",
-        "status": "5 thành viên",
-        "lastMsg": "Bản thiết kế mới đã được cập nhật nha anh em",
-        "time": "1 giờ trước",
-        "isOnline": false,
-        "initials": "DA",
-        "color": Colors.orange,
-        "isGroup": true,
-        "hasUnread": true,
-        "messages": [
-          {
-            "id": 2,
-            "text": "Bản thiết kế mới đã được cập nhật nha anh em",
-            "isSender": false,
-            "time": "1 giờ trước",
-          },
-        ],
-        "members": [
-          {"name": "Phùng Hoàng Long", "role": "CHỦ NHÓM", "isOwner": "true"},
-          {"name": "Mai Anh", "role": "DESIGNER", "isOwner": "false"},
-        ],
-      },
-    ]);
+    _fetchUsers();
+  }
+
+  Future<void> _fetchUsers() async {
+    final users = await ApiService.getUsers();
+    if (mounted) {
+      setState(() {
+        _realUsers = users;
+      });
+    }
   }
 
   void _upsertGroup({int? id, required String name}) {
     setState(() {
       if (id != null) {
-        // Edit existing group/chat name
         final index = _chats.indexWhere((c) => c["id"] == id);
         if (index != -1) {
           _chats[index]["name"] = name;
@@ -84,12 +50,12 @@ class _MessagingPageState extends State<MessagingPage> {
 
     setState(() {
       if (selectedUsers.length == 1) {
-        // Direct format
         final user = selectedUsers.first;
+        final name = user["fullName"] ?? user["name"] ?? "Người dùng";
         final existingIndex = _chats.indexWhere(
           (c) =>
               (c["isGroup"] == false || c["isGroup"] == null) &&
-              c["name"] == user["name"],
+              c["name"] == name,
         );
 
         if (existingIndex != -1) {
@@ -99,34 +65,35 @@ class _MessagingPageState extends State<MessagingPage> {
 
         final newChat = {
           "id": DateTime.now().millisecondsSinceEpoch,
-          "name": user["name"],
-          "status": user["role"],
+          "name": name,
+          "status": user["position"] ?? user["role"] ?? "Nhân viên",
           "lastMsg": "Bắt đầu cuộc trò chuyện",
           "time":
               "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
           "isOnline": true,
-          "initials": user["name"].substring(0, 2).toUpperCase(),
+          "initials": name.substring(0, 2).toUpperCase(),
           "color": Colors.blue,
           "isGroup": false,
           "hasUnread": false,
           "messages": [],
+          "avatarPath": user["profilePicture"] ?? user["avatar"],
         };
         _chats.insert(0, newChat);
         _openChatDetailScreen(newChat);
       } else {
-        // Group format
         List<Map<String, String>> initialMembers = selectedUsers
             .map(
               (u) => {
-                "name": u["name"] as String,
-                "role": (u["role"] as String).toUpperCase(),
+                "name": (u["fullName"] ?? u["name"] ?? "Người dùng") as String,
+                "role": ((u["position"] ?? u["role"] ?? "Nhân viên") as String)
+                    .toUpperCase(),
                 "isOwner": "false",
               },
             )
             .toList();
 
         initialMembers.insert(0, {
-          "name": "Phùng Hoàng Long",
+          "name": "Tôi",
           "role": "CHỦ NHÓM",
           "isOwner": "true",
         });
@@ -151,14 +118,6 @@ class _MessagingPageState extends State<MessagingPage> {
       }
     });
   }
-
-  final List<Map<String, dynamic>> _dummyUsers = [
-    {"id": 1, "name": "Nguyên Tuấn", "role": "Developer"},
-    {"id": 2, "name": "Mai Anh", "role": "Designer"},
-    {"id": 3, "name": "Hoàng Nam", "role": "Manager"},
-    {"id": 4, "name": "Bảo Ngọc", "role": "Tester"},
-    {"id": 5, "name": "Viết Lâm", "role": "HR"},
-  ];
 
   void _showUserSelectionSheet() {
     List<Map<String, dynamic>> selectedUsers = [];
@@ -211,25 +170,42 @@ class _MessagingPageState extends State<MessagingPage> {
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.builder(
-                    itemCount: _dummyUsers.length,
+                    itemCount: _realUsers.length,
                     itemBuilder: (context, index) {
-                      final user = _dummyUsers[index];
+                      final user = _realUsers[index];
+                      final name =
+                          user["fullName"] ?? user["name"] ?? "Người dùng";
                       final isSelected = selectedUsers.contains(user);
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
-                          backgroundColor: Colors.blueGrey.shade100,
-                          child: Text(
-                            user["name"].substring(0, 1),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                          backgroundColor: Colors.blueGrey.shade50,
+                          backgroundImage:
+                              (user["profilePicture"] != null ||
+                                  user["avatar"] != null)
+                              ? NetworkImage(
+                                  ApiService.resolveAvatarUrl(
+                                    user["profilePicture"] ?? user["avatar"],
+                                  ),
+                                )
+                              : null,
+                          child:
+                              (user["profilePicture"] == null &&
+                                  user["avatar"] == null)
+                              ? Text(
+                                  name.substring(0, 1),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              : null,
                         ),
                         title: Text(
-                          user["name"],
+                          name,
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         subtitle: Text(
-                          user["role"],
+                          user["position"] ?? user["role"] ?? "Nhân viên",
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.grey,
@@ -530,6 +506,7 @@ class _MessagingPageState extends State<MessagingPage> {
                         hasUnread: chat["hasUnread"] ?? false,
                         onLongPress: () => _showChatOptions(chat),
                         onTap: () => _openChatDetailScreen(chat),
+                        avatarPath: chat["avatarPath"],
                       ),
                     )
                     .toList(),
@@ -558,11 +535,14 @@ class _MessagingPageState extends State<MessagingPage> {
           initials: chat["initials"],
           color: chat["color"],
           isGroup: chat["isGroup"] ?? false,
+          avatarPath: chat["avatarPath"],
           initialMessages: (chat["messages"] as List?)
               ?.cast<Map<String, dynamic>>(),
-          initialMembers: (chat["members"] as List?)
-              ?.map((e) => Map<String, String>.from(e as Map))
-              .toList(),
+          initialMembers: (chat["messages"] != null && chat["members"] == null)
+              ? []
+              : (chat["members"] as List?)
+                    ?.map((e) => Map<String, String>.from(e as Map))
+                    .toList(),
         ),
       ),
     );
@@ -587,6 +567,8 @@ class _MessagingPageState extends State<MessagingPage> {
             _chats[index]["messages"] = result["messages"];
           if (result["members"] != null)
             _chats[index]["members"] = result["members"];
+          if (result["avatarPath"] != null)
+            _chats[index]["avatarPath"] = result["avatarPath"];
         }
       });
     }
@@ -703,6 +685,7 @@ class _ChatItem extends StatelessWidget {
   final String time;
   final bool isOnline;
   final String? initials;
+  final String? avatarPath;
   final Color? color;
   final bool hasUnread;
   final VoidCallback onLongPress;
@@ -715,6 +698,7 @@ class _ChatItem extends StatelessWidget {
     required this.time,
     required this.isOnline,
     this.initials,
+    this.avatarPath,
     this.color,
     required this.hasUnread,
     required this.onLongPress,
@@ -745,9 +729,17 @@ class _ChatItem extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: color?.withOpacity(0.2) ?? Colors.blueGrey.shade50,
                     shape: BoxShape.circle,
+                    image: avatarPath != null
+                        ? DecorationImage(
+                            image: FileImage(File(avatarPath!)),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
                   ),
                   child: Center(
-                    child: initials != null
+                    child: avatarPath != null
+                        ? null
+                        : initials != null
                         ? Text(
                             initials!,
                             style: TextStyle(

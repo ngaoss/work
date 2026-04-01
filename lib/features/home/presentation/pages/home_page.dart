@@ -1,37 +1,52 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../../core/widgets/full_screen_image_viewer.dart';
-import '../../../../features/reels/presentation/pages/reels_page.dart';
+import '../../../../core/api_service.dart';
+import '../../../../core/security.dart';
+import '../../../../core/widgets/full_screen_media_viewer.dart';
+import '../../../../core/widgets/video_preview.dart';
+import '../../../reels/presentation/pages/reels_page.dart';
 
 class WorkHomePage extends StatefulWidget {
-  final VoidCallback? onNavigateToReels;
-  const WorkHomePage({super.key, this.onNavigateToReels});
+  final List<Map<String, dynamic>> reels;
+  final Function(int)? onNavigateToReels;
+  const WorkHomePage({super.key, this.onNavigateToReels, required this.reels});
 
   @override
   State<WorkHomePage> createState() => _WorkHomePageState();
 }
 
 class _WorkHomePageState extends State<WorkHomePage> {
-  final List<Map<String, dynamic>> _posts = [];
+  List<Map<String, dynamic>> _posts = [];
+  bool _isPostsLoading = false;
 
-  void _addNewPost(String content, Color bgColor, String? mediaPath) {
-    setState(() {
-      _posts.insert(0, {
-        "id": DateTime.now().millisecondsSinceEpoch,
-        "author": "Phùng Hoàng Long",
-        "role": "KỸ THUẬT",
-        "time":
-            "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-        "content": content,
-        "bgColor": bgColor,
-        "likes": 0,
-        "isLiked": false,
-        "commentList": <Map<String, dynamic>>[],
-        "mediaPath": mediaPath,
+  @override
+  void initState() {
+    super.initState();
+    _fetchPosts();
+  }
+
+  Future<void> _fetchPosts() async {
+    setState(() => _isPostsLoading = true);
+    final posts = await ApiService.getPosts();
+    debugPrint('HomePage: Fetched ${posts.length} posts');
+    if (mounted) {
+      setState(() {
+        _posts = List<Map<String, dynamic>>.from(posts);
+        _isPostsLoading = false;
       });
+    }
+  }
+
+  void _addNewPost(String content, Color bgColor, String? mediaPath) async {
+    final success = await ApiService.createPost({
+      "content": content,
+      "bgColor": bgColor.value.toString(),
+      "mediaPath": mediaPath,
     });
+    if (success && mounted) {
+      _fetchPosts();
+    }
   }
 
   void _toggleLike(int index) {
@@ -51,38 +66,16 @@ class _WorkHomePageState extends State<WorkHomePage> {
     String? mediaPath, {
     String? replyTo,
     int? parentCommentId,
-  }) {
-    setState(() {
-      final commentText = replyTo != null ? "@$replyTo $text" : text;
-      final newComment = {
-        "id": DateTime.now().millisecondsSinceEpoch,
-        "author": "Long Phùng",
-        "text": commentText,
-        "mediaPath": mediaPath,
-        "time":
-            "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-        "isLiked": false,
-        "likes": 0,
-        "replies": <Map<String, dynamic>>[],
-      };
-      if (parentCommentId != null) {
-        final comments =
-            _posts[postIndex]["commentList"] as List<Map<String, dynamic>>;
-        final parentIdx = comments.indexWhere(
-          (c) => c["id"] == parentCommentId,
-        );
-        if (parentIdx != -1) {
-          (comments[parentIdx]["replies"] as List<Map<String, dynamic>>).add(
-            newComment,
-          );
-          return;
-        }
-      }
-      _posts[postIndex]["commentList"].add(newComment);
+  }) async {
+    final success = await ApiService.addComment({
+      "postId": _posts[postIndex]["id"],
+      "text": text,
+      "replyTo": replyTo,
+      "parentId": parentCommentId,
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Đã gửi bình luận")));
+    if (success && mounted) {
+      _fetchPosts();
+    }
   }
 
   void _toggleCommentLike(int postIndex, int commentIndex) {
@@ -120,6 +113,28 @@ class _WorkHomePageState extends State<WorkHomePage> {
     ).showSnackBar(const SnackBar(content: Text("Đã xóa bài viết")));
   }
 
+  void _showCreateReelDialog() {
+    showDialog(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.80),
+      builder: (_) => CreateReelDialog(
+        onPublish: (reel) async {
+          final success = await ApiService.createReel(reel);
+          if (success && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Đang tải Reel lên...'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -130,9 +145,18 @@ class _WorkHomePageState extends State<WorkHomePage> {
           children: [
             _HeroBanner(),
             _StatusInput(onPostAdded: _addNewPost),
-            _MomentsSection(onAddTap: widget.onNavigateToReels),
+            _MomentsSection(
+              onAddTap: _showCreateReelDialog,
+              onNavigateToReels: widget.onNavigateToReels,
+              reels: widget.reels,
+            ),
             const SizedBox(height: 16),
-            if (_posts.isEmpty)
+            if (_isPostsLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_posts.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Center(
@@ -195,10 +219,29 @@ class _StatusInput extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: Colors.blueGrey.shade100,
-            child: const Icon(Icons.person, color: Colors.blueGrey),
+          ValueListenableBuilder<Map<String, dynamic>?>(
+            valueListenable: AuthService().userProfile,
+            builder: (context, profile, _) {
+              final String? avatarId = profile?['profilePicture'];
+              return FutureBuilder<Map<String, String>>(
+                future: ApiService.getAuthHeaders(),
+                builder: (context, headers) {
+                  return CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.blueGrey.shade100,
+                    backgroundImage: avatarId != null
+                        ? NetworkImage(
+                            ApiService.resolveAvatarUrl(avatarId),
+                            headers: headers.data,
+                          )
+                        : null,
+                    child: avatarId == null
+                        ? const Icon(Icons.person, color: Colors.blueGrey)
+                        : null,
+                  );
+                },
+              );
+            },
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -212,11 +255,11 @@ class _StatusInput extends StatelessWidget {
                   color: const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
                     Text(
-                      "Long ơi, bạn đang nghĩ gì?",
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                      "${AuthService().userProfile.value?['name'] ?? 'Bạn'} ơi, bạn đang nghĩ gì?",
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                   ],
                 ),
@@ -403,13 +446,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                               child:
                                   _mediaPath!.toLowerCase().endsWith('.mp4') ||
                                       _mediaPath!.toLowerCase().endsWith('.mov')
-                                  ? const Center(
-                                      child: Icon(
-                                        Icons.play_circle_outline,
-                                        color: Colors.white,
-                                        size: 40,
-                                      ),
-                                    )
+                                  ? VideoPreview(file: File(_mediaPath!))
                                   : Image.file(
                                       File(_mediaPath!),
                                       fit: BoxFit.cover,
@@ -578,7 +615,14 @@ class _PostCardState extends State<_PostCard> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> comments = widget.post["commentList"];
+    final List<dynamic> commentsRaw =
+        widget.post["commentList"] ?? widget.post["comments"] ?? [];
+    final List<Map<String, dynamic>> comments = List<Map<String, dynamic>>.from(
+      commentsRaw,
+    );
+    final String authorName = widget.post["author"] is Map
+        ? widget.post["author"]["name"]
+        : (widget.post["author"] ?? widget.post["user"] ?? "Người dùng");
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       color: Colors.white,
@@ -586,31 +630,62 @@ class _PostCardState extends State<_PostCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _PostHeader(
-            author: widget.post["author"],
-            role: widget.post["role"],
-            time: widget.post["time"],
+            author: authorName,
+            avatar:
+                widget.post["author"]?["profilePicture"] ??
+                (widget.post["user"]?["profilePicture"]),
+            role: widget.post["role"] ?? widget.post["position"] ?? "",
+            time: widget.post["time"] ?? widget.post["created_at"] ?? "",
             onDelete: widget.onDelete,
           ),
           if (widget.post["mediaPath"] != null)
             GestureDetector(
               onTap: () {
+                final String mLink = ApiService.resolveUrl(
+                  widget.post["mediaPath"],
+                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => FullScreenImageViewer(
-                      imagePath: widget.post["mediaPath"],
+                    builder: (_) => FullScreenMediaViewer(
+                      mediaPath:
+                          widget.post["mediaPath"].toString().startsWith('http')
+                          ? widget.post["mediaPath"]
+                          : mLink,
                     ),
                   ),
                 );
               },
               child: SizedBox(
                 width: double.infinity,
-                height: 300,
+                height: 400, // Increased height for video/media
                 child: Hero(
                   tag: widget.post["mediaPath"],
-                  child: Image.file(
-                    File(widget.post["mediaPath"]),
-                    fit: BoxFit.cover,
+                  child: Builder(
+                    builder: (context) {
+                      final String rp = widget.post["mediaPath"].toString();
+                      final bool isNet = rp.startsWith('http');
+                      final String fP = isNet ? ApiService.resolveUrl(rp) : rp;
+                      final String lP = fP.toLowerCase();
+                      final bool isV =
+                          lP.endsWith('.mp4') || lP.endsWith('.mov');
+
+                      if (isV) {
+                        return isNet
+                            ? VideoPreview(videoUrl: fP)
+                            : VideoPreview(file: File(rp));
+                      } else {
+                        return isNet
+                            ? Image.network(
+                                fP,
+                                fit: BoxFit.cover,
+                                errorBuilder: (c, e, s) => const Center(
+                                  child: Icon(Icons.broken_image),
+                                ),
+                              )
+                            : Image.file(File(rp), fit: BoxFit.cover);
+                      }
+                    },
                   ),
                 ),
               ),
@@ -623,7 +698,10 @@ class _PostCardState extends State<_PostCard> {
               alignment: Alignment.center,
               padding: const EdgeInsets.all(32),
               child: Text(
-                widget.post["content"],
+                widget.post["content"] ??
+                    widget.post["text"] ??
+                    widget.post["body"] ??
+                    "",
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
@@ -634,7 +712,7 @@ class _PostCardState extends State<_PostCard> {
             ),
 
           _PostEngagement(
-            likes: widget.post["likes"],
+            likes: widget.post["likes"] ?? 0,
             comments: comments.length,
           ),
           const Divider(height: 1),
@@ -728,10 +806,29 @@ class _CommentTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 14,
-            backgroundColor: Colors.blueGrey.shade100,
-            child: const Icon(Icons.person, size: 18),
+          FutureBuilder<Map<String, String>>(
+            future: ApiService.getAuthHeaders(),
+            builder: (context, headers) {
+              final String? avatarId =
+                  comment["authorAvatar"] ??
+                  comment["profilePicture"] ??
+                  (comment["author"] is Map
+                      ? comment["author"]["profilePicture"]
+                      : null);
+              return CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.blueGrey.shade100,
+                backgroundImage: avatarId != null
+                    ? NetworkImage(
+                        ApiService.resolveAvatarUrl(avatarId),
+                        headers: headers.data,
+                      )
+                    : null,
+                child: avatarId == null
+                    ? const Icon(Icons.person, size: 18)
+                    : null,
+              );
+            },
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -748,8 +845,8 @@ class _CommentTile extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => FullScreenImageViewer(
-                              imagePath: comment["mediaPath"],
+                            builder: (_) => FullScreenMediaViewer(
+                              mediaPath: comment["mediaPath"],
                             ),
                           ),
                         );
@@ -758,12 +855,26 @@ class _CommentTile extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         child: Hero(
                           tag: comment["mediaPath"],
-                          child: Image.file(
-                            File(comment["mediaPath"]),
-                            height: 120,
-                            width: 120,
-                            fit: BoxFit.cover,
-                          ),
+                          child:
+                              (comment["mediaPath"] as String)
+                                      .toLowerCase()
+                                      .endsWith('.mp4') ||
+                                  (comment["mediaPath"] as String)
+                                      .toLowerCase()
+                                      .endsWith('.mov')
+                              ? SizedBox(
+                                  width: 120,
+                                  height: 120,
+                                  child: VideoPreview(
+                                    file: File(comment["mediaPath"]),
+                                  ),
+                                )
+                              : Image.file(
+                                  File(comment["mediaPath"]),
+                                  height: 120,
+                                  width: 120,
+                                  fit: BoxFit.cover,
+                                ),
                         ),
                       ),
                     ),
@@ -1186,11 +1297,13 @@ class _ReplyBanner extends StatelessWidget {
 
 class _PostHeader extends StatelessWidget {
   final String author;
+  final String? avatar;
   final String role;
   final String time;
   final VoidCallback onDelete;
   const _PostHeader({
     required this.author,
+    this.avatar,
     required this.role,
     required this.time,
     required this.onDelete,
@@ -1201,9 +1314,21 @@ class _PostHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: Colors.blueGrey.shade100,
-            child: const Icon(Icons.person),
+          FutureBuilder<Map<String, String>>(
+            future: ApiService.getAuthHeaders(),
+            builder: (context, headers) {
+              return CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.blueGrey.shade100,
+                backgroundImage: avatar != null
+                    ? NetworkImage(
+                        ApiService.resolveAvatarUrl(avatar),
+                        headers: headers.data,
+                      )
+                    : null,
+                child: avatar == null ? const Icon(Icons.person) : null,
+              );
+            },
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1433,39 +1558,65 @@ class _ActionButton extends StatelessWidget {
 class _AuthorHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        CircleAvatar(
-          backgroundColor: Colors.blueGrey.shade100,
-          child: const Icon(Icons.person),
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return ValueListenableBuilder<Map<String, dynamic>?>(
+      valueListenable: AuthService().userProfile,
+      builder: (context, profile, _) {
+        final String? avatarId = profile?['profilePicture'];
+        final String name =
+            profile?['fullName'] ?? profile?['name'] ?? 'Người dùng';
+
+        return Row(
           children: [
-            const Text(
-              "Phùng Hoàng Long",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            FutureBuilder<Map<String, String>>(
+              future: ApiService.getAuthHeaders(),
+              builder: (context, headers) {
+                return CircleAvatar(
+                  backgroundColor: Colors.blueGrey.shade100,
+                  backgroundImage: avatarId != null
+                      ? NetworkImage(
+                          ApiService.resolveAvatarUrl(avatarId),
+                          headers: headers.data,
+                        )
+                      : null,
+                  child: avatarId == null ? const Icon(Icons.person) : null,
+                );
+              },
             ),
-            Container(
-              margin: const EdgeInsets.only(top: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                "Công khai",
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
-              ),
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    "Công khai",
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -1578,8 +1729,14 @@ class _BuildMediaAttachmentsTool extends StatelessWidget {
 }
 
 class _MomentsSection extends StatelessWidget {
-  final VoidCallback? onAddTap;
-  const _MomentsSection({this.onAddTap});
+  final VoidCallback onAddTap;
+  final Function(int)? onNavigateToReels;
+  final List<dynamic> reels;
+  const _MomentsSection({
+    required this.onAddTap,
+    this.onNavigateToReels,
+    required this.reels,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1623,29 +1780,52 @@ class _MomentsSection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
               _MomentCard(isAdd: true, onAddTap: onAddTap),
-              Container(
-                width: MediaQuery.of(context).size.width - 160,
-                alignment: Alignment.center,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.video_library_outlined,
-                      color: Colors.grey.shade300,
-                      size: 40,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Chưa có khoảnh khắc nào",
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+              if (reels.isEmpty)
+                Container(
+                  width: MediaQuery.of(context).size.width - 160,
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.video_library_outlined,
+                        color: Colors.grey.shade300,
+                        size: 40,
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Chưa có khoảnh khắc nào",
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ...reels.asMap().entries.map((entry) {
+                  final int idx = entry.key;
+                  final reel = entry.value;
+                  final author = reel['author'] is Map ? reel['author'] : null;
+                  String? displayName = author?['fullName'];
+                  if (displayName != null && displayName.trim().contains(' ')) {
+                    displayName = displayName.trim().split(' ').last;
+                  }
+                  return _MomentCard(
+                    isAdd: false,
+                    thumbnail:
+                        reel["videoUrl"] ??
+                        reel["videoPath"] ??
+                        reel["video_path"] ??
+                        reel["url"],
+                    caption: reel["caption"],
+                    authorName: displayName,
+                    authorAvatar: author?['profilePicture'],
+                    onTap: () => onNavigateToReels?.call(idx),
+                  );
+                }),
             ],
           ),
         ),
@@ -1657,7 +1837,21 @@ class _MomentsSection extends StatelessWidget {
 class _MomentCard extends StatelessWidget {
   final bool isAdd;
   final VoidCallback? onAddTap;
-  const _MomentCard({this.isAdd = false, this.onAddTap});
+  final VoidCallback? onTap;
+  final String? thumbnail;
+  final String? caption;
+  final String? authorName;
+  final String? authorAvatar;
+
+  const _MomentCard({
+    this.isAdd = false,
+    this.onAddTap,
+    this.onTap,
+    this.thumbnail,
+    this.caption,
+    this.authorName,
+    this.authorAvatar,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1674,21 +1868,7 @@ class _MomentCard extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  useRootNavigator: true,
-                  barrierDismissible: true,
-                  barrierColor: Colors.black.withOpacity(0.80),
-                  builder: (_) => CreateReelDialog(
-                    onPublish: (reel) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Reel đã được tạo")),
-                      );
-                    },
-                  ),
-                );
-              },
+              onTap: onAddTap,
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1756,56 +1936,135 @@ class _MomentCard extends StatelessWidget {
         ),
       );
     }
-
-    return Container(
-      width: 110,
-      margin: const EdgeInsets.only(right: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {},
-          child: Stack(
-            children: [
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.remove_red_eye_outlined,
-                        color: Colors.white,
-                        size: 10,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        "0",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+    return GestureDetector(
+      onTap: isAdd ? onAddTap : onTap,
+      child: Container(
+        width: 110,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1D2B),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (thumbnail != null)
+              FutureBuilder<Map<String, String>>(
+                future: ApiService.getAuthHeaders(),
+                builder: (context, headers) {
+                  return Image.network(
+                    ApiService.resolveUrl(thumbnail!),
+                    fit: BoxFit.cover,
+                    headers: headers.data,
+                    errorBuilder: (ctx, err, stack) => Container(
+                      color: Colors.blueGrey.shade900,
+                      child: const Icon(Icons.videocam, color: Colors.white24),
+                    ),
+                  );
+                },
+              )
+            else
+              Container(color: Colors.blueGrey.shade900),
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
                 ),
               ),
-            ],
-          ),
+            ),
+            Positioned(
+              bottom: 8,
+              left: 8,
+              right: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (authorName != null)
+                    Row(
+                      children: [
+                        if (authorAvatar != null)
+                          FutureBuilder<Map<String, String>>(
+                            future: ApiService.getAuthHeaders(),
+                            builder: (context, headers) => Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: ClipOval(
+                                child: Image.network(
+                                  ApiService.resolveAvatarUrl(authorAvatar!),
+                                  headers: headers.data,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.person,
+                                    size: 8,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            authorName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(color: Colors.black54, blurRadius: 2),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    (caption ?? '').trim().isNotEmpty
+                        ? caption!
+                        : 'Khoảnh khắc mới',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w900,
+                      shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Positioned(
+              top: 8,
+              right: 8,
+              child: Icon(
+                Icons.play_circle_fill,
+                color: Colors.white70,
+                size: 18,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1833,7 +2092,7 @@ class _DashedBorderPainter extends CustomPainter {
     Path path = Path()..addRRect(rrect);
 
     Path dashPath = Path();
-    for (PathMetric pathMetric in path.computeMetrics()) {
+    for (var pathMetric in path.computeMetrics()) {
       double distance = 0.0;
       while (distance < pathMetric.length) {
         dashPath.addPath(

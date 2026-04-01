@@ -54,11 +54,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
     _avatarPath = widget.avatarPath;
     _members = List.from(widget.initialMembers ?? []);
     if (widget.isGroup && _members.isEmpty) {
-      _members.add({
-        "name": "Phùng Hoàng Long",
-        "role": "CHỦ NHÓM",
-        "isOwner": "true",
-      });
+      // Dữ liệu thành viên sẽ được cập nhật từ API
     }
   }
 
@@ -116,12 +112,46 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
   }
 
   void _removeMember(int index) {
-    setState(() {
-      _members.removeAt(index);
-    });
-    if (widget.onUpdateMembers != null) {
-      widget.onUpdateMembers!(_members);
-    }
+    final memberName = _members[index]["name"] ?? "Thành viên này";
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Xác nhận xóa"),
+        content: Text("Bạn có chắc chắn muốn mời $memberName ra khỏi nhóm?"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _members.removeAt(index);
+              });
+              if (widget.onUpdateMembers != null) {
+                widget.onUpdateMembers!(_members);
+              }
+              Navigator.pop(ctx);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              "XÓA",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _addMember() {
@@ -344,14 +374,15 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 12,
                     children: _themeColors.map((color) {
                       final isSelected = _currentColor.value == color.value;
                       return GestureDetector(
                         onTap: () => _changeColor(color),
                         child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 6),
                           padding: const EdgeInsets.all(2),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,

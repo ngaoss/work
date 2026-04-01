@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../../core/widgets/full_screen_image_viewer.dart';
+import 'package:file_picker/file_picker.dart';
+import '../../../../core/widgets/full_screen_media_viewer.dart';
+import '../../../../core/widgets/video_preview.dart';
 import '../widgets/chat_settings_sheet.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -10,6 +13,7 @@ class ChatDetailScreen extends StatefulWidget {
   final String? initials;
   final Color? color;
   final bool isGroup;
+  final String? avatarPath;
   final List<Map<String, dynamic>>? initialMessages;
   final List<Map<String, String>>? initialMembers;
 
@@ -20,6 +24,7 @@ class ChatDetailScreen extends StatefulWidget {
     this.initials,
     this.color,
     this.isGroup = false,
+    this.avatarPath,
     this.initialMessages,
     this.initialMembers,
   });
@@ -50,6 +55,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _currentName = widget.name;
     _currentInitials = widget.initials;
     _currentColor = widget.color;
+    _currentAvatarPath = widget.avatarPath;
     _messages = List.from(widget.initialMessages ?? []);
     _members = List.from(widget.initialMembers ?? []);
     _focusNode.addListener(() {
@@ -67,24 +73,75 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _pickMedia(ImageSource source) async {
+    // Show dialog to choose between image and video
+    final mediaType = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Chọn loại phương tiện"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, "image"),
+            child: const Text("ẢNH"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, "video"),
+            child: const Text("VIDEO"),
+          ),
+        ],
+      ),
+    );
+
+    if (mediaType == null) return;
+
     try {
-      final XFile? file = await _picker.pickImage(source: source);
+      final XFile? file = mediaType == "image"
+          ? await _picker.pickImage(source: source)
+          : await _picker.pickVideo(source: source);
+
       if (file != null) {
         setState(() {
           _messages.add({
             "id": DateTime.now().millisecondsSinceEpoch,
-            "text": "",
             "imagePath": file.path,
             "isSender": true,
-            "isEdited": false,
             "time":
                 "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
           });
         });
       }
     } catch (e) {
-      debugPrint("Error picking image: $e");
+      debugPrint("Error picking media: $e");
     }
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles();
+
+      if (result != null) {
+        PlatformFile file = result.files.first;
+        setState(() {
+          _messages.add({
+            "id": DateTime.now().millisecondsSinceEpoch,
+            "fileName": file.name,
+            "fileSize": _formatBytes(file.size),
+            "filePath": file.path,
+            "isSender": true,
+            "time":
+                "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
+          });
+        });
+      }
+    } catch (e) {
+      debugPrint("Error picking file: $e");
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = (math.log(bytes) / math.log(1024)).floor();
+    return "${(bytes / math.pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}";
   }
 
   void _insertEmoji(String emoji) {
@@ -238,6 +295,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               "name": _currentName,
               "color": _currentColor,
               "initials": _currentInitials,
+              "avatarPath": _currentAvatarPath,
             });
           },
         ),
@@ -286,9 +344,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   initials: _currentInitials ?? "",
                   color: _currentColor ?? Colors.blue,
                   isGroup: widget.isGroup,
+                  avatarPath: _currentAvatarPath,
                   initialMembers: _members,
                   onUpdate: (newName, newColor, newAvatar) {
+                    if (!mounted) return;
+                    final nowStr =
+                        "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
                     setState(() {
+                      if (widget.isGroup) {
+                        if (newName != _currentName) {
+                          _messages.add({
+                            "id": DateTime.now().millisecondsSinceEpoch,
+                            "text":
+                                "Bạn đã thay đổi tên nhóm thành \"$newName\"",
+                            "isSender": false,
+                            "isSystem": true,
+                            "time": nowStr,
+                          });
+                        }
+                        if (newAvatar != _currentAvatarPath) {
+                          _messages.add({
+                            "id": DateTime.now().millisecondsSinceEpoch + 1,
+                            "text": "Bạn đã thay đổi ảnh đại diện nhóm",
+                            "isSender": false,
+                            "isSystem": true,
+                            "time": nowStr,
+                          });
+                        }
+                      }
+
                       _currentName = newName;
                       _currentColor = newColor;
                       _currentAvatarPath = newAvatar;
@@ -298,7 +382,29 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     });
                   },
                   onUpdateMembers: (newMembers) {
+                    if (!mounted) return;
+                    final nowStr =
+                        "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
                     setState(() {
+                      // Compare and notify about removals
+                      for (var oldMember in _members) {
+                        final String? name = oldMember["name"];
+                        if (name != null) {
+                          final stillActive = newMembers.any(
+                            (m) => m["name"] == name,
+                          );
+                          if (!stillActive) {
+                            _messages.add({
+                              "id": DateTime.now().millisecondsSinceEpoch,
+                              "text":
+                                  "Phùng Hoàng Long đã mời $name rời khỏi nhóm",
+                              "isSender": false,
+                              "isSystem": true,
+                              "time": nowStr,
+                            });
+                          }
+                        }
+                      }
                       _members = newMembers;
                     });
                   },
@@ -357,8 +463,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     child: _ChatBubble(
                       message: msg["text"] ?? "",
                       isSender: msg["isSender"],
+                      isSystem: msg["isSystem"] ?? false,
                       isEdited: msg["isEdited"] ?? false,
                       imagePath: msg["imagePath"],
+                      fileName: msg["fileName"],
+                      fileSize: msg["fileSize"],
+                      senderName: msg["isSender"]
+                          ? "Bạn"
+                          : (msg["senderName"] ?? _currentName),
+                      senderInitials: msg["isSender"]
+                          ? "ME"
+                          : (msg["senderInitials"] ??
+                                (widget.initials ??
+                                    _currentName.substring(0, 1))),
                       bubbleColor: _currentColor ?? Colors.blue,
                       time: msg["time"] ?? "Vừa xong",
                     ),
@@ -383,6 +500,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               onSend: _sendMessage,
               onCamera: () => _pickMedia(ImageSource.camera),
               onGallery: () => _pickMedia(ImageSource.gallery),
+              onPlus: _pickFile,
               themeColor: _currentColor ?? const Color(0xFF3B82F6),
             ),
             if (_showEmoji)
@@ -481,103 +599,260 @@ class _ChatBubble extends StatelessWidget {
   final String message;
   final bool isSender;
   final bool isEdited;
+  final bool isSystem;
   final String? imagePath;
+  final String? fileName;
+  final String? fileSize;
+  final String? senderName;
+  final String? senderInitials;
   final Color bubbleColor;
   final String time;
   const _ChatBubble({
     required this.message,
     required this.isSender,
+    this.isSystem = false,
     this.isEdited = false,
     this.imagePath,
+    this.fileName,
+    this.fileSize,
+    this.senderName,
+    this.senderInitials,
     this.bubbleColor = const Color(0xFF3B82F6),
     required this.time,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: isSender ? Alignment.centerRight : Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: isSender
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
+    if (isSystem) {
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            message,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.blueGrey.shade400,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: isSender
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (imagePath != null)
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => FullScreenImageViewer(imagePath: imagePath),
-                  ),
-                );
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.7,
-                ),
-                child: Hero(
-                  tag: imagePath!,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Image.file(File(imagePath!), fit: BoxFit.cover),
-                  ),
-                ),
-              ),
-            )
-          else
-            Container(
-              margin: const EdgeInsets.only(bottom: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.7,
-              ),
-              decoration: BoxDecoration(
-                color: isSender ? bubbleColor : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: Radius.circular(isSender ? 20 : 4),
-                  bottomRight: Radius.circular(isSender ? 4 : 20),
-                ),
-              ),
+          if (!isSender) ...[
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: Colors.blueGrey.shade100,
               child: Text(
-                message,
-                style: TextStyle(
-                  color: isSender ? Colors.white : Colors.black87,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                senderInitials ??
+                    (senderName?.isNotEmpty == true ? senderName![0] : "?"),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueGrey,
                 ),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14, right: 6, left: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Column(
+              crossAxisAlignment: isSender
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                Text(
-                  time,
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (isEdited && imagePath == null) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    "• Đã sửa",
-                    style: TextStyle(
-                      color: Colors.blueGrey.withOpacity(0.6),
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
+                if (!isSender && senderName != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 4),
+                    child: Text(
+                      senderName!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueGrey.shade600,
+                      ),
                     ),
                   ),
-                ],
+                if (imagePath != null)
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              FullScreenMediaViewer(mediaPath: imagePath),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.65,
+                      ),
+                      child: Hero(
+                        tag: imagePath!,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child:
+                              imagePath!.toLowerCase().endsWith('.mp4') ||
+                                  imagePath!.toLowerCase().endsWith('.mov')
+                              ? VideoPreview(file: File(imagePath!))
+                              : Image.file(File(imagePath!), fit: BoxFit.cover),
+                        ),
+                      ),
+                    ),
+                  )
+                else if (fileName != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSender ? bubbleColor : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isSender ? 16 : 4),
+                        bottomRight: Radius.circular(isSender ? 4 : 16),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: isSender
+                                ? Colors.white.withOpacity(0.2)
+                                : Colors.grey.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.insert_drive_file,
+                            color: isSender ? Colors.white : Colors.blueGrey,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                fileName!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isSender
+                                      ? Colors.white
+                                      : Colors.black87,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (fileSize != null)
+                                Text(
+                                  fileSize!,
+                                  style: TextStyle(
+                                    color: isSender
+                                        ? Colors.white70
+                                        : Colors.grey.shade600,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSender ? bubbleColor : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isSender ? 16 : 4),
+                        bottomRight: Radius.circular(isSender ? 4 : 16),
+                      ),
+                    ),
+                    child: Text(
+                      message,
+                      style: TextStyle(
+                        color: isSender ? Colors.white : Colors.black87,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, right: 4, left: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        time,
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (isEdited &&
+                          imagePath == null &&
+                          fileName == null) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          "• Đã sửa",
+                          style: TextStyle(
+                            color: Colors.blueGrey.withOpacity(0.6),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
+          if (isSender) ...[
+            const SizedBox(width: 8),
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: Colors.blue.shade50,
+              child: const Text(
+                "ME",
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -592,6 +867,7 @@ class _ChatInputArea extends StatelessWidget {
   final bool isEmojiVisible;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
+  final VoidCallback onPlus;
   final Color themeColor;
 
   const _ChatInputArea({
@@ -602,6 +878,7 @@ class _ChatInputArea extends StatelessWidget {
     required this.isEmojiVisible,
     required this.onCamera,
     required this.onGallery,
+    required this.onPlus,
     this.themeColor = const Color(0xFF3B82F6),
   });
 
@@ -621,7 +898,7 @@ class _ChatInputArea extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: () {},
+            onPressed: onPlus,
             icon: Icon(Icons.add_circle, color: themeColor),
           ),
           IconButton(
@@ -738,16 +1015,22 @@ class _HeaderAvatar extends StatelessWidget {
           backgroundImage: avatarPath != null
               ? FileImage(File(avatarPath!))
               : null,
-          child: avatarPath == null && initials != null
-              ? Text(
-                  initials!,
-                  style: TextStyle(
-                    color: color ?? Colors.blueGrey,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : const Icon(Icons.person, size: 20, color: Colors.blueGrey),
+          child: avatarPath != null
+              ? null
+              : (initials != null
+                    ? Text(
+                        initials!,
+                        style: TextStyle(
+                          color: color ?? Colors.blueGrey,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.person,
+                        size: 20,
+                        color: Colors.blueGrey,
+                      )),
         ),
         if (isOnline)
           Container(
