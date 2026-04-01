@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
 import '../../../../core/widgets/full_screen_media_viewer.dart';
@@ -19,21 +20,63 @@ class WorkHomePage extends StatefulWidget {
 class _WorkHomePageState extends State<WorkHomePage> {
   List<Map<String, dynamic>> _posts = [];
   bool _isPostsLoading = false;
+  bool _isMoreLoading = false;
+  int _currentPage = 1;
+  int _totalPages = 1;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _fetchPosts();
+    _fetchPosts(refresh: true);
+    _scrollController.addListener(() {
+      final pos = _scrollController.position.pixels;
+      final max = _scrollController.position.maxScrollExtent;
+      if (pos >= max - 500 &&
+          !_isMoreLoading &&
+          !_isPostsLoading &&
+          _currentPage < _totalPages) {
+        _fetchPosts(refresh: false);
+      }
+    });
   }
 
-  Future<void> _fetchPosts() async {
-    setState(() => _isPostsLoading = true);
-    final posts = await ApiService.getPosts();
-    debugPrint('HomePage: Fetched ${posts.length} posts');
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchPosts({bool refresh = true}) async {
+    if (refresh) {
+      setState(() {
+        _isPostsLoading = true;
+        _currentPage = 1;
+      });
+    } else {
+      setState(() => _isMoreLoading = true);
+    }
+
+    final result = await ApiService.getPosts(
+      page: refresh ? 1 : _currentPage + 1,
+      limit: 10,
+    );
+
+    final List<dynamic> newPosts = result['posts'] ?? [];
+    final int total = result['totalPages'] ?? 1;
+
     if (mounted) {
       setState(() {
-        _posts = List<Map<String, dynamic>>.from(posts);
+        if (refresh) {
+          _posts = List<Map<String, dynamic>>.from(newPosts);
+          _currentPage = 1;
+        } else {
+          _posts.addAll(List<Map<String, dynamic>>.from(newPosts));
+          _currentPage++;
+        }
+        _totalPages = total;
         _isPostsLoading = false;
+        _isMoreLoading = false;
       });
     }
   }
@@ -45,17 +88,20 @@ class _WorkHomePageState extends State<WorkHomePage> {
       "mediaPath": mediaPath,
     });
     if (success && mounted) {
-      _fetchPosts();
+      _fetchPosts(refresh: true);
     }
   }
 
   void _toggleLike(int index) {
     setState(() {
-      _posts[index]["isLiked"] = !(_posts[index]["isLiked"] as bool);
-      if (_posts[index]["isLiked"]) {
-        _posts[index]["likes"]++;
+      final bool wasLiked = _posts[index]["isLiked"] == true;
+      _posts[index]["isLiked"] = !wasLiked;
+      int currentLikes =
+          int.tryParse(_posts[index]["likes"]?.toString() ?? "0") ?? 0;
+      if (!wasLiked) {
+        _posts[index]["likes"] = currentLikes + 1;
       } else {
-        _posts[index]["likes"]--;
+        _posts[index]["likes"] = (currentLikes > 0) ? currentLikes - 1 : 0;
       }
     });
   }
@@ -74,18 +120,20 @@ class _WorkHomePageState extends State<WorkHomePage> {
       "parentId": parentCommentId,
     });
     if (success && mounted) {
-      _fetchPosts();
+      _fetchPosts(refresh: true);
     }
   }
 
   void _toggleCommentLike(int postIndex, int commentIndex) {
     setState(() {
       final comment = _posts[postIndex]["commentList"][commentIndex];
-      comment["isLiked"] = !(comment["isLiked"] as bool);
-      if (comment["isLiked"]) {
-        comment["likes"]++;
+      final bool wasLiked = comment["isLiked"] == true;
+      comment["isLiked"] = !wasLiked;
+      int currentLikes = int.tryParse(comment["likes"]?.toString() ?? "0") ?? 0;
+      if (!wasLiked) {
+        comment["likes"] = currentLikes + 1;
       } else {
-        comment["likes"]--;
+        comment["likes"] = (currentLikes > 0) ? currentLikes - 1 : 0;
       }
     });
   }
@@ -95,11 +143,13 @@ class _WorkHomePageState extends State<WorkHomePage> {
       final reply =
           (_posts[postIndex]["commentList"][commentIndex]["replies"]
               as List<Map<String, dynamic>>)[replyIndex];
-      reply["isLiked"] = !(reply["isLiked"] as bool);
-      if (reply["isLiked"]) {
-        reply["likes"]++;
+      final bool wasLiked = reply["isLiked"] == true;
+      reply["isLiked"] = !wasLiked;
+      int currentLikes = int.tryParse(reply["likes"]?.toString() ?? "0") ?? 0;
+      if (!wasLiked) {
+        reply["likes"] = currentLikes + 1;
       } else {
-        reply["likes"]--;
+        reply["likes"] = (currentLikes > 0) ? currentLikes - 1 : 0;
       }
     });
   }
@@ -139,25 +189,34 @@ class _WorkHomePageState extends State<WorkHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _HeroBanner(),
-            _StatusInput(onPostAdded: _addNewPost),
-            _MomentsSection(
-              onAddTap: _showCreateReelDialog,
-              onNavigateToReels: widget.onNavigateToReels,
-              reels: widget.reels,
+      body: CustomScrollView(
+        controller: _scrollController,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _HeroBanner(),
+                _StatusInput(onPostAdded: _addNewPost),
+                _MomentsSection(
+                  onAddTap: _showCreateReelDialog,
+                  onNavigateToReels: widget.onNavigateToReels,
+                  reels: widget.reels,
+                ),
+                const SizedBox(height: 16),
+              ],
             ),
-            const SizedBox(height: 16),
-            if (_isPostsLoading)
-              const Padding(
+          ),
+          if (_isPostsLoading)
+            const SliverToBoxAdapter(
+              child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 40),
                 child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_posts.isEmpty)
-              Padding(
+              ),
+            )
+          else if (_posts.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Center(
                   child: Column(
@@ -179,12 +238,16 @@ class _WorkHomePageState extends State<WorkHomePage> {
                     ],
                   ),
                 ),
-              )
-            else
-              ...List.generate(
-                _posts.length,
-                (index) => _PostCard(
+              ),
+            )
+          else
+            SliverList.builder(
+              itemCount: _posts.length,
+              itemBuilder: (context, index) {
+                return _PostCard(
+                  key: ValueKey("post_${_posts[index]['id'] ?? ''}_$index"),
                   post: _posts[index],
+                  postIndex: index,
                   onLike: () => _toggleLike(index),
                   onDelete: () => _deletePost(index),
                   onComment: (text, media, {replyTo, parentCommentId}) =>
@@ -199,11 +262,34 @@ class _WorkHomePageState extends State<WorkHomePage> {
                       _toggleCommentLike(index, commentIdx),
                   onToggleReplyLike: (commentIdx, replyIdx) =>
                       _toggleReplyLike(index, commentIdx, replyIdx),
+                );
+              },
+            ),
+          if (_isMoreLoading)
+            SliverToBoxAdapter(
+              child: Padding(
+                key: const ValueKey("loading_more_spinner"),
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Column(
+                    children: [
+                      const CircularProgressIndicator(strokeWidth: 2),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Đang tải bài viết mới...",
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            const SizedBox(height: 100),
-          ],
-        ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
       ),
     );
   }
@@ -590,6 +676,7 @@ class _EmojiGrid extends StatelessWidget {
 
 class _PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
+  final int postIndex;
   final VoidCallback onLike;
   final VoidCallback onDelete;
   final Function(String, String?, {String? replyTo, int? parentCommentId})
@@ -597,7 +684,9 @@ class _PostCard extends StatefulWidget {
   final Function(int) onToggleCommentLike;
   final Function(int, int) onToggleReplyLike;
   const _PostCard({
+    super.key,
     required this.post,
+    required this.postIndex,
     required this.onLike,
     required this.onDelete,
     required this.onComment,
@@ -612,17 +701,65 @@ class _PostCard extends StatefulWidget {
 class _PostCardState extends State<_PostCard> {
   String? _isReplyingTo;
   int? _replyingToCommentId;
+  bool _isExpanded = false;
+
+  void _showFullImage(String path) {
+    final bool isNet = path.startsWith('http');
+    final String resolved = isNet ? ApiService.resolveUrl(path) : path;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            FullScreenMediaViewer(mediaList: [resolved], initialIndex: 0),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final List<dynamic> commentsRaw =
-        widget.post["commentList"] ?? widget.post["comments"] ?? [];
+        widget.post["commentList"] ??
+        widget.post["comments"] ??
+        (widget.post["commentsCount"] != null ? [] : []);
     final List<Map<String, dynamic>> comments = List<Map<String, dynamic>>.from(
       commentsRaw,
     );
+    final int commentsCount =
+        int.tryParse(widget.post["commentsCount"]?.toString() ?? "0") ??
+        comments.length;
+    final int likesCount = widget.post["reactions"] is List
+        ? (widget.post["reactions"] as List).length
+        : (int.tryParse(widget.post["likes"]?.toString() ?? "0") ?? 0);
+    final List<dynamic> mediaItems = widget.post["media"] is List
+        ? widget.post["media"]
+        : (widget.post["mediaPath"] != null
+              ? [
+                  {"url": widget.post["mediaPath"], "type": "image"},
+                ]
+              : []);
     final String authorName = widget.post["author"] is Map
-        ? widget.post["author"]["name"]
-        : (widget.post["author"] ?? widget.post["user"] ?? "Người dùng");
+        ? (widget.post["author"]["fullName"]?.toString() ??
+              widget.post["author"]["name"]?.toString() ??
+              "Người dùng")
+        : (widget.post["author"]?.toString() ??
+              widget.post["user"]?.toString() ??
+              "Người dùng");
+    final String content =
+        (widget.post["content"] ??
+                widget.post["text"] ??
+                widget.post["body"] ??
+                "")
+            .toString();
+    final bool hasMedia = mediaItems.isNotEmpty;
+    final bool isLongText = content.length > 220;
+    final String displayContent = (isLongText && !_isExpanded)
+        ? "${content.substring(0, 200)}..."
+        : content;
+    final bool hasBg =
+        widget.post["bgColor"] != null ||
+        (widget.post["background"] != null &&
+            widget.post["background"] != "null");
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       color: Colors.white,
@@ -632,91 +769,126 @@ class _PostCardState extends State<_PostCard> {
           _PostHeader(
             author: authorName,
             avatar:
-                widget.post["author"]?["profilePicture"] ??
-                (widget.post["user"]?["profilePicture"]),
-            role: widget.post["role"] ?? widget.post["position"] ?? "",
-            time: widget.post["time"] ?? widget.post["created_at"] ?? "",
+                (widget.post["author"] is Map
+                    ? widget.post["author"]["profilePicture"]
+                    : null) ??
+                (widget.post["user"] is Map
+                    ? widget.post["user"]["profilePicture"]
+                    : null) ??
+                widget.post["authorAvatar"]?.toString(),
+            role: (() {
+              if (widget.post["author"] is Map) {
+                return (widget.post["author"]["department"] ??
+                        widget.post["author"]["role"] ??
+                        "IT System")
+                    .toString();
+              }
+              return (widget.post["department"] ??
+                      widget.post["role"] ??
+                      widget.post["position"] ??
+                      "IT System")
+                  .toString();
+            })(),
+            time: (() {
+              final raw =
+                  (widget.post["time"] ??
+                          widget.post["created_at"] ??
+                          widget.post["createdAt"] ??
+                          "")
+                      .toString();
+              try {
+                if (raw.isNotEmpty) {
+                  final dt = DateTime.parse(raw).toLocal();
+                  return "${dt.day.toString().padLeft(2, '0')} - ${dt.month.toString().padLeft(2, '0')} - ${dt.year.toString().substring(2)}";
+                }
+              } catch (_) {}
+              return raw.length >= 10 ? raw.substring(0, 10) : raw;
+            })(),
             onDelete: widget.onDelete,
           ),
-          if (widget.post["mediaPath"] != null)
-            GestureDetector(
-              onTap: () {
-                final String mLink = ApiService.resolveUrl(
-                  widget.post["mediaPath"],
-                );
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => FullScreenMediaViewer(
-                      mediaPath:
-                          widget.post["mediaPath"].toString().startsWith('http')
-                          ? widget.post["mediaPath"]
-                          : mLink,
+          if (content.isNotEmpty && (hasMedia || !hasBg))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayContent,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
+                      color: Colors.black87,
+                      fontFamilyFallback: [
+                        "Apple Color Emoji",
+                        "Segoe UI Emoji",
+                        "Segoe UI Symbol",
+                        "Noto Color Emoji",
+                      ],
                     ),
                   ),
-                );
-              },
-              child: SizedBox(
-                width: double.infinity,
-                height: 400, // Increased height for video/media
-                child: Hero(
-                  tag: widget.post["mediaPath"],
-                  child: Builder(
-                    builder: (context) {
-                      final String rp = widget.post["mediaPath"].toString();
-                      final bool isNet = rp.startsWith('http');
-                      final String fP = isNet ? ApiService.resolveUrl(rp) : rp;
-                      final String lP = fP.toLowerCase();
-                      final bool isV =
-                          lP.endsWith('.mp4') || lP.endsWith('.mov');
-
-                      if (isV) {
-                        return isNet
-                            ? VideoPreview(videoUrl: fP)
-                            : VideoPreview(file: File(rp));
-                      } else {
-                        return isNet
-                            ? Image.network(
-                                fP,
-                                fit: BoxFit.cover,
-                                errorBuilder: (c, e, s) => const Center(
-                                  child: Icon(Icons.broken_image),
-                                ),
-                              )
-                            : Image.file(File(rp), fit: BoxFit.cover);
-                      }
-                    },
-                  ),
-                ),
+                  if (isLongText && !_isExpanded)
+                    GestureDetector(
+                      onTap: () => setState(() => _isExpanded = true),
+                      child: const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          "Xem thêm",
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-            )
-          else
+            ),
+          if (hasMedia) _buildMediaGrid(mediaItems),
+          if (!hasMedia && hasBg)
             Container(
               width: double.infinity,
               height: 250,
-              color: widget.post["bgColor"],
+              color: widget.post["bgColor"] is String
+                  ? Color(
+                      int.tryParse(widget.post["bgColor"].toString()) ??
+                          0xFF3B82F6,
+                    )
+                  : (widget.post["bgColor"] is int
+                        ? Color(widget.post["bgColor"] as int)
+                        : (widget.post["background"] != null
+                              ? Color(
+                                  int.tryParse(
+                                        widget.post["background"].toString(),
+                                      ) ??
+                                      0xFF3B82F6,
+                                )
+                              : const Color(0xFF3B82F6))),
               alignment: Alignment.center,
               padding: const EdgeInsets.all(32),
               child: Text(
-                widget.post["content"] ??
-                    widget.post["text"] ??
-                    widget.post["body"] ??
-                    "",
+                content,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
+                  fontFamilyFallback: [
+                    "Apple Color Emoji",
+                    "Segoe UI Emoji",
+                    "Segoe UI Symbol",
+                    "Noto Color Emoji",
+                  ],
                 ),
               ),
             ),
 
-          _PostEngagement(
-            likes: widget.post["likes"] ?? 0,
-            comments: comments.length,
-          ),
+          _PostEngagement(likes: likesCount, comments: commentsCount),
           const Divider(height: 1),
-          _PostActions(isLiked: widget.post["isLiked"], onLike: widget.onLike),
+          _PostActions(
+            isLiked: widget.post["isLiked"] == true,
+            onLike: widget.onLike,
+          ),
           const Divider(height: 1),
 
           if (comments.isEmpty)
@@ -753,7 +925,7 @@ class _PostCardState extends State<_PostCard> {
                     onReplyLike: (replyIdx) =>
                         widget.onToggleReplyLike(commentIdx, replyIdx),
                     onReplyReply: (replyAuthor) => setState(() {
-                      _isReplyingTo = replyAuthor;
+                      _isReplyingTo = replyAuthor.toString();
                       _replyingToCommentId = comment["id"];
                     }),
                   );
@@ -777,6 +949,103 @@ class _PostCardState extends State<_PostCard> {
             }),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMediaGrid(List<dynamic> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    if (items.length == 1) {
+      return _buildMediaItem(items[0], single: true);
+    }
+    return SizedBox(
+      height: 250,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _buildMediaItem(items[0], height: 250)),
+          const SizedBox(width: 2),
+          Expanded(
+            child: Column(
+              children: [
+                Expanded(child: _buildMediaItem(items[1], height: 124)),
+                if (items.length > 2) ...[
+                  const SizedBox(height: 2),
+                  Expanded(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _buildMediaItem(items[2], height: 124),
+                        if (items.length > 3)
+                          Container(
+                            color: Colors.black45,
+                            child: Center(
+                              child: Text(
+                                "+${items.length - 2}",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMediaItem(dynamic item, {bool single = false, double? height}) {
+    final String url =
+        (item["url"] ?? item["videoUrl"] ?? item["mediaPath"] ?? "").toString();
+    if (url.isEmpty) return const SizedBox.shrink();
+
+    final String type = (item["type"] ?? "image").toString();
+    final bool isVideo =
+        type == "video" ||
+        url.toLowerCase().endsWith(".mp4") ||
+        url.toLowerCase().endsWith(".mov");
+
+    final bool isNet = url.startsWith('http') || !File(url).existsSync();
+
+    return GestureDetector(
+      onTap: () => _showFullImage(url),
+      child: Container(
+        width: double.infinity,
+        height: height ?? (single ? null : 250),
+        constraints: single
+            ? const BoxConstraints(minHeight: 250, maxHeight: 400)
+            : null,
+        child: Hero(
+          tag: "post_${widget.postIndex}_$url",
+          child: isVideo
+              ? (isNet
+                    ? VideoPreview(videoUrl: ApiService.resolveUrl(url))
+                    : VideoPreview(file: File(url)))
+              : (isNet
+                    ? CachedNetworkImage(
+                        imageUrl: ApiService.resolveUrl(url),
+                        fit: single ? BoxFit.fitWidth : BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        placeholder: (context, url) =>
+                            Container(color: Colors.grey.shade200),
+                        errorWidget: (context, url, error) => const Center(
+                          child: Icon(Icons.broken_image, color: Colors.grey),
+                        ),
+                      )
+                    : Image.file(
+                        File(url),
+                        fit: single ? BoxFit.fitWidth : BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                      )),
+        ),
       ),
     );
   }
@@ -810,11 +1079,13 @@ class _CommentTile extends StatelessWidget {
             future: ApiService.getAuthHeaders(),
             builder: (context, headers) {
               final String? avatarId =
-                  comment["authorAvatar"] ??
-                  comment["profilePicture"] ??
-                  (comment["author"] is Map
-                      ? comment["author"]["profilePicture"]
-                      : null);
+                  (comment["authorAvatar"] ??
+                          comment["profilePicture"] ??
+                          (comment["author"] is Map
+                              ? comment["author"]["profilePicture"]
+                              : null) ??
+                          comment["author"])
+                      ?.toString();
               return CircleAvatar(
                 radius: 14,
                 backgroundColor: Colors.blueGrey.shade100,
@@ -838,53 +1109,91 @@ class _CommentTile extends StatelessWidget {
                 // Comment bubble
                 _CommentBubble(comment: comment),
                 if (comment["mediaPath"] != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FullScreenMediaViewer(
-                              mediaPath: comment["mediaPath"],
+                  Builder(
+                    builder: (context) {
+                      final String path = comment["mediaPath"].toString();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: GestureDetector(
+                          onTap: () {
+                            final String resolved =
+                                (path.startsWith('http') ||
+                                    path.startsWith('/'))
+                                ? ApiService.resolveUrl(path)
+                                : path;
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => FullScreenMediaViewer(
+                                  mediaList: [resolved],
+                                  initialIndex: 0,
+                                ),
+                              ),
+                            );
+                          },
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Hero(
+                              tag: path,
+                              child: (() {
+                                final bool isVideo =
+                                    path.toLowerCase().endsWith('.mp4') ||
+                                    path.toLowerCase().endsWith('.mov');
+                                final bool isNet =
+                                    path.startsWith('http') ||
+                                    !File(path).existsSync();
+
+                                if (isVideo) {
+                                  return SizedBox(
+                                    width: 120,
+                                    height: 120,
+                                    child: isNet
+                                        ? VideoPreview(
+                                            videoUrl: ApiService.resolveUrl(
+                                              path,
+                                            ),
+                                          )
+                                        : VideoPreview(file: File(path)),
+                                  );
+                                } else {
+                                  return isNet
+                                      ? CachedNetworkImage(
+                                          imageUrl: ApiService.resolveUrl(path),
+                                          height: 120,
+                                          width: 120,
+                                          fit: BoxFit.cover,
+                                          placeholder: (context, url) =>
+                                              Container(
+                                                color: Colors.grey.shade200,
+                                              ),
+                                          errorWidget: (context, url, error) =>
+                                              const Center(
+                                                child: Icon(
+                                                  Icons.broken_image,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                        )
+                                      : Image.file(
+                                          File(path),
+                                          height: 120,
+                                          width: 120,
+                                          fit: BoxFit.cover,
+                                        );
+                                }
+                              })(),
                             ),
                           ),
-                        );
-                      },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Hero(
-                          tag: comment["mediaPath"],
-                          child:
-                              (comment["mediaPath"] as String)
-                                      .toLowerCase()
-                                      .endsWith('.mp4') ||
-                                  (comment["mediaPath"] as String)
-                                      .toLowerCase()
-                                      .endsWith('.mov')
-                              ? SizedBox(
-                                  width: 120,
-                                  height: 120,
-                                  child: VideoPreview(
-                                    file: File(comment["mediaPath"]),
-                                  ),
-                                )
-                              : Image.file(
-                                  File(comment["mediaPath"]),
-                                  height: 120,
-                                  width: 120,
-                                  fit: BoxFit.cover,
-                                ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 const SizedBox(height: 4),
                 // Action row
                 _CommentActions(
-                  time: comment["time"],
-                  likes: comment["likes"],
-                  isLiked: comment["isLiked"],
+                  time: comment["time"]?.toString() ?? "",
+                  likes: int.tryParse(comment["likes"]?.toString() ?? "0") ?? 0,
+                  isLiked: comment["isLiked"] == true,
                   onLike: onLike,
                   onReply: onReply,
                 ),
@@ -892,74 +1201,73 @@ class _CommentTile extends StatelessWidget {
                 if (replies.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Vertical connector line
-                          SizedBox(
-                            width: 30,
-                            child: Center(
-                              child: Container(
-                                width: 2,
-                                decoration: BoxDecoration(
-                                  color: Colors.blueGrey.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Vertical connector line
+                        Container(
+                          width: 30,
+                          alignment: Alignment.topCenter,
+                          padding: const EdgeInsets.only(top: 0),
+                          child: Container(
+                            width: 2,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.blueGrey.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: replies.asMap().entries.map((re) {
+                              final ri = re.key;
+                              final reply = re.value;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Colors.blueGrey.shade100,
+                                      child: const Icon(Icons.person, size: 15),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _CommentBubble(
+                                            comment: reply,
+                                            small: true,
+                                          ),
+                                          const SizedBox(height: 3),
+                                          _CommentActions(
+                                            time:
+                                                reply["time"]?.toString() ?? "",
+                                            likes: reply["likes"] is int
+                                                ? reply["likes"]
+                                                : 0,
+                                            isLiked: reply["isLiked"] == true,
+                                            onLike: () => onReplyLike(ri),
+                                            onReply: () => onReplyReply(
+                                              reply["author"]?.toString() ??
+                                                  "Người dùng",
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ),
+                              );
+                            }).toList(),
                           ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: replies.asMap().entries.map((re) {
-                                final ri = re.key;
-                                final reply = re.value;
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 12,
-                                        backgroundColor:
-                                            Colors.blueGrey.shade100,
-                                        child: const Icon(
-                                          Icons.person,
-                                          size: 15,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            _CommentBubble(
-                                              comment: reply,
-                                              small: true,
-                                            ),
-                                            const SizedBox(height: 3),
-                                            _CommentActions(
-                                              time: reply["time"],
-                                              likes: reply["likes"],
-                                              isLiked: reply["isLiked"],
-                                              onLike: () => onReplyLike(ri),
-                                              onReply: () =>
-                                                  onReplyReply(reply["author"]),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -988,18 +1296,26 @@ class _CommentBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            comment["author"],
+            comment["author"]?.toString() ?? "Người dùng",
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: small ? 11 : 12,
             ),
           ),
-          if (comment["text"].toString().isNotEmpty)
+          if (comment["text"]?.toString().isNotEmpty == true)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
-                comment["text"],
-                style: TextStyle(fontSize: small ? 12 : 13),
+                comment["text"]?.toString() ?? "",
+                style: TextStyle(
+                  fontSize: small ? 12 : 13,
+                  fontFamilyFallback: const [
+                    "Apple Color Emoji",
+                    "Segoe UI Emoji",
+                    "Segoe UI Symbol",
+                    "Noto Color Emoji",
+                  ],
+                ),
               ),
             ),
         ],
@@ -1395,18 +1711,36 @@ class _PostEngagement extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            "$likes cảm xúc",
-            style: const TextStyle(
-              color: Colors.blueGrey,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.favorite,
+                  color: Colors.white,
+                  size: 10,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                likes > 0 ? "$likes" : "0",
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                "cảm xúc",
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
+            ],
           ),
           Text(
             "$comments BÌNH LUẬN",
-            style: const TextStyle(
-              color: Colors.blueGrey,
+            style: TextStyle(
+              color: Colors.grey.shade600,
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
@@ -1961,11 +2295,13 @@ class _MomentCard extends StatelessWidget {
               FutureBuilder<Map<String, String>>(
                 future: ApiService.getAuthHeaders(),
                 builder: (context, headers) {
-                  return Image.network(
-                    ApiService.resolveUrl(thumbnail!),
+                  return CachedNetworkImage(
+                    imageUrl: ApiService.resolveUrl(thumbnail!),
                     fit: BoxFit.cover,
-                    headers: headers.data,
-                    errorBuilder: (ctx, err, stack) => Container(
+                    httpHeaders: headers.data,
+                    placeholder: (context, url) =>
+                        Container(color: Colors.blueGrey.shade900),
+                    errorWidget: (context, url, error) => Container(
                       color: Colors.blueGrey.shade900,
                       child: const Icon(Icons.videocam, color: Colors.white24),
                     ),
@@ -2007,15 +2343,21 @@ class _MomentCard extends StatelessWidget {
                                 ),
                               ),
                               child: ClipOval(
-                                child: Image.network(
-                                  ApiService.resolveAvatarUrl(authorAvatar!),
-                                  headers: headers.data,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.person,
-                                    size: 8,
-                                    color: Colors.white,
+                                child: CachedNetworkImage(
+                                  imageUrl: ApiService.resolveAvatarUrl(
+                                    authorAvatar!,
                                   ),
+                                  httpHeaders: headers.data,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    color: Colors.blueGrey.shade200,
+                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      const Icon(
+                                        Icons.person,
+                                        size: 8,
+                                        color: Colors.white,
+                                      ),
                                 ),
                               ),
                             ),

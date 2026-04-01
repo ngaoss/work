@@ -18,6 +18,7 @@ class ChatShell extends StatefulWidget {
 
 class _ChatShellState extends State<ChatShell> {
   int _currentIndex = 0;
+  final Set<int> _visitedIndexes = {0};
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   List<Map<String, dynamic>> _allReels = [];
   int _initialReelIndex = 0;
@@ -61,6 +62,7 @@ class _ChatShellState extends State<ChatShell> {
   void _onItemTapped(int index) {
     setState(() {
       _currentIndex = index;
+      _visitedIndexes.add(index);
     });
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.pop(context); // Close drawer
@@ -89,7 +91,7 @@ class _ChatShellState extends State<ChatShell> {
           _TopActionStatus(),
           _TopAction(
             icon: Icons.chat_bubble_outline,
-            onTap: () => setState(() => _currentIndex = 6),
+            onTap: () => _onItemTapped(6),
             isActive: _currentIndex == 6,
           ),
           _TopAction(icon: Icons.notifications_none_outlined, badge: "5"),
@@ -100,7 +102,16 @@ class _ChatShellState extends State<ChatShell> {
         elevation: 0.5,
       ),
       drawer: _CustomDrawer(currentIndex: _currentIndex, onTap: _onItemTapped),
-      body: IndexedStack(index: _currentIndex, children: _pages),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages.asMap().entries.map((entry) {
+          final int index = entry.key;
+          if (_visitedIndexes.contains(index)) {
+            return entry.value;
+          }
+          return const SizedBox.shrink();
+        }).toList(),
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -129,22 +140,20 @@ class _ChatShellState extends State<ChatShell> {
             fontSize: 11,
           ),
           onTap: (index) {
-            setState(() {
-              switch (index) {
-                case 0:
-                  _currentIndex = 0;
-                  break;
-                case 1:
-                  _currentIndex = 3;
-                  break;
-                case 2:
-                  _currentIndex = 4;
-                  break;
-                case 3:
-                  _currentIndex = 5;
-                  break;
-              }
-            });
+            switch (index) {
+              case 0:
+                _onItemTapped(0);
+                break;
+              case 1:
+                _onItemTapped(3);
+                break;
+              case 2:
+                _onItemTapped(4);
+                break;
+              case 3:
+                _onItemTapped(5);
+                break;
+            }
           },
           items: const [
             BottomNavigationBarItem(
@@ -175,7 +184,7 @@ class _ChatShellState extends State<ChatShell> {
 
   Widget _buildAppLogo() {
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = 0),
+      onTap: () => _onItemTapped(0),
       child: Container(
         width: 32,
         height: 32,

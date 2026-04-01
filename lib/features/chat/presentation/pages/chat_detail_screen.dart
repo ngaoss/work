@@ -692,8 +692,10 @@ class _ChatBubble extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              FullScreenMediaViewer(mediaPath: imagePath),
+                          builder: (_) => FullScreenMediaViewer(
+                            mediaList: [imagePath!],
+                            initialIndex: 0,
+                          ),
                         ),
                       );
                     },

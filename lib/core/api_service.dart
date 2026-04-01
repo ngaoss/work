@@ -52,7 +52,14 @@ class ApiService {
     if (data is List) return data;
     if (data is Map) {
       if (data.containsKey('data') && data['data'] is List) return data['data'];
-      for (final key in ['users', 'posts', 'reels', 'items', 'results']) {
+      for (final key in [
+        'users',
+        'posts',
+        'reels',
+        'items',
+        'results',
+        'feed',
+      ]) {
         if (data.containsKey(key) && data[key] is List) return data[key];
       }
     }
@@ -183,55 +190,77 @@ class ApiService {
     return [];
   }
 
-  static Future<List<dynamic>> getPosts() async {
+  static Future<Map<String, dynamic>> getPosts({
+    int page = 1,
+    int limit = 10,
+  }) async {
     try {
-      final firstResp = await http.get(
-        Uri.parse('$baseUrl/posts?page=1'),
+      final resp = await http.get(
+        Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit'),
         headers: await _getHeaders(),
       );
-      final firstData = _processResponse(firstResp, 'getPosts p1');
-      if (firstData == null) return [];
+      final data = _processResponse(resp, 'getPosts p$page');
+      if (data == null) return {'posts': [], 'totalPages': 1};
 
-      final List<dynamic> all = List.from(_extractList(firstData));
+      final List<dynamic> rawPosts = _extractList(data);
+      List<dynamic> posts = rawPosts;
+      int totalPages = 1;
 
-      final int totalPages = (firstData is Map)
-          ? int.tryParse(
-                  firstData['totalPages']?.toString() ??
-                      firstData['total_pages']?.toString() ??
-                      '1',
-                ) ??
-                1
-          : 1;
+      // Handle case where server ignores pagination and returns all items
+      if (rawPosts.length > limit) {
+        final start = (page - 1) * limit;
+        if (start >= rawPosts.length) {
+          posts = [];
+        } else {
+          posts = rawPosts.skip(start).take(limit).toList();
+        }
+        totalPages = (rawPosts.length / limit).ceil();
+      } else {
+        if (data is Map) {
+          final Map<String, dynamic> dataMap = Map<String, dynamic>.from(data);
+          final dynamic totalPagesVal =
+              dataMap['totalPages'] ??
+              dataMap['total_pages'] ??
+              dataMap['pages'] ??
+              (dataMap['pagination'] is Map
+                  ? dataMap['pagination']['pages']
+                  : null) ??
+              (dataMap['meta'] is Map && dataMap['meta']['pagination'] is Map
+                  ? dataMap['meta']['pagination']['total_pages']
+                  : null);
 
-      debugPrint(
-        'ApiService: getPosts totalPages=$totalPages, p1=${all.length}',
-      );
+          totalPages = int.tryParse(totalPagesVal?.toString() ?? '1') ?? 1;
 
-      for (int page = 2; page <= totalPages; page++) {
-        final resp = await http.get(
-          Uri.parse('$baseUrl/posts?page=$page'),
-          headers: await _getHeaders(),
-        );
-        final pageData = _processResponse(resp, 'getPosts p$page');
-        if (pageData != null) {
-          all.addAll(_extractList(pageData));
+          if (totalPages <= 1) {
+            final dynamic totalCount =
+                dataMap['totalCount'] ??
+                dataMap['total_count'] ??
+                dataMap['total'] ??
+                (dataMap['pagination'] is Map
+                    ? dataMap['pagination']['total']
+                    : null);
+            if (totalCount != null) {
+              final int count = int.tryParse(totalCount.toString()) ?? 10;
+              totalPages = (count / limit).ceil();
+            } else if (posts.isNotEmpty) {
+              totalPages = page + 1;
+            }
+          }
+        } else if (posts.isNotEmpty) {
+          totalPages = page + 1;
         }
       }
 
-      // Deduplicate by _id
-      final seen = <String>{};
-      final result = all.where((p) {
-        final id = (p['_id'] ?? p['id'])?.toString() ?? '';
-        if (id.isEmpty) return true;
-        return seen.add(id);
-      }).toList();
+      // Emulate loading so spinner spins long enough to be visible
+      if (page > 1) {
+        await Future.delayed(const Duration(seconds: 1));
+      }
 
-      debugPrint('ApiService: getPosts FINAL=${result.length}');
-      return result;
+      return {'posts': posts, 'totalPages': totalPages};
     } catch (e) {
-      debugPrint('ApiService error (getPosts): $e');
+      debugPrint('ApiService getPosts error: $e');
+      return {'posts': [], 'totalPages': 1};
     }
-    return [];
   }
 
   static Future<bool> createPost(Map<String, dynamic> data) async {

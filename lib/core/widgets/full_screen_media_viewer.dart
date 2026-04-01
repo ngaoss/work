@@ -1,49 +1,36 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class FullScreenMediaViewer extends StatefulWidget {
-  final String? mediaPath;
-  final String? mediaUrl;
+  final List<String> mediaList;
+  final int initialIndex;
 
-  const FullScreenMediaViewer({super.key, this.mediaPath, this.mediaUrl});
+  const FullScreenMediaViewer({
+    super.key,
+    required this.mediaList,
+    this.initialIndex = 0,
+  });
 
   @override
   State<FullScreenMediaViewer> createState() => _FullScreenMediaViewerState();
 }
 
 class _FullScreenMediaViewerState extends State<FullScreenMediaViewer> {
-  VideoPlayerController? _controller;
-  bool _isInitialized = false;
-  bool _isVideo = false;
+  late PageController _pageController;
+  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    final path = widget.mediaPath ?? widget.mediaUrl;
-    if (path != null &&
-        (path.toLowerCase().endsWith('.mp4') ||
-            path.toLowerCase().endsWith('.mov'))) {
-      _isVideo = true;
-      if (widget.mediaPath != null) {
-        _controller = VideoPlayerController.file(File(widget.mediaPath!));
-      } else {
-        _controller = VideoPlayerController.networkUrl(
-          Uri.parse(widget.mediaUrl!),
-        );
-      }
-
-      _controller!.initialize().then((_) {
-        setState(() => _isInitialized = true);
-        _controller!.play();
-        _controller!.setLooping(true);
-      });
-    }
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -59,29 +46,104 @@ class _FullScreenMediaViewerState extends State<FullScreenMediaViewer> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
+        title: widget.mediaList.length > 1
+            ? Text(
+                "${_currentIndex + 1} / ${widget.mediaList.length}",
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              )
+            : null,
       ),
-      body: Center(child: _isVideo ? _buildVideoPlayer() : _buildImageViewer()),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.mediaList.length,
+        onPageChanged: (index) => setState(() => _currentIndex = index),
+        itemBuilder: (context, index) {
+          final url = widget.mediaList[index];
+          final isVideo =
+              url.toLowerCase().endsWith('.mp4') ||
+              url.toLowerCase().endsWith('.mov');
+
+          return Center(
+            child: isVideo ? _VideoItem(url: url) : _ImageItem(url: url),
+          );
+        },
+      ),
     );
   }
+}
 
-  Widget _buildImageViewer() {
+class _ImageItem extends StatelessWidget {
+  final String url;
+  const _ImageItem({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isNet = url.startsWith('http') || !File(url).existsSync();
     return InteractiveViewer(
       minScale: 0.5,
       maxScale: 4.0,
       child: Hero(
-        tag: widget.mediaPath ?? widget.mediaUrl ?? 'media',
-        child: widget.mediaPath != null
-            ? Image.file(File(widget.mediaPath!), fit: BoxFit.contain)
-            : widget.mediaUrl != null
-            ? Image.network(widget.mediaUrl!, fit: BoxFit.contain)
-            : const SizedBox.shrink(),
+        tag: url,
+        child: isNet
+            ? CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.contain,
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+                errorWidget: (context, url, error) =>
+                    const Icon(Icons.broken_image, color: Colors.white),
+              )
+            : Image.file(File(url), fit: BoxFit.contain),
       ),
     );
   }
+}
 
-  Widget _buildVideoPlayer() {
+class _VideoItem extends StatefulWidget {
+  final String url;
+  const _VideoItem({required this.url});
+
+  @override
+  State<_VideoItem> createState() => _VideoItemState();
+}
+
+class _VideoItemState extends State<_VideoItem> {
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final bool isNet =
+        widget.url.startsWith('http') || !File(widget.url).existsSync();
+    if (isNet) {
+      _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    } else {
+      _controller = VideoPlayerController.file(File(widget.url));
+    }
+
+    _controller!.initialize().then((_) {
+      if (mounted) {
+        setState(() => _isInitialized = true);
+        _controller!.play();
+        _controller!.setLooping(true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (!_isInitialized) {
-      return const CircularProgressIndicator(color: Colors.white);
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
     }
     return AspectRatio(
       aspectRatio: _controller!.value.aspectRatio,
