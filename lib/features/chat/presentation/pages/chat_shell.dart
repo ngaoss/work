@@ -38,26 +38,40 @@ class _ChatShellState extends State<ChatShell> {
     }
   }
 
-  List<Widget> get _pages => [
-    WorkHomePage(
-      onNavigateToReels: (idx) {
-        setState(() => _initialReelIndex = idx);
-        _onItemTapped(1);
-      },
-      reels: _allReels,
-    ), // 0: BẢNG TIN
-    ReelsPage(
-      key: ValueKey('reels_$_initialReelIndex'),
-      isActive: _currentIndex == 1,
-      initialIndex: _initialReelIndex,
-      onClose: () => _onItemTapped(0), // back to news feed
-    ), // 1: REELS
-    const DocumentsPage(), // 2: TÀI LIỆU
-    const PersonnelPage(), // 3: NHÂN SỰ
-    const CommunityPage(), // 4: NHÓM
-    const ProfilePage(), // 5: CÁ NHÂN
-    const MessagingPage(), // 6: TIN NHẮN
-  ];
+  Widget _buildPage(int index) {
+    if (!_visitedIndexes.contains(index)) {
+      return const SizedBox.shrink();
+    }
+    switch (index) {
+      case 0:
+        return WorkHomePage(
+          onNavigateToReels: (idx) {
+            setState(() => _initialReelIndex = idx);
+            _onItemTapped(1);
+          },
+          reels: _allReels,
+        );
+      case 1:
+        return ReelsPage(
+          key: ValueKey('reels_$_initialReelIndex'),
+          isActive: _currentIndex == 1,
+          initialIndex: _initialReelIndex,
+          onClose: () => _onItemTapped(0),
+        );
+      case 2:
+        return const DocumentsPage();
+      case 3:
+        return const PersonnelPage();
+      case 4:
+        return const CommunityPage();
+      case 5:
+        return const ProfilePage();
+      case 6:
+        return const MessagingPage();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -104,13 +118,7 @@ class _ChatShellState extends State<ChatShell> {
       drawer: _CustomDrawer(currentIndex: _currentIndex, onTap: _onItemTapped),
       body: IndexedStack(
         index: _currentIndex,
-        children: _pages.asMap().entries.map((entry) {
-          final int index = entry.key;
-          if (_visitedIndexes.contains(index)) {
-            return entry.value;
-          }
-          return const SizedBox.shrink();
-        }).toList(),
+        children: List.generate(7, (index) => _buildPage(index)),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

@@ -799,7 +799,7 @@ class _PostCardState extends State<_PostCard> {
               try {
                 if (raw.isNotEmpty) {
                   final dt = DateTime.parse(raw).toLocal();
-                  return "${dt.day.toString().padLeft(2, '0')} - ${dt.month.toString().padLeft(2, '0')} - ${dt.year.toString().substring(2)}";
+                  return "${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year.toString()}";
                 }
               } catch (_) {}
               return raw.length >= 10 ? raw.substring(0, 10) : raw;
@@ -1660,7 +1660,7 @@ class _PostHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  "$role • $time",
+                  "$role . $time",
                   style: const TextStyle(
                     color: Colors.grey,
                     fontSize: 10,
