@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/security.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -13,6 +14,24 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('saved_email');
+    final password = prefs.getString('saved_password');
+    if (mounted && email != null && password != null) {
+      setState(() {
+        _emailController.text = email;
+        _passwordController.text = password;
+      });
+    }
+  }
 
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
@@ -110,50 +129,48 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 16),
 
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
+                    backgroundColor: const Color(0xFF1E293B),
                     foregroundColor: Colors.white,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    elevation: 10,
-                    shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
                   ),
                   child: _isLoading
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
+                          height: 20,
+                          width: 20,
                           child: CircularProgressIndicator(
                             color: Colors.white,
                             strokeWidth: 2,
                           ),
                         )
                       : const Text(
-                          "ĐĂNG NHẬP HỆ THỐNG",
+                          "ĐĂNG NHẬP",
                           style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            letterSpacing: 0.5,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
                           ),
                         ),
                 ),
               ),
-
-              const SizedBox(height: 160),
+              const SizedBox(height: 80),
               const Text(
-                "POWERED BY DEEPCODE © 2026",
+                "CHÍNH SÁCH BẢO MẬT & ĐIỀU KHOẢN",
                 style: TextStyle(
                   color: Colors.grey,
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
+                  letterSpacing: 0.5,
                 ),
               ),
               const SizedBox(height: 40),
@@ -174,30 +191,30 @@ class _LogoWidget extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(4),
+                color: const Color(0xFF3B82F6),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: const Text(
-                "DC",
+                "NX",
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
                   fontSize: 24,
                 ),
               ),
             ),
+            const SizedBox(width: 16),
+            const Text(
+              "NEXUS",
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -1,
+              ),
+            ),
           ],
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          "DEEPCODE",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 10,
-            letterSpacing: 2,
-          ),
         ),
       ],
     );
@@ -231,21 +248,21 @@ class _InputField extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 10,
-            color: Colors.blueGrey,
-            letterSpacing: 1.0,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF64748B),
+            letterSpacing: 1,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.blue.withOpacity(0.1)),
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.02),
+                color: Colors.black.withOpacity(0.02),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -257,15 +274,14 @@ class _InputField extends StatelessWidget {
             keyboardType: keyboardType,
             textInputAction: textInputAction,
             decoration: InputDecoration(
-              prefixIcon: Icon(
-                icon,
-                color: Colors.blueAccent.shade100,
-                size: 20,
-              ),
+              prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20),
               hintText: hint,
-              hintStyle: TextStyle(color: Colors.grey.shade300, fontSize: 14),
+              hintStyle: const TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 14,
+              ),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              contentPadding: const EdgeInsets.all(20),
             ),
           ),
         ),

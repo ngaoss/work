@@ -22,11 +22,13 @@ class _ChatShellState extends State<ChatShell> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   List<Map<String, dynamic>> _allReels = [];
   int _initialReelIndex = 0;
+  final GlobalKey<WorkHomePageState> _homeKey = GlobalKey<WorkHomePageState>();
 
   @override
   void initState() {
     super.initState();
     _fetchGlobalReels();
+    ApiService.getMe(); // Lấy thông tin cá nhân mới nhất ngầm
   }
 
   Future<void> _fetchGlobalReels() async {
@@ -45,6 +47,7 @@ class _ChatShellState extends State<ChatShell> {
     switch (index) {
       case 0:
         return WorkHomePage(
+          key: _homeKey,
           onNavigateToReels: (idx) {
             setState(() => _initialReelIndex = idx);
             _onItemTapped(1);
@@ -192,7 +195,13 @@ class _ChatShellState extends State<ChatShell> {
 
   Widget _buildAppLogo() {
     return GestureDetector(
-      onTap: () => _onItemTapped(0),
+      onTap: () {
+        if (_currentIndex != 0) {
+          _onItemTapped(0);
+        }
+        // Always trigger refresh when logo is tapped
+        _homeKey.currentState?.refresh();
+      },
       child: Container(
         width: 32,
         height: 32,

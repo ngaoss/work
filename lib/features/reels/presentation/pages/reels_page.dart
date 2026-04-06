@@ -1,8 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 import '../../../../core/api_service.dart';
+import '../../../../core/security.dart';
 import '../../../../core/widgets/video_preview.dart';
+import '../../../../core/widgets/mention_text_controller.dart';
 
 class ReelsPage extends StatefulWidget {
   final bool isActive;
@@ -47,10 +51,29 @@ class _ReelsPageState extends State<ReelsPage> {
 
   Future<void> _fetchReels() async {
     setState(() => _isLoading = true);
-    final reels = await ApiService.getReels();
+    final List<dynamic> reelsRaw = await ApiService.getReels();
+    final currentUserId =
+        (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
+
     if (mounted) {
       setState(() {
-        _reels = reels;
+        _reels = reelsRaw.map((r) {
+          final Map<String, dynamic> reel = Map<String, dynamic>.from(r);
+          final reactions = reel['reactions'] as List?;
+          reel['isLiked'] =
+              reactions?.any(
+                (re) =>
+                    (re['user']?.toString() == currentUserId ||
+                    (re['user'] is Map &&
+                        (re['user']['_id']?.toString() == currentUserId ||
+                            re['user']['id']?.toString() == currentUserId))),
+              ) ??
+              false;
+          reel['likes'] = reactions?.length ?? reel['likes'] ?? 0;
+          return reel;
+        }).toList();
         _isLoading = false;
       });
     }
@@ -126,22 +149,35 @@ class _ReelsPageState extends State<ReelsPage> {
             isActive: widget.isActive && _currentPage == i,
             isMuted: _isMuted,
             onLike: () async {
-              final reelId = _reels[i]["_id"] ?? _reels[i]["id"];
+              final reelId = (_reels[i]["_id"] ?? _reels[i]["id"])?.toString();
               if (reelId != null) {
-                final success = await ApiService.likeReel(reelId.toString());
-                if (success)
-                  _fetchReels(); // Refresh to show new reaction count
+                setState(() {
+                  final bool wasLiked = _reels[i]["isLiked"] == true;
+                  _reels[i]["isLiked"] = !wasLiked;
+                  int currentLikes =
+                      int.tryParse(_reels[i]["likes"]?.toString() ?? "0") ?? 0;
+                  _reels[i]["likes"] = wasLiked
+                      ? (currentLikes > 0 ? currentLikes - 1 : 0)
+                      : currentLikes + 1;
+                });
+                ApiService.likeReel(reelId);
               }
             },
             onComment: (comment) async {
               final reelId = _reels[i]["_id"] ?? _reels[i]["id"];
               if (reelId != null) {
-                final success = await ApiService.addComment({
-                  "reelId": reelId.toString(),
-                  "text": comment["text"],
-                });
-                if (success) _fetchReels(); // Refresh to show new comment count
+                final userProfile = AuthService().userProfile.value;
+                final String? authorId =
+                    (userProfile?['_id'] ?? userProfile?['id'])?.toString();
+
+                final bool success = await ApiService.addReelComment(
+                  reelId.toString(),
+                  comment["text"]?.toString() ?? "",
+                  authorId: authorId,
+                );
+                return success;
               }
+              return false;
             },
           ),
         ),
@@ -293,7 +329,7 @@ class _ReelItem extends StatefulWidget {
   final bool isActive;
   final bool isMuted;
   final VoidCallback onLike;
-  final Function(Map<String, dynamic>) onComment;
+  final Future<bool> Function(Map<String, dynamic>) onComment;
 
   const _ReelItem({
     required this.reel,
@@ -343,7 +379,7 @@ class _ReelItemState extends State<_ReelItem> {
         ? (authorObj['profilePicture']?.toString())
         : null;
     final String? authorAvatarUrl = authorPic != null
-        ? ApiService.resolveAvatarUrl(authorPic)
+        ? ApiService.resolveImageUrl(authorPic)
         : null;
 
     return Stack(
@@ -449,11 +485,7 @@ class _ReelItemState extends State<_ReelItem> {
                 icon: (widget.reel['isLiked'] ?? false)
                     ? Icons.favorite
                     : Icons.favorite_border,
-                label:
-                    (widget.reel['reactions']?.length ??
-                            widget.reel['likes'] ??
-                            0)
-                        .toString(),
+                label: (widget.reel['likes'] ?? 0).toString(),
                 color: (widget.reel['isLiked'] ?? false)
                     ? Colors.red
                     : Colors.white,
@@ -508,8 +540,8 @@ class _ReelItemState extends State<_ReelItem> {
       );
     }
 
-    final bool isHttp = path.startsWith('http');
-    final String fullUrl = ApiService.resolveUrl(path);
+    final bool isHttp = path.startsWith('http') || !File(path).existsSync();
+    final String fullUrl = isHttp ? ApiService.resolveImageUrl(path) : path;
     final String lowerPath = fullUrl.toLowerCase();
 
     final bool isVideo =
@@ -587,7 +619,7 @@ class _ReelItemState extends State<_ReelItem> {
                       authorObj['avatar']?.toString())
                 : null;
             final String? avatarUrl = authorPic != null
-                ? ApiService.resolveAvatarUrl(authorPic)
+                ? ApiService.resolveImageUrl(authorPic)
                 : null;
 
             audioBg = Center(
@@ -694,7 +726,9 @@ class _ReelItemState extends State<_ReelItem> {
     // Start with local comments if any, but properly fetch from API
     final reelId = widget.reel['_id'] ?? widget.reel['id'];
     List<dynamic> comments = List.from(widget.reel['comments'] ?? []);
-    final TextEditingController ctrl = TextEditingController();
+    final TextEditingController ctrl = MentionTextEditingController();
+    final FocusNode commentFocusNode = FocusNode();
+    String? replyingToName;
 
     showModalBottomSheet(
       context: context,
@@ -776,53 +810,295 @@ class _ReelItemState extends State<_ReelItem> {
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
                           itemCount: comments.length,
-                          itemBuilder: (ctx, i) => Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor: Colors.blueGrey.shade50,
-                                  child: Text(
-                                    (comments[i]['author'] ?? 'U')[0],
-                                    style: const TextStyle(fontSize: 12),
+                          itemBuilder: (ctx, i) {
+                            final comment = comments[i];
+                            final author = comment['author'];
+                            final String authorName = (author is Map)
+                                ? (author['fullName'] ??
+                                      author['name'] ??
+                                      'Người dùng')
+                                : (author ?? 'Người dùng').toString();
+
+                            final String? avatarPic = (author is Map)
+                                ? author['profilePicture']?.toString()
+                                : null;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  FutureBuilder<Map<String, String>>(
+                                    future: ApiService.getAuthHeaders(),
+                                    builder: (context, headers) {
+                                      return CircleAvatar(
+                                        radius: 18,
+                                        backgroundColor:
+                                            Colors.blueGrey.shade100,
+                                        backgroundImage: avatarPic != null
+                                            ? NetworkImage(
+                                                ApiService.resolveImageUrl(
+                                                  avatarPic,
+                                                ),
+                                                headers: headers.data,
+                                              )
+                                            : null,
+                                        child: avatarPic == null
+                                            ? Text(
+                                                authorName.isNotEmpty
+                                                    ? authorName[0]
+                                                          .toUpperCase()
+                                                    : 'U',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              )
+                                            : null,
+                                      );
+                                    },
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        comments[i]['author'] ?? 'Người dùng',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // Comment bubble with reactions
+                                        Stack(
+                                          clipBehavior: Clip.none,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFF1F5F9),
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    authorName,
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.black,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    comment['text']
+                                                            ?.toString() ??
+                                                        '',
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.black87,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            // Reaction count bubble
+                                            if ((int.tryParse(
+                                                      comment['likes']
+                                                              ?.toString() ??
+                                                          "0",
+                                                    ) ??
+                                                    0) >
+                                                0)
+                                              Positioned(
+                                                bottom: -8,
+                                                right: -8,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 4,
+                                                        vertical: 2,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black
+                                                            .withOpacity(0.1),
+                                                        blurRadius: 4,
+                                                        offset: const Offset(
+                                                          0,
+                                                          2,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.favorite,
+                                                        color: Colors.red,
+                                                        size: 10,
+                                                      ),
+                                                      const SizedBox(width: 2),
+                                                      Text(
+                                                        comment['likes']
+                                                            .toString(),
+                                                        style: const TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors.black54,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
                                         ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        comments[i]['text'] ?? '',
-                                        style: const TextStyle(fontSize: 13),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        comments[i]['time'] ?? '',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade500,
-                                          fontSize: 11,
+                                        const SizedBox(height: 8),
+                                        // Action row
+                                        Row(
+                                          children: [
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              comment['time']?.toString() ??
+                                                  'Vừa xong',
+                                              style: const TextStyle(
+                                                color: Colors.grey,
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            GestureDetector(
+                                              onTap: () async {
+                                                final commentId =
+                                                    (comment['_id'] ??
+                                                            comment['id'])
+                                                        ?.toString();
+                                                if (commentId == null) return;
+
+                                                final bool wasLiked =
+                                                    comment['isLiked'] == true;
+                                                setModalState(() {
+                                                  comment['isLiked'] =
+                                                      !wasLiked;
+                                                  int currentLikes =
+                                                      int.tryParse(
+                                                        comment['likes']
+                                                                ?.toString() ??
+                                                            "0",
+                                                      ) ??
+                                                      0;
+                                                  comment['likes'] = wasLiked
+                                                      ? (currentLikes > 0
+                                                            ? currentLikes - 1
+                                                            : 0)
+                                                      : currentLikes + 1;
+                                                });
+
+                                                ApiService.toggleCommentLike(
+                                                  commentId,
+                                                );
+                                              },
+                                              child: Text(
+                                                comment['isLiked'] == true
+                                                    ? "Đã thích"
+                                                    : "Thích",
+                                                style: TextStyle(
+                                                  color:
+                                                      comment['isLiked'] == true
+                                                      ? Colors.red
+                                                      : Colors.blueGrey,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            GestureDetector(
+                                              onTap: () {
+                                                setModalState(() {
+                                                  replyingToName = authorName;
+                                                });
+                                                ctrl.text = "@$authorName ";
+                                                ctrl.selection =
+                                                    TextSelection.fromPosition(
+                                                      TextPosition(
+                                                        offset:
+                                                            ctrl.text.length,
+                                                      ),
+                                                    );
+                                                commentFocusNode.requestFocus();
+                                              },
+                                              child: const Text(
+                                                "Phản hồi",
+                                                style: TextStyle(
+                                                  color: Colors.blueGrey,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                // Reply banner
+                if (replyingToName != null)
+                  Container(
+                    color: const Color(0xFFEFF6FF),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.reply, size: 14, color: Colors.blue),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Đang phản hồi $replyingToName',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
-                ),
+                        GestureDetector(
+                          onTap: () {
+                            setModalState(() => replyingToName = null);
+                            ctrl.clear();
+                            commentFocusNode.unfocus();
+                          },
+                          child: const Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     16,
@@ -832,11 +1108,43 @@ class _ReelItemState extends State<_ReelItem> {
                   ),
                   child: Row(
                     children: [
+                      ValueListenableBuilder<Map<String, dynamic>?>(
+                        valueListenable: AuthService().userProfile,
+                        builder: (context, profile, _) {
+                          final String? avatarId = profile?['profilePicture'];
+                          return FutureBuilder<Map<String, String>>(
+                            future: ApiService.getAuthHeaders(),
+                            builder: (context, headers) {
+                              return CircleAvatar(
+                                radius: 18,
+                                backgroundColor: Colors.blueGrey.shade100,
+                                backgroundImage: avatarId != null
+                                    ? NetworkImage(
+                                        ApiService.resolveImageUrl(avatarId),
+                                        headers: headers.data,
+                                      )
+                                    : null,
+                                child: avatarId == null
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 20,
+                                        color: Colors.blueGrey,
+                                      )
+                                    : null,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
                           controller: ctrl,
+                          focusNode: commentFocusNode,
                           decoration: InputDecoration(
-                            hintText: 'Thêm bình luận...',
+                            hintText: replyingToName != null
+                                ? 'Phản hồi $replyingToName...'
+                                : 'Thêm bình luận...',
                             hintStyle: TextStyle(color: Colors.grey.shade400),
                             filled: true,
                             fillColor: Colors.grey.shade100,
@@ -854,11 +1162,38 @@ class _ReelItemState extends State<_ReelItem> {
                       const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.send, color: Color(0xFF3B82F6)),
-                        onPressed: () {
+                        onPressed: () async {
                           if (ctrl.text.trim().isEmpty) return;
-                          widget.onComment({"text": ctrl.text.trim()});
+                          final String userText = ctrl.text.trim();
                           ctrl.clear();
-                          Navigator.pop(ctx);
+
+                          // Optimistic UI update
+                          final userProfile = AuthService().userProfile.value;
+                          final tempComment = {
+                            "author":
+                                (userProfile?['fullName'] ??
+                                userProfile?['name'] ??
+                                'Bạn'),
+                            "text": userText,
+                            "time": "Vừa xong",
+                            "id":
+                                "temp_${DateTime.now().millisecondsSinceEpoch}",
+                          };
+
+                          setModalState(() {
+                            comments = [tempComment, ...comments];
+                          });
+
+                          setModalState(() => replyingToName = null);
+
+                          final success = await widget.onComment({
+                            "text": userText,
+                          });
+                          if (success) {
+                            loadComments(); // Refresh with real data
+                          } else {
+                            loadComments(); // Refresh anyway to revert or sync
+                          }
                         },
                       ),
                     ],
@@ -1040,6 +1375,8 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _captionCtrl = TextEditingController();
   String? _mediaPath;
+  XFile? _selectedXFile; // Add this
+  Map<String, dynamic>? _selectedMusic;
   bool _publishing = false;
 
   @override
@@ -1072,28 +1409,65 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
     if (source == null) return;
 
     try {
-      XFile? file;
+      XFile? _selectedFile;
       if (source == 'image') {
-        file = await _picker.pickImage(source: ImageSource.gallery);
+        _selectedFile = await _picker.pickImage(source: ImageSource.gallery);
       } else {
-        file = await _picker.pickVideo(source: ImageSource.gallery);
+        _selectedFile = await _picker.pickVideo(source: ImageSource.gallery);
       }
-      if (file != null) {
-        setState(() => _mediaPath = file!.path);
+      if (_selectedFile != null) {
+        setState(() => _mediaPath = _selectedFile!.path);
+        // We can also store the file itself if needed for bytes read later
+        this._selectedXFile = _selectedFile;
       }
     } catch (e) {
       debugPrint('Pick media error: $e');
     }
   }
 
-  void _publish() {
+  void _publish() async {
     if (_publishing) return;
     setState(() => _publishing = true);
+
+    String? finalMediaPath;
+
+    // Upload media to server first
+    if (_selectedXFile != null) {
+      try {
+        final bytes = await _selectedXFile!.readAsBytes();
+        final uploadedPath = await ApiService.uploadImage(
+          bytes,
+          _selectedXFile!.name,
+        );
+        if (uploadedPath != null) {
+          finalMediaPath = uploadedPath;
+        }
+      } catch (e) {
+        debugPrint("Reel upload error: $e");
+      }
+    }
+
     widget.onPublish({
-      'mediaPath': _mediaPath,
+      'mediaPath': finalMediaPath != null
+          ? ApiService.resolveImageUrl(finalMediaPath)
+          : null,
       'caption': _captionCtrl.text.trim(),
+      'musicId': _selectedMusic?['_id'] ?? _selectedMusic?['id'],
     });
     Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  void _showMusicPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _MusicPickerSheet(
+        onSelect: (music) {
+          setState(() => _selectedMusic = music);
+        },
+      ),
+    );
   }
 
   @override
@@ -1292,6 +1666,80 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
             ),
           ),
           const SizedBox(height: 32),
+          const _SectionLabel(icon: Icons.music_note, label: 'ÂM NHẠC'),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: _showMusicPicker,
+            child: Container(
+              height: 100,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF3B82F6).withOpacity(0.2),
+                  width: 1.5,
+                  style: BorderStyle
+                      .solid, // Note: standard flutter doesn't do dashed easily without CustomPainter or package
+                ),
+              ),
+              child: _selectedMusic == null
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.music_note_outlined,
+                          color: const Color(0xFF3B82F6).withOpacity(0.5),
+                          size: 32,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'CHỌN BÀI HÁT',
+                          style: TextStyle(
+                            color: const Color(0xFF3B82F6).withOpacity(0.8),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 10,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      leading: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3B82F6).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.music_note, color: Colors.blue),
+                      ),
+                      title: Text(
+                        _selectedMusic!['title'] ?? 'Tên bài hát',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        _selectedMusic!['artist'] ?? 'Nghệ sĩ',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: const Icon(
+                        Icons.check_circle,
+                        color: Colors.blue,
+                        size: 20,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 40),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -1339,6 +1787,370 @@ class _SectionLabel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MusicPickerSheet extends StatefulWidget {
+  final Function(Map<String, dynamic>) onSelect;
+  const _MusicPickerSheet({required this.onSelect});
+
+  @override
+  State<_MusicPickerSheet> createState() => _MusicPickerSheetState();
+}
+
+class _MusicPickerSheetState extends State<_MusicPickerSheet> {
+  List<dynamic> _musicList = [];
+  bool _loading = true;
+  String? _playingId; // ID of the track currently being previewed
+  VideoPlayerController? _previewController;
+  bool _isPreviewLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMusic();
+  }
+
+  @override
+  void dispose() {
+    _previewController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadMusic() async {
+    final list = await ApiService.getMusicList();
+    if (mounted) {
+      setState(() {
+        _musicList = list;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _togglePreview(Map<String, dynamic> music) async {
+    final id = (music['_id'] ?? music['id'])?.toString();
+    if (id == null) return;
+
+    // If tapping the same track → stop
+    if (_playingId == id) {
+      await _previewController?.pause();
+      _previewController?.dispose();
+      setState(() {
+        _playingId = null;
+        _previewController = null;
+        _isPreviewLoading = false;
+      });
+      return;
+    }
+
+    // Stop any current preview
+    await _previewController?.pause();
+    _previewController?.dispose();
+    setState(() {
+      _playingId = id;
+      _previewController = null;
+      _isPreviewLoading = true;
+    });
+
+    // Resolve URL
+    final rawUrl =
+        (music['url'] ??
+                music['audioUrl'] ??
+                music['musicUrl'] ??
+                music['file'])
+            ?.toString();
+    if (rawUrl == null) {
+      setState(() {
+        _playingId = null;
+        _isPreviewLoading = false;
+      });
+      return;
+    }
+    final resolvedUrl = ApiService.resolveUrl(rawUrl);
+
+    try {
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse(resolvedUrl),
+        httpHeaders: await ApiService.getAuthHeaders(),
+      );
+      await controller.initialize();
+      controller.setLooping(false);
+      controller.play();
+
+      if (mounted) {
+        setState(() {
+          _previewController = controller;
+          _isPreviewLoading = false;
+        });
+
+        // Auto-stop after track ends
+        controller.addListener(() {
+          if (controller.value.position >= controller.value.duration &&
+              controller.value.duration.inMilliseconds > 0) {
+            if (mounted) {
+              setState(() {
+                _playingId = null;
+                _previewController = null;
+              });
+              controller.dispose();
+            }
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Music preview error: $e');
+      if (mounted) {
+        setState(() {
+          _playingId = null;
+          _isPreviewLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'CHỌN ÂM NHẠC',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _musicList.isEmpty
+                ? const Center(child: Text('Không tìm thấy bài hát nào'))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _musicList.length,
+                    itemBuilder: (ctx, i) {
+                      final m = _musicList[i];
+                      final id = (m['_id'] ?? m['id'])?.toString();
+                      final isPlaying = _playingId == id;
+                      final isLoading = _playingId == id && _isPreviewLoading;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: isPlaying
+                              ? const Color(0xFFEFF6FF)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isPlaying
+                                ? const Color(0xFF3B82F6)
+                                : const Color(0xFFE2E8F0),
+                            width: isPlaying ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  // Album art
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF6366F1),
+                                          Color(0xFF06B6D4),
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.music_note_rounded,
+                                      color: Colors.white,
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Title + Artist
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          m['title'] ??
+                                              m['name'] ??
+                                              'Tên bài hát',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: isPlaying
+                                                ? const Color(0xFF1D4ED8)
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          m['artist'] ??
+                                              m['singer'] ??
+                                              'Nghệ sĩ',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.grey.shade500,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Play/Pause button
+                                  GestureDetector(
+                                    onTap: () => _togglePreview(
+                                      Map<String, dynamic>.from(m),
+                                    ),
+                                    child: Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: isPlaying
+                                            ? Colors.blue.withOpacity(0.12)
+                                            : Colors.grey.shade100,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: isLoading
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(9),
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.blue,
+                                              ),
+                                            )
+                                          : Icon(
+                                              isPlaying
+                                                  ? Icons.pause_rounded
+                                                  : Icons.play_arrow_rounded,
+                                              color: isPlaying
+                                                  ? Colors.blue
+                                                  : Colors.blueGrey,
+                                              size: 22,
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Select (check) button
+                                  GestureDetector(
+                                    onTap: () {
+                                      _previewController?.pause();
+                                      _previewController?.dispose();
+                                      widget.onSelect(
+                                        Map<String, dynamic>.from(m),
+                                      );
+                                      Navigator.pop(ctx);
+                                    },
+                                    child: Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF3B82F6),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.check_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Progress slider (shown when playing)
+                            if (isPlaying && _previewController != null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  0,
+                                  12,
+                                  8,
+                                ),
+                                child: ValueListenableBuilder<VideoPlayerValue>(
+                                  valueListenable: _previewController!,
+                                  builder: (context, value, _) {
+                                    final pos = value.position.inSeconds
+                                        .toDouble();
+                                    final dur = value.duration.inSeconds
+                                        .toDouble();
+                                    return SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        trackHeight: 2,
+                                        thumbShape: const RoundSliderThumbShape(
+                                          enabledThumbRadius: 5,
+                                        ),
+                                        overlayShape:
+                                            const RoundSliderOverlayShape(
+                                              overlayRadius: 10,
+                                            ),
+                                      ),
+                                      child: Slider(
+                                        value: dur > 0 ? pos.clamp(0, dur) : 0,
+                                        min: 0,
+                                        max: dur > 0 ? dur : 1,
+                                        activeColor: Colors.blue,
+                                        inactiveColor: Colors.blue.shade100,
+                                        onChanged: dur > 0
+                                            ? (v) => _previewController!.seekTo(
+                                                Duration(seconds: v.toInt()),
+                                              )
+                                            : null,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

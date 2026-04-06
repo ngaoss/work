@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'security.dart';
 
 class ApiService {
@@ -16,17 +17,19 @@ class ApiService {
     return Uri.encodeFull('$siteUrl/$cleanPath');
   }
 
-  /// Resolve a profilePicture value (may be a MongoDB ObjectId or URL)
-  /// to a full URL using the /api/users/avatar/:id endpoint
-  static String resolveAvatarUrl(dynamic picturePath) {
-    if (picturePath == null) return '';
-    final String s = picturePath.toString().trim();
+  /// Resolve any image/avatar value (may be a MongoDB ObjectId or URL)
+  /// to a full URL using the /api/images/:id endpoint or static path
+  static String resolveImageUrl(dynamic path) {
+    if (path == null) return '';
+    final String s = path.toString().trim();
     if (s.isEmpty) return '';
     if (s.startsWith('http')) return Uri.encodeFull(s);
+
     // If it looks like a MongoDB ObjectId (24 hex chars), build API URL
     if (RegExp(r'^[a-f0-9]{24}$').hasMatch(s)) {
       return '$baseUrl/images/$s';
     }
+
     // Otherwise treat as relative path
     final String cleanPath = s.startsWith('/') ? s.substring(1) : s;
     return Uri.encodeFull('$siteUrl/$cleanPath');
@@ -90,7 +93,7 @@ class ApiService {
   static Future<Map<String, dynamic>?> getMe() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/users/me'),
+        Uri.parse('$baseUrl/users/profile'),
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getMe');
@@ -113,7 +116,7 @@ class ApiService {
   static Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/users/update'),
+        Uri.parse('$baseUrl/users/profile'),
         headers: await _getHeaders(),
         body: jsonEncode(data),
       );
@@ -270,6 +273,8 @@ class ApiService {
         headers: await _getHeaders(),
         body: jsonEncode(data),
       );
+      debugPrint('ApiService createPost status: ${response.statusCode}');
+      debugPrint('ApiService createPost response: ${response.body}');
       return response.statusCode == 201 || response.statusCode == 200;
     } catch (e) {
       debugPrint('ApiService error (createPost): $e');
@@ -277,17 +282,51 @@ class ApiService {
     }
   }
 
-  static Future<bool> addComment(Map<String, dynamic> data) async {
+  static Future<bool> deletePost(String postId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/posts/$postId'),
+        headers: await _getHeaders(),
+      );
+      debugPrint('ApiService deletePost status: ${response.statusCode}');
+      debugPrint('ApiService deletePost response: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('ApiService error (deletePost): $e');
+      return false;
+    }
+  }
+
+  static Future<bool> addComment(
+    String postId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/comments'),
+        Uri.parse('$baseUrl/comments/$postId'),
         headers: await _getHeaders(),
         body: jsonEncode(data),
       );
+      debugPrint('ApiService addComment status: ${response.statusCode}');
+      debugPrint('ApiService addComment response: ${response.body}');
       return response.statusCode == 201 || response.statusCode == 200;
     } catch (e) {
       debugPrint('ApiService error (addComment): $e');
       return false;
+    }
+  }
+
+  static Future<List<dynamic>> getComments(String postId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/comments/$postId'),
+        headers: await _getHeaders(),
+      );
+      final res = _processResponse(response, 'getComments');
+      return _extractList(res);
+    } catch (e) {
+      debugPrint('ApiService error (getComments): $e');
+      return [];
     }
   }
 
@@ -326,7 +365,7 @@ class ApiService {
   static Future<List<dynamic>> getReelComments(String reelId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/comments?reelId=$reelId'),
+        Uri.parse('$baseUrl/reels/$reelId/comments'),
         headers: await _getHeaders(),
       );
       final data = _processResponse(response, 'getReelComments');
@@ -335,6 +374,33 @@ class ApiService {
       debugPrint('ApiService error (getReelComments): $e');
     }
     return [];
+  }
+
+  /// Add a comment to a reel
+  static Future<bool> addReelComment(
+    String reelId,
+    String text, {
+    String? authorId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/reels/$reelId/comments'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          "text": text,
+          "reel": reelId,
+          "post": null,
+          "author": authorId,
+          "status": "active",
+        }),
+      );
+      debugPrint('ApiService addReelComment status: ${response.statusCode}');
+      debugPrint('ApiService addReelComment response: ${response.body}');
+      return response.statusCode == 201 || response.statusCode == 200;
+    } catch (e) {
+      debugPrint('ApiService error (addReelComment): $e');
+      return false;
+    }
   }
 
   /// Like / toggle reaction on a reel
@@ -353,4 +419,107 @@ class ApiService {
   }
 
   // Removed duplicate getAuthHeaders
+  static Future<List<dynamic>> getMusicList() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/music'),
+        headers: await _getHeaders(),
+      );
+      final res = _processResponse(response, 'getMusicList');
+      return _extractList(res);
+    } catch (e) {
+      debugPrint('ApiService error (getMusicList): $e');
+      return [];
+    }
+  }
+
+  static Future<bool> togglePostLike(String postId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/posts/$postId/react'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'type': 'like'}),
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('ApiService error (togglePostLike): $e');
+      return false;
+    }
+  }
+
+  static Future<bool> toggleCommentLike(String commentId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/comments/$commentId/react'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'type': 'like'}),
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('ApiService error (toggleCommentLike): $e');
+      return false;
+    }
+  }
+
+  static Future<String?> uploadImage(Uint8List bytes, String fileName) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/images/upload'),
+      );
+      final token = AuthService().authToken.value;
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+
+      final lowerName = fileName.toLowerCase();
+      MediaType mediaType;
+      if (lowerName.endsWith('.mp4')) {
+        mediaType = MediaType('video', 'mp4');
+      } else if (lowerName.endsWith('.mov')) {
+        mediaType = MediaType('video', 'quicktime');
+      } else if (lowerName.endsWith('.gif')) {
+        mediaType = MediaType('image', 'gif');
+      } else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
+        mediaType = MediaType('image', 'jpeg');
+      } else {
+        mediaType = MediaType('image', 'png');
+      }
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          bytes,
+          filename: fileName.contains('.') ? fileName : '$fileName.png',
+          contentType: mediaType,
+        ),
+      );
+
+      final response = await request.send();
+      final respStr = await response.stream.bytesToString();
+      debugPrint('ApiService uploadImage status: ${response.statusCode}');
+      debugPrint('ApiService uploadImage response: $respStr');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(respStr);
+        // Ưu tiên trích xuất từ server response giống như code JS
+        if (data is Map && data['image'] is Map) {
+          final image = data['image'];
+          final String? id = (image['_id'] ?? image['id'])?.toString();
+          if (id != null) return '$baseUrl/images/$id';
+        }
+        // Fallback
+        return data['url'] ??
+            data['data']?['url'] ??
+            data['_id']?.toString() ??
+            data['id']?.toString();
+      } else {
+        debugPrint(
+          'ApiService uploadImage error: ${response.statusCode} - $respStr',
+        );
+      }
+    } catch (e) {
+      debugPrint('ApiService uploadImage exception: $e');
+    }
+    return null;
+  }
 }

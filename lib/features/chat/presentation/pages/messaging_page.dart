@@ -184,7 +184,7 @@ class _MessagingPageState extends State<MessagingPage> {
                               (user["profilePicture"] != null ||
                                   user["avatar"] != null)
                               ? NetworkImage(
-                                  ApiService.resolveAvatarUrl(
+                                  ApiService.resolveImageUrl(
                                     user["profilePicture"] ?? user["avatar"],
                                   ),
                                 )

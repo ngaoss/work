@@ -215,7 +215,7 @@ class _UserCard extends StatelessWidget {
                           future: ApiService.getAuthHeaders(),
                           builder: (context, headers) {
                             return Image.network(
-                              ApiService.resolveAvatarUrl(avatarId),
+                              ApiService.resolveImageUrl(avatarId),
                               fit: BoxFit.cover,
                               headers: headers.data,
                               errorBuilder: (ctx, err, stack) =>

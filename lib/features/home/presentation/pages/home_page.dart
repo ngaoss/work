@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/api_service.dart';
@@ -7,6 +9,7 @@ import '../../../../core/security.dart';
 import '../../../../core/widgets/full_screen_media_viewer.dart';
 import '../../../../core/widgets/video_preview.dart';
 import '../../../reels/presentation/pages/reels_page.dart';
+import '../../../../core/widgets/mention_text_controller.dart';
 
 class WorkHomePage extends StatefulWidget {
   final List<Map<String, dynamic>> reels;
@@ -14,10 +17,21 @@ class WorkHomePage extends StatefulWidget {
   const WorkHomePage({super.key, this.onNavigateToReels, required this.reels});
 
   @override
-  State<WorkHomePage> createState() => _WorkHomePageState();
+  State<WorkHomePage> createState() => WorkHomePageState();
 }
 
-class _WorkHomePageState extends State<WorkHomePage> {
+class WorkHomePageState extends State<WorkHomePage> {
+  void refresh() {
+    _fetchPosts(refresh: true);
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   List<Map<String, dynamic>> _posts = [];
   bool _isPostsLoading = false;
   bool _isMoreLoading = false;
@@ -65,13 +79,34 @@ class _WorkHomePageState extends State<WorkHomePage> {
     final List<dynamic> newPosts = result['posts'] ?? [];
     final int total = result['totalPages'] ?? 1;
 
+    final currentUserId =
+        (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
+
     if (mounted) {
       setState(() {
+        final List<Map<String, dynamic>> processed = newPosts.map((p) {
+          final Map<String, dynamic> post = Map<String, dynamic>.from(p);
+          final reactions = post['reactions'] as List?;
+          post['isLiked'] =
+              reactions?.any(
+                (r) =>
+                    (r['user']?.toString() == currentUserId ||
+                    (r['user'] is Map &&
+                        (r['user']['_id']?.toString() == currentUserId ||
+                            r['user']['id']?.toString() == currentUserId))),
+              ) ??
+              false;
+          post['likes'] = reactions?.length ?? post['likes'] ?? 0;
+          return post;
+        }).toList();
+
         if (refresh) {
-          _posts = List<Map<String, dynamic>>.from(newPosts);
+          _posts = processed;
           _currentPage = 1;
         } else {
-          _posts.addAll(List<Map<String, dynamic>>.from(newPosts));
+          _posts.addAll(processed);
           _currentPage++;
         }
         _totalPages = total;
@@ -81,18 +116,73 @@ class _WorkHomePageState extends State<WorkHomePage> {
     }
   }
 
-  void _addNewPost(String content, Color bgColor, String? mediaPath) async {
-    final success = await ApiService.createPost({
+  void _onPostAdded(
+    String content,
+    dynamic background,
+    dynamic mediaFiles, // Can be List<XFile>, XFile, or String
+  ) async {
+    final List<Map<String, dynamic>> mediaList = [];
+    final List<dynamic> filesToProcess = [];
+
+    if (mediaFiles is List) {
+      filesToProcess.addAll(mediaFiles);
+    } else if (mediaFiles != null) {
+      filesToProcess.add(mediaFiles);
+    }
+
+    for (final file in filesToProcess) {
+      if (file is XFile) {
+        final bytes = await file.readAsBytes();
+        final uploadedPath = await ApiService.uploadImage(bytes, file.name);
+        debugPrint('DEBUG: uploadedPath = $uploadedPath');
+        if (uploadedPath != null) {
+          mediaList.add({
+            "url": uploadedPath,
+            "type":
+                file.name.toLowerCase().endsWith('.mp4') ||
+                    file.name.toLowerCase().endsWith('.mov')
+                ? "video"
+                : "image",
+          });
+        }
+      } else if (file is String) {
+        mediaList.add({
+          "url": file,
+          "type":
+              file.toLowerCase().endsWith('.mp4') ||
+                  file.toLowerCase().endsWith('.mov')
+              ? "video"
+              : "image",
+        });
+      }
+    }
+
+    final Map<String, dynamic> payload = {
       "content": content,
-      "bgColor": bgColor.value.toString(),
-      "mediaPath": mediaPath,
-    });
+      "media": mediaList,
+      "status": "active",
+      "background": mediaList.isNotEmpty
+          ? null
+          : (background is Color
+                ? "#${background.value.toRadixString(16).padLeft(8, '0').substring(2)}"
+                : background.toString()),
+      "layout": "grid",
+      "privacy": "public",
+    };
+
+    debugPrint('DEBUG: Post Payload = ${jsonEncode(payload)}');
+
+    final success = await ApiService.createPost(payload);
     if (success && mounted) {
       _fetchPosts(refresh: true);
     }
   }
 
-  void _toggleLike(int index) {
+  void _toggleLike(int index) async {
+    final String? postId = (_posts[index]["id"] ?? _posts[index]["_id"])
+        ?.toString();
+    if (postId == null) return;
+
     setState(() {
       final bool wasLiked = _posts[index]["isLiked"] == true;
       _posts[index]["isLiked"] = !wasLiked;
@@ -104,29 +194,51 @@ class _WorkHomePageState extends State<WorkHomePage> {
         _posts[index]["likes"] = (currentLikes > 0) ? currentLikes - 1 : 0;
       }
     });
+
+    // Run in background
+    ApiService.togglePostLike(postId);
   }
 
-  void _addComment(
+  Future<bool> _addComment(
     int postIndex,
     String text,
     String? mediaPath, {
     String? replyTo,
-    int? parentCommentId,
+    dynamic parentCommentId,
   }) async {
-    final success = await ApiService.addComment({
-      "postId": _posts[postIndex]["id"],
-      "text": text,
-      "replyTo": replyTo,
-      "parentId": parentCommentId,
-    });
-    if (success && mounted) {
-      _fetchPosts(refresh: true);
+    final String? postId = (_posts[postIndex]["id"] ?? _posts[postIndex]["_id"])
+        ?.toString();
+    if (postId == null) {
+      debugPrint('ERROR: postId is null for index $postIndex');
+      return false;
     }
+
+    final userProfile = AuthService().userProfile.value;
+    final String? authorId = (userProfile?['_id'] ?? userProfile?['id'])
+        ?.toString();
+
+    final success = await ApiService.addComment(postId, {
+      "post": postId,
+      "reel": null,
+      "author": authorId,
+      "text": text,
+      "media": mediaPath != null ? [mediaPath] : [],
+      "parentComment": parentCommentId,
+      "status": "active",
+    });
+    return success;
   }
 
-  void _toggleCommentLike(int postIndex, int commentIndex) {
+  void _toggleCommentLike(int postIndex, int commentIndex) async {
+    final rawComments =
+        _posts[postIndex]["commentList"] ?? _posts[postIndex]["comments"] ?? [];
+    if (commentIndex < 0 || commentIndex >= rawComments.length) return;
+
+    final comment = rawComments[commentIndex];
+    final String? commentId = (comment["id"] ?? comment["_id"])?.toString();
+    if (commentId == null) return;
+
     setState(() {
-      final comment = _posts[postIndex]["commentList"][commentIndex];
       final bool wasLiked = comment["isLiked"] == true;
       comment["isLiked"] = !wasLiked;
       int currentLikes = int.tryParse(comment["likes"]?.toString() ?? "0") ?? 0;
@@ -136,13 +248,16 @@ class _WorkHomePageState extends State<WorkHomePage> {
         comment["likes"] = (currentLikes > 0) ? currentLikes - 1 : 0;
       }
     });
+
+    // Run in background
+    ApiService.toggleCommentLike(commentId);
   }
 
   void _toggleReplyLike(int postIndex, int commentIndex, int replyIndex) {
     setState(() {
-      final reply =
-          (_posts[postIndex]["commentList"][commentIndex]["replies"]
-              as List<Map<String, dynamic>>)[replyIndex];
+      final reply = List<Map<String, dynamic>>.from(
+        _posts[postIndex]["commentList"][commentIndex]["replies"] ?? [],
+      )[replyIndex];
       final bool wasLiked = reply["isLiked"] == true;
       reply["isLiked"] = !wasLiked;
       int currentLikes = int.tryParse(reply["likes"]?.toString() ?? "0") ?? 0;
@@ -154,13 +269,20 @@ class _WorkHomePageState extends State<WorkHomePage> {
     });
   }
 
-  void _deletePost(int index) {
-    setState(() {
-      _posts.removeAt(index);
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Đã xóa bài viết")));
+  void _deletePost(int index) async {
+    final String? postId = (_posts[index]["id"] ?? _posts[index]["_id"])
+        ?.toString();
+    if (postId != null) {
+      final success = await ApiService.deletePost(postId);
+      if (success && mounted) {
+        setState(() {
+          _posts.removeAt(index);
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Đã xóa bài viết")));
+      }
+    }
   }
 
   void _showCreateReelDialog() {
@@ -197,7 +319,7 @@ class _WorkHomePageState extends State<WorkHomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _HeroBanner(),
-                _StatusInput(onPostAdded: _addNewPost),
+                _StatusInput(onPostAdded: _onPostAdded),
                 _MomentsSection(
                   onAddTap: _showCreateReelDialog,
                   onNavigateToReels: widget.onNavigateToReels,
@@ -296,7 +418,7 @@ class _WorkHomePageState extends State<WorkHomePage> {
 }
 
 class _StatusInput extends StatelessWidget {
-  final Function(String, Color, String?) onPostAdded;
+  final Function(String, dynamic, dynamic) onPostAdded;
   const _StatusInput({required this.onPostAdded});
 
   @override
@@ -317,7 +439,7 @@ class _StatusInput extends StatelessWidget {
                     backgroundColor: Colors.blueGrey.shade100,
                     backgroundImage: avatarId != null
                         ? NetworkImage(
-                            ApiService.resolveAvatarUrl(avatarId),
+                            ApiService.resolveImageUrl(avatarId),
                             headers: headers.data,
                           )
                         : null,
@@ -382,18 +504,18 @@ class _StatusInput extends StatelessWidget {
 }
 
 class _CreatePostSheet extends StatefulWidget {
-  final Function(String, Color, String?) onPost;
+  final Function(String, dynamic, dynamic) onPost;
   const _CreatePostSheet({required this.onPost});
   @override
   State<_CreatePostSheet> createState() => _CreatePostSheetState();
 }
 
 class _CreatePostSheetState extends State<_CreatePostSheet> {
-  Color _selectedBgColor = const Color(0xFF3B82F6);
+  dynamic _selectedBackground; // null means no background
   final TextEditingController _contentController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final FocusNode _focusNode = FocusNode();
-  String? _mediaPath;
+  List<XFile> _selectedFiles = [];
   bool _showEmoji = false;
 
   @override
@@ -412,13 +534,20 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   }
 
   Future<void> _pickMedia(ImageSource source) async {
-    final XFile? file = await _picker.pickImage(source: source);
-    if (file != null) setState(() => _mediaPath = file.path);
+    if (source == ImageSource.gallery) {
+      final List<XFile> files = await _picker.pickMultiImage();
+      if (files.isNotEmpty) {
+        setState(() => _selectedFiles.addAll(files));
+      }
+    } else {
+      final XFile? file = await _picker.pickImage(source: source);
+      if (file != null) setState(() => _selectedFiles.add(file));
+    }
   }
 
   Future<void> _pickVideo() async {
     final XFile? file = await _picker.pickVideo(source: ImageSource.gallery);
-    if (file != null) setState(() => _mediaPath = file.path);
+    if (file != null) setState(() => _selectedFiles.add(file));
   }
 
   void _insertEmoji(String emoji) {
@@ -483,19 +612,25 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                   _AuthorHeader(),
                   const SizedBox(height: 16),
                   _PostBackgroundSelector(
-                    selectedColor: _selectedBgColor,
-                    onSelect: (color) =>
-                        setState(() => _selectedBgColor = color),
+                    selectedBackground: _selectedBackground,
+                    onSelect: (bg) => setState(() => _selectedBackground = bg),
                   ),
                   const SizedBox(height: 16),
                   Stack(
                     children: [
                       Container(
                         height: 250,
-                        decoration: BoxDecoration(
-                          color: _selectedBgColor,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
+                        decoration: _selectedBackground != null
+                            ? PostBackgroundHelper.getDecoration(
+                                _selectedBackground,
+                              ).copyWith(
+                                borderRadius: BorderRadius.circular(16),
+                              )
+                            : BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
                         padding: const EdgeInsets.all(24),
                         alignment: Alignment.center,
                         child: TextField(
@@ -503,40 +638,110 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                           focusNode: _focusNode,
                           maxLines: null,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: _selectedBackground != null
+                                ? Colors.white
+                                : Colors.black87,
                             fontSize: 24,
                             fontWeight: FontWeight.w900,
                           ),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             hintText: "Bạn đang nghĩ gì?",
                             border: InputBorder.none,
-                            hintStyle: TextStyle(color: Colors.white70),
+                            hintStyle: TextStyle(
+                              color: _selectedBackground != null
+                                  ? Colors.white70
+                                  : Colors.grey,
+                            ),
                           ),
                         ),
                       ),
-                      if (_mediaPath != null)
+                      if (_selectedFiles.isNotEmpty)
                         Positioned(
                           bottom: 12,
+                          left: 12,
                           right: 12,
-                          child: Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: Colors.black26,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child:
-                                  _mediaPath!.toLowerCase().endsWith('.mp4') ||
-                                      _mediaPath!.toLowerCase().endsWith('.mov')
-                                  ? VideoPreview(file: File(_mediaPath!))
-                                  : Image.file(
-                                      File(_mediaPath!),
-                                      fit: BoxFit.cover,
-                                    ),
+                          child: SizedBox(
+                            height: 100,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _selectedFiles.length,
+                              itemBuilder: (context, idx) {
+                                final file = _selectedFiles[idx];
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 12),
+                                  child: Stack(
+                                    children: [
+                                      Container(
+                                        width: 100,
+                                        height: 100,
+                                        decoration: BoxDecoration(
+                                          color: Colors.black26,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          child:
+                                              file.name.toLowerCase().endsWith(
+                                                    '.mp4',
+                                                  ) ||
+                                                  file.name
+                                                      .toLowerCase()
+                                                      .endsWith('.mov')
+                                              ? (kIsWeb
+                                                    ? const Center(
+                                                        child: Icon(
+                                                          Icons.videocam,
+                                                          color: Colors.white,
+                                                        ),
+                                                      )
+                                                    : VideoPreview(
+                                                        file: File(file.path),
+                                                      ))
+                                              : (kIsWeb
+                                                    ? Image.network(
+                                                        file.path,
+                                                        fit: BoxFit.cover,
+                                                      )
+                                                    : Image.file(
+                                                        File(file.path),
+                                                        fit: BoxFit.cover,
+                                                      )),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        top: 4,
+                                        right: 4,
+                                        child: GestureDetector(
+                                          onTap: () => setState(() {
+                                            _selectedFiles.removeAt(idx);
+                                          }),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: const BoxDecoration(
+                                              color: Colors.black54,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.close,
+                                              size: 14,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -563,11 +768,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
               child: ElevatedButton(
                 onPressed: () {
                   if (_contentController.text.isNotEmpty ||
-                      _mediaPath != null) {
+                      _selectedFiles.isNotEmpty) {
                     widget.onPost(
                       _contentController.text,
-                      _selectedBgColor,
-                      _mediaPath,
+                      _selectedBackground,
+                      _selectedFiles,
                     );
                     Navigator.pop(context);
                   }
@@ -679,10 +884,15 @@ class _PostCard extends StatefulWidget {
   final int postIndex;
   final VoidCallback onLike;
   final VoidCallback onDelete;
-  final Function(String, String?, {String? replyTo, int? parentCommentId})
-  onComment;
   final Function(int) onToggleCommentLike;
   final Function(int, int) onToggleReplyLike;
+  final Future<bool> Function(
+    String,
+    String?, {
+    String? replyTo,
+    dynamic parentCommentId,
+  })
+  onComment;
   const _PostCard({
     super.key,
     required this.post,
@@ -700,12 +910,42 @@ class _PostCard extends StatefulWidget {
 
 class _PostCardState extends State<_PostCard> {
   String? _isReplyingTo;
-  int? _replyingToCommentId;
+  dynamic _replyingToCommentId;
   bool _isExpanded = false;
+  List<dynamic> _localComments = [];
+  final FocusNode _commentFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize with whatever comments (if any) came from the post object
+    final raw = widget.post["commentList"] ?? widget.post["comments"] ?? [];
+    _localComments = List.from(raw);
+    _fetchComments();
+  }
+
+  @override
+  void dispose() {
+    _commentFocusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchComments() async {
+    final String? postId = (widget.post["id"] ?? widget.post["_id"])
+        ?.toString();
+    if (postId == null || postId.isEmpty) return;
+
+    final fetched = await ApiService.getComments(postId);
+    if (mounted) {
+      setState(() {
+        _localComments = fetched;
+      });
+    }
+  }
 
   void _showFullImage(String path) {
-    final bool isNet = path.startsWith('http');
-    final String resolved = isNet ? ApiService.resolveUrl(path) : path;
+    final bool isNet = path.startsWith('http') || !File(path).existsSync();
+    final String resolved = isNet ? ApiService.resolveImageUrl(path) : path;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -717,19 +957,17 @@ class _PostCardState extends State<_PostCard> {
 
   @override
   Widget build(BuildContext context) {
-    final List<dynamic> commentsRaw =
-        widget.post["commentList"] ??
-        widget.post["comments"] ??
-        (widget.post["commentsCount"] != null ? [] : []);
     final List<Map<String, dynamic>> comments = List<Map<String, dynamic>>.from(
-      commentsRaw,
+      _localComments,
     );
     final int commentsCount =
         int.tryParse(widget.post["commentsCount"]?.toString() ?? "0") ??
         comments.length;
-    final int likesCount = widget.post["reactions"] is List
-        ? (widget.post["reactions"] as List).length
-        : (int.tryParse(widget.post["likes"]?.toString() ?? "0") ?? 0);
+    final int likesCount =
+        int.tryParse(widget.post["likes"]?.toString() ?? "0") ??
+        (widget.post["reactions"] is List
+            ? (widget.post["reactions"] as List).length
+            : 0);
     final List<dynamic> mediaItems = widget.post["media"] is List
         ? widget.post["media"]
         : (widget.post["mediaPath"] != null
@@ -849,21 +1087,9 @@ class _PostCardState extends State<_PostCard> {
             Container(
               width: double.infinity,
               height: 250,
-              color: widget.post["bgColor"] is String
-                  ? Color(
-                      int.tryParse(widget.post["bgColor"].toString()) ??
-                          0xFF3B82F6,
-                    )
-                  : (widget.post["bgColor"] is int
-                        ? Color(widget.post["bgColor"] as int)
-                        : (widget.post["background"] != null
-                              ? Color(
-                                  int.tryParse(
-                                        widget.post["background"].toString(),
-                                      ) ??
-                                      0xFF3B82F6,
-                                )
-                              : const Color(0xFF3B82F6))),
+              decoration: PostBackgroundHelper.getDecoration(
+                widget.post["bgColor"] ?? widget.post["background"],
+              ),
               alignment: Alignment.center,
               padding: const EdgeInsets.all(32),
               child: Text(
@@ -888,6 +1114,7 @@ class _PostCardState extends State<_PostCard> {
           _PostActions(
             isLiked: widget.post["isLiked"] == true,
             onLike: widget.onLike,
+            onCommentTap: () => _commentFocusNode.requestFocus(),
           ),
           const Divider(height: 1),
 
@@ -912,21 +1139,29 @@ class _PostCardState extends State<_PostCard> {
                 children: comments.asMap().entries.map((e) {
                   final commentIdx = e.key;
                   final comment = e.value;
-                  final replies =
-                      (comment["replies"] as List<Map<String, dynamic>>?) ?? [];
+                  final replies = List<Map<String, dynamic>>.from(
+                    comment["replies"] ?? [],
+                  );
                   return _CommentTile(
                     comment: comment,
                     onLike: () => widget.onToggleCommentLike(commentIdx),
                     onReply: () => setState(() {
-                      _isReplyingTo = comment["author"];
-                      _replyingToCommentId = comment["id"];
+                      _isReplyingTo =
+                          (comment["author"] is Map
+                                  ? (comment["author"]["fullName"] ??
+                                        comment["author"]["name"])
+                                  : comment["author"])
+                              ?.toString();
+                      _replyingToCommentId = (comment["id"] ?? comment["_id"])
+                          ?.toString();
                     }),
                     replies: replies,
                     onReplyLike: (replyIdx) =>
                         widget.onToggleReplyLike(commentIdx, replyIdx),
-                    onReplyReply: (replyAuthor) => setState(() {
-                      _isReplyingTo = replyAuthor.toString();
-                      _replyingToCommentId = comment["id"];
+                    onReplyReply: (authorName) => setState(() {
+                      _isReplyingTo = authorName;
+                      _replyingToCommentId = (comment["id"] ?? comment["_id"])
+                          ?.toString();
                     }),
                   );
                 }).toList(),
@@ -934,13 +1169,36 @@ class _PostCardState extends State<_PostCard> {
             ),
 
           _QuickCommentInput(
-            onSubmit: (text, media, {replyTo, parentCommentId}) =>
-                widget.onComment(
-                  text,
-                  media,
-                  replyTo: replyTo,
-                  parentCommentId: parentCommentId,
-                ),
+            focusNode: _commentFocusNode,
+            onSubmit: (text, media, {replyTo, parentCommentId}) async {
+              // Optimistic UI Update
+              final tempComment = {
+                "author": AuthService().userProfile.value,
+                "text": text,
+                "time": "Vừa xong",
+                "likes": 0,
+                "mediaPath": media,
+                "id": "temp_${DateTime.now().millisecondsSinceEpoch}",
+              };
+
+              setState(() {
+                _localComments = [tempComment, ..._localComments];
+              });
+
+              final success = await widget.onComment(
+                text,
+                media,
+                replyTo: replyTo,
+                parentCommentId: parentCommentId,
+              );
+
+              if (success) {
+                _fetchComments();
+              } else {
+                // Rollback if failed
+                _fetchComments();
+              }
+            },
             replyTo: _isReplyingTo,
             replyingToCommentId: _replyingToCommentId,
             onCancelReply: () => setState(() {
@@ -1027,11 +1285,11 @@ class _PostCardState extends State<_PostCard> {
           tag: "post_${widget.postIndex}_$url",
           child: isVideo
               ? (isNet
-                    ? VideoPreview(videoUrl: ApiService.resolveUrl(url))
+                    ? VideoPreview(videoUrl: ApiService.resolveImageUrl(url))
                     : VideoPreview(file: File(url)))
               : (isNet
                     ? CachedNetworkImage(
-                        imageUrl: ApiService.resolveUrl(url),
+                        imageUrl: ApiService.resolveImageUrl(url),
                         fit: single ? BoxFit.fitWidth : BoxFit.cover,
                         alignment: Alignment.topCenter,
                         placeholder: (context, url) =>
@@ -1091,7 +1349,7 @@ class _CommentTile extends StatelessWidget {
                 backgroundColor: Colors.blueGrey.shade100,
                 backgroundImage: avatarId != null
                     ? NetworkImage(
-                        ApiService.resolveAvatarUrl(avatarId),
+                        ApiService.resolveImageUrl(avatarId),
                         headers: headers.data,
                       )
                     : null,
@@ -1253,10 +1511,18 @@ class _CommentTile extends StatelessWidget {
                                                 : 0,
                                             isLiked: reply["isLiked"] == true,
                                             onLike: () => onReplyLike(ri),
-                                            onReply: () => onReplyReply(
-                                              reply["author"]?.toString() ??
-                                                  "Người dùng",
-                                            ),
+                                            onReply: () {
+                                              final dynamic author =
+                                                  reply["author"];
+                                              final String name =
+                                                  (author is Map
+                                                          ? (author["fullName"] ??
+                                                                author["name"])
+                                                          : author)
+                                                      ?.toString() ??
+                                                  "Người dùng";
+                                              onReplyReply(name);
+                                            },
                                           ),
                                         ],
                                       ),
@@ -1296,9 +1562,15 @@ class _CommentBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            comment["author"]?.toString() ?? "Người dùng",
+            (comment["author"] is Map
+                        ? (comment["author"]["fullName"] ??
+                              comment["author"]["name"])
+                        : comment["author"])
+                    ?.toString() ??
+                "Người dùng",
             style: TextStyle(
               fontWeight: FontWeight.bold,
+              color: Colors.black,
               fontSize: small ? 11 : 12,
             ),
           ),
@@ -1374,31 +1646,34 @@ class _CommentActions extends StatelessWidget {
 }
 
 class _QuickCommentInput extends StatefulWidget {
-  final Function(String, String?, {String? replyTo, int? parentCommentId})
+  final Function(String, String?, {String? replyTo, dynamic parentCommentId})
   onSubmit;
   final String? replyTo;
-  final int? replyingToCommentId;
+  final dynamic replyingToCommentId;
   final VoidCallback onCancelReply;
+  final FocusNode? focusNode;
   const _QuickCommentInput({
     required this.onSubmit,
     this.replyTo,
     this.replyingToCommentId,
     required this.onCancelReply,
+    this.focusNode,
   });
   @override
   State<_QuickCommentInput> createState() => _QuickCommentInputState();
 }
 
 class _QuickCommentInputState extends State<_QuickCommentInput> {
-  final TextEditingController _controller = TextEditingController();
+  final TextEditingController _controller = MentionTextEditingController();
   final ImagePicker _picker = ImagePicker();
-  final FocusNode _focusNode = FocusNode();
+  late final FocusNode _focusNode;
   String? _tempImagePath;
   bool _showEmoji = false;
 
   @override
   void initState() {
     super.initState();
+    _focusNode = widget.focusNode ?? FocusNode();
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) setState(() => _showEmoji = false);
     });
@@ -1407,7 +1682,9 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
   @override
   void dispose() {
     _controller.dispose();
-    _focusNode.dispose();
+    if (widget.focusNode == null) {
+      _focusNode.dispose();
+    }
     super.dispose();
   }
 
@@ -1502,10 +1779,29 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: Colors.blueGrey.shade100,
-                child: const Icon(Icons.person, size: 18),
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: AuthService().userProfile,
+                builder: (context, profile, _) {
+                  final String? avatarId = profile?['profilePicture'];
+                  return FutureBuilder<Map<String, String>>(
+                    future: ApiService.getAuthHeaders(),
+                    builder: (context, headers) {
+                      return CircleAvatar(
+                        radius: 16,
+                        backgroundColor: Colors.blueGrey.shade100,
+                        backgroundImage: avatarId != null
+                            ? NetworkImage(
+                                ApiService.resolveImageUrl(avatarId),
+                                headers: headers.data,
+                              )
+                            : null,
+                        child: avatarId == null
+                            ? const Icon(Icons.person, size: 20)
+                            : null,
+                      );
+                    },
+                  );
+                },
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1638,7 +1934,7 @@ class _PostHeader extends StatelessWidget {
                 backgroundColor: Colors.blueGrey.shade100,
                 backgroundImage: avatar != null
                     ? NetworkImage(
-                        ApiService.resolveAvatarUrl(avatar),
+                        ApiService.resolveImageUrl(avatar),
                         headers: headers.data,
                       )
                     : null,
@@ -1754,7 +2050,12 @@ class _PostEngagement extends StatelessWidget {
 class _PostActions extends StatelessWidget {
   final bool isLiked;
   final VoidCallback onLike;
-  const _PostActions({required this.isLiked, required this.onLike});
+  final VoidCallback onCommentTap;
+  const _PostActions({
+    required this.isLiked,
+    required this.onLike,
+    required this.onCommentTap,
+  });
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -1771,7 +2072,7 @@ class _PostActions extends StatelessWidget {
             icon: Icons.chat_bubble_outline,
             label: "BÌNH LUẬN",
             color: Colors.blueGrey,
-            onTap: () {},
+            onTap: onCommentTap,
           ),
           _ActionButton(
             icon: Icons.share_outlined,
@@ -1908,7 +2209,7 @@ class _AuthorHeader extends StatelessWidget {
                   backgroundColor: Colors.blueGrey.shade100,
                   backgroundImage: avatarId != null
                       ? NetworkImage(
-                          ApiService.resolveAvatarUrl(avatarId),
+                          ApiService.resolveImageUrl(avatarId),
                           headers: headers.data,
                         )
                       : null,
@@ -1956,20 +2257,19 @@ class _AuthorHeader extends StatelessWidget {
 }
 
 class _PostBackgroundSelector extends StatelessWidget {
-  final Color selectedColor;
-  final Function(Color) onSelect;
-  final List<Color> colors = [
-    const Color(0xFF3B82F6),
-    const Color(0xFFEF4444),
-    const Color(0xFF10B981),
-    const Color(0xFF8B5CF6),
-    const Color(0xFFF59E0B),
-    const Color(0xFF0F172A),
+  final dynamic selectedBackground;
+  final Function(dynamic) onSelect;
+
+  final List<dynamic> backgrounds = [
+    null, // No background
+    ...PostBackgroundHelper.backgrounds,
   ];
+
   _PostBackgroundSelector({
-    required this.selectedColor,
+    required this.selectedBackground,
     required this.onSelect,
   });
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1988,25 +2288,47 @@ class _PostBackgroundSelector extends StatelessWidget {
           height: 32,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: colors.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, index) => GestureDetector(
-              onTap: () => onSelect(colors[index]),
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: colors[index],
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: selectedColor == colors[index]
-                        ? Colors.blue
-                        : Colors.grey.shade300,
-                    width: 2,
-                  ),
+            itemCount: backgrounds.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final bg = backgrounds[index];
+              return GestureDetector(
+                onTap: () => onSelect(bg),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: bg == null
+                      ? BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: selectedBackground == null
+                                ? Colors.blue
+                                : Colors.grey.shade300,
+                            width: 2,
+                          ),
+                        )
+                      : PostBackgroundHelper.getDecoration(bg).copyWith(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: selectedBackground == bg
+                                ? Colors.blue
+                                : Colors.grey.shade300,
+                            width: 2,
+                          ),
+                        ),
+                  child: bg == null
+                      ? const Center(
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                        )
+                      : null,
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
@@ -2210,18 +2532,33 @@ class _MomentCard extends StatelessWidget {
                     Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.grey.shade800,
-                          ),
-                          child: const Icon(
-                            Icons.person,
-                            color: Colors.white,
-                            size: 28,
-                          ),
+                        ValueListenableBuilder<Map<String, dynamic>?>(
+                          valueListenable: AuthService().userProfile,
+                          builder: (context, profile, _) {
+                            final String? avatarId = profile?['profilePicture'];
+                            return FutureBuilder<Map<String, String>>(
+                              future: ApiService.getAuthHeaders(),
+                              builder: (context, headers) {
+                                return CircleAvatar(
+                                  radius: 22,
+                                  backgroundColor: Colors.grey.shade700,
+                                  backgroundImage: avatarId != null
+                                      ? NetworkImage(
+                                          ApiService.resolveImageUrl(avatarId),
+                                          headers: headers.data,
+                                        )
+                                      : null,
+                                  child: avatarId == null
+                                      ? const Icon(
+                                          Icons.person,
+                                          color: Colors.white,
+                                          size: 26,
+                                        )
+                                      : null,
+                                );
+                              },
+                            );
+                          },
                         ),
                         Positioned(
                           right: -4,
@@ -2344,7 +2681,7 @@ class _MomentCard extends StatelessWidget {
                               ),
                               child: ClipOval(
                                 child: CachedNetworkImage(
-                                  imageUrl: ApiService.resolveAvatarUrl(
+                                  imageUrl: ApiService.resolveImageUrl(
                                     authorAvatar!,
                                   ),
                                   httpHeaders: headers.data,
@@ -2450,4 +2787,94 @@ class _DashedBorderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class PostBackgroundHelper {
+  static final List<String> backgrounds = [
+    'linear-gradient(45deg, rgb(240, 147, 251) 0%, rgb(245, 87, 108) 100%)',
+    'linear-gradient(to right, rgb(79, 172, 254) 0%, rgb(0, 242, 254) 100%)',
+    'linear-gradient(120deg, rgb(132, 250, 176) 0%, rgb(143, 211, 244) 100%)',
+    'linear-gradient(to top, rgb(207, 217, 223) 0%, rgb(226, 235, 240) 100%)',
+    'rgb(26, 26, 26)',
+    'rgb(37, 99, 235)',
+    'linear-gradient(to right, rgb(250, 112, 154) 0%, rgb(254, 225, 64) 100%)',
+  ];
+
+  static BoxDecoration getDecoration(dynamic bg) {
+    if (bg == null || bg == 'null' || bg == '') {
+      return const BoxDecoration(color: Color(0xFF3B82F6));
+    }
+
+    if (bg is Color) return BoxDecoration(color: bg);
+    if (bg is Gradient) return BoxDecoration(gradient: bg);
+
+    final String b = bg.toString();
+
+    // Mapping known strings to Flutter objects
+    if (b.contains('240, 147, 251') && b.contains('245, 87, 108')) {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomLeft,
+          end: Alignment.topRight,
+          colors: [Color(0xFFF093FB), Color(0xFFF5576C)],
+        ),
+      );
+    }
+    if (b.contains('79, 172, 254') && b.contains('0, 242, 254')) {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFF4FACFE), Color(0xFF00F2FE)],
+        ),
+      );
+    }
+    if (b.contains('132, 250, 176') && b.contains('143, 211, 244')) {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment(-0.5, -0.86),
+          end: Alignment(0.5, 0.86),
+          colors: [Color(0xFF84FAB0), Color(0xFF8FD3F4)],
+        ),
+      );
+    }
+    if (b.contains('207, 217, 223') && b.contains('226, 235, 240')) {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Color(0xFFCFD9DF), Color(0xFFE2EBF0)],
+        ),
+      );
+    }
+    if (b.contains('26, 26, 26')) {
+      return const BoxDecoration(color: Color(0xFF1A1A1A));
+    }
+    if (b.contains('37, 99, 235')) {
+      return const BoxDecoration(color: Color(0xFF2563EB));
+    }
+    if (b.contains('250, 112, 154') && b.contains('254, 225, 64')) {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFFA709A), Color(0xFFFEE140)],
+        ),
+      );
+    }
+
+    // Default or Hex fallback
+    if (b.startsWith('#')) {
+      try {
+        final String hex = b.replaceFirst('#', '');
+        if (hex.length == 6) {
+          return BoxDecoration(color: Color(int.parse('FF$hex', radix: 16)));
+        } else if (hex.length == 8) {
+          return BoxDecoration(color: Color(int.parse(hex, radix: 16)));
+        }
+      } catch (_) {}
+    }
+
+    return const BoxDecoration(color: Color(0xFF3B82F6));
+  }
 }

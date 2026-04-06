@@ -79,132 +79,140 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "CÀI ĐẶT HỒ SƠ",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 20,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.close,
-                      size: 20,
-                      color: Colors.blueGrey,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildLabel("SỐ ĐIỆN THOẠI"),
-                  _buildTextField(
-                    _phoneController,
-                    "Nhập số điện thoại",
-                    TextInputType.phone,
+                  const Text(
+                    "CÀI ĐẶT HỒ SƠ",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                      color: Color(0xFF1E293B),
+                    ),
                   ),
-
-                  const SizedBox(height: 20),
-                  _buildLabel("NGÀY SINH"),
-                  GestureDetector(
-                    onTap: _selectDate,
-                    child: AbsorbPointer(
-                      child: _buildTextField(
-                        _birthController,
-                        "mm/dd/yyyy",
-                        TextInputType.datetime,
-                        suffixIcon: const Icon(
-                          Icons.calendar_today_outlined,
-                          size: 18,
-                        ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        size: 20,
+                        color: Colors.blueGrey,
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 20),
-                  _buildLabel("GIỚI TÍNH"),
-                  _buildDropdown(
-                    ["Nam", "Nữ"],
-                    _gender,
-                    (val) => setState(() => _gender = val!),
-                  ),
-
-                  const SizedBox(height: 20),
-                  _buildLabel("VỊ TRÍ CÔNG VIỆC"),
-                  _buildTextField(
-                    _jobController,
-                    "Nhập vị trí công việc",
-                    TextInputType.text,
-                  ),
-
-                  const SizedBox(height: 40),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        widget.onUpdate({
-                          "phone": _phoneController.text,
-                          "birth": _birthController.text,
-                          "gender": _gender,
-                          "job": _jobController.text,
-                        });
-                        Navigator.pop(context);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3B82F6),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      child: const Text(
-                        "CẬP NHẬT NGAY",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.0,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
                 ],
               ),
             ),
-          ),
-        ],
+            const Divider(height: 1),
+
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel("SỐ ĐIỆN THOẠI"),
+                    _buildTextField(
+                      _phoneController,
+                      "Nhập số điện thoại",
+                      TextInputType.phone,
+                    ),
+
+                    const SizedBox(height: 20),
+                    _buildLabel("NGÀY SINH"),
+                    GestureDetector(
+                      onTap: _selectDate,
+                      child: AbsorbPointer(
+                        child: _buildTextField(
+                          _birthController,
+                          "mm/dd/yyyy",
+                          TextInputType.datetime,
+                          suffixIcon: const Icon(
+                            Icons.calendar_today_outlined,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                    _buildLabel("GIỚI TÍNH"),
+                    _buildDropdown(
+                      ["Nam", "Nữ"],
+                      _gender,
+                      (val) => setState(() => _gender = val!),
+                    ),
+
+                    const SizedBox(height: 20),
+                    _buildLabel("VỊ TRÍ CÔNG VIỆC"),
+                    _buildTextField(
+                      _jobController,
+                      "Nhập vị trí công việc",
+                      TextInputType.text,
+                    ),
+
+                    const SizedBox(height: 40),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          widget.onUpdate({
+                            "phone": _phoneController.text,
+                            "birth": _birthController.text,
+                            "gender": _gender,
+                            "job": _jobController.text,
+                          });
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3B82F6),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: const Text(
+                          "CẬP NHẬT NGAY",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.0,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

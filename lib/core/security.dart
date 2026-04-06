@@ -58,6 +58,9 @@ class AuthService {
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('auth_token', token.toString());
+        await prefs.setString('saved_email', email);
+        await prefs.setString('saved_password', password);
+
         if (user != null && user is Map) {
           await prefs.setString('user_profile', jsonEncode(user));
           userProfile.value = user as Map<String, dynamic>;

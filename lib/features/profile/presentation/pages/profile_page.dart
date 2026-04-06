@@ -28,6 +28,8 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     if (widget.user != null) {
       _applyData(widget.user!);
+      // Vẫn fetch thêm để cập nhật dữ liệu mới nhất nếu có thay đổi từ web
+      _fetchProfile();
     } else {
       _fetchProfile();
     }
@@ -41,29 +43,47 @@ class _ProfilePageState extends State<ProfilePage> {
     _gender = data["gender"] ?? "Nam";
     // Birth: show "Chưa đặt" if null or empty
     final rawBirth =
-        data["dateOfBirth"] ?? data["birth"] ?? data["birthday"] ?? data["dob"];
-    _birth = (rawBirth == null || rawBirth.toString().isEmpty)
-        ? "Chưa đặt"
-        : rawBirth.toString();
+        data["dateOfBirth"] ??
+        data["dateofbirth"] ??
+        data["birthDate"] ??
+        data["birth_date"] ??
+        data["birth"] ??
+        data["birthday"] ??
+        data["dob"];
+    if (rawBirth != null && rawBirth.toString().isNotEmpty) {
+      try {
+        final dt = DateTime.parse(rawBirth.toString()).toLocal();
+        _birth =
+            "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
+      } catch (e) {
+        _birth = rawBirth.toString();
+      }
+    } else {
+      _birth = "Chưa đặt";
+    }
     // Employee ID: not available from API yet → N/A
     _employeeId = data["employeeId"] ?? data["employee_id"] ?? "N/A";
     _email = data["email"] ?? data["emailAddress"] ?? data["user_email"] ?? "";
     // profilePicture may be a MongoDB ObjectId → resolve to proper URL
     final picId = data["profilePicture"] ?? data["avatar"];
-    _avatarUrl = picId != null ? ApiService.resolveAvatarUrl(picId) : null;
+    _avatarUrl = picId != null ? ApiService.resolveImageUrl(picId) : null;
     _isLoading = false;
   }
 
   Future<void> _fetchProfile() async {
-    // 1. Load from cached login data immediately (no loading spinner needed)
-    final cached = AuthService().userProfile.value;
+    // 1. Load from cached data if available
+    final cached = (widget.user != null)
+        ? widget.user
+        : AuthService().userProfile.value;
     if (cached != null && mounted) {
       setState(() => _applyData(cached));
     } else {
       setState(() => _isLoading = true);
     }
 
-    // 2. Refresh from API in background
+    // 2. Refresh from API
+    // If we have widget.user, we might want to fetch a specific user profile
+    // But for now, we'll refresh 'getMe' to ensure global state is fresh
     final data = await ApiService.getMe();
     if (data != null && mounted) {
       setState(() => _applyData(data));
@@ -87,7 +107,15 @@ class _ProfilePageState extends State<ProfilePage> {
           "name": _name,
         },
         onUpdate: (newData) async {
-          final success = await ApiService.updateProfile(newData);
+          final payload = {
+            "email": _email,
+            "fullName": _name,
+            "phoneNumber": newData["phone"],
+            "dateOfBirth": newData["birth"],
+            "gender": newData["gender"],
+            "position": newData["job"],
+          };
+          final success = await ApiService.updateProfile(payload);
           if (success && mounted) {
             _fetchProfile();
           }
@@ -163,7 +191,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                       return ClipRRect(
                                         borderRadius: BorderRadius.circular(28),
                                         child: Image.network(
-                                          ApiService.resolveAvatarUrl(
+                                          ApiService.resolveImageUrl(
                                             _avatarUrl,
                                           ),
                                           fit: BoxFit.cover,
