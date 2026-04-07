@@ -13,11 +13,15 @@ class ReelsPage extends StatefulWidget {
   final int initialIndex;
   final VoidCallback? onClose;
 
+  final VoidCallback? onRefresh;
+  final List<dynamic>? reels;
   const ReelsPage({
     super.key,
     this.isActive = true,
     this.initialIndex = 0,
     this.onClose,
+    this.onRefresh,
+    this.reels,
   });
 
   @override
@@ -35,6 +39,12 @@ class _ReelsPageState extends State<ReelsPage> {
   void initState() {
     super.initState();
     _currentPage = widget.initialIndex;
+
+    // Initialize with passed reels if available
+    if (widget.reels != null && widget.reels!.isNotEmpty) {
+      _reels = List<dynamic>.from(widget.reels!);
+    }
+
     _pageController = PageController(initialPage: widget.initialIndex);
     _fetchReels();
   }
@@ -90,6 +100,7 @@ class _ReelsPageState extends State<ReelsPage> {
           final success = await ApiService.createReel(reel);
           if (success) {
             _fetchReels();
+            widget.onRefresh?.call();
           }
         },
       ),
@@ -460,19 +471,19 @@ class _ReelItemState extends State<_ReelItem> {
                 style: const TextStyle(color: Colors.white, fontSize: 13),
               ),
               const SizedBox(height: 12),
-              // Music Info Marquee
-              _MusicMarquee(
-                title: (widget.reel['music'] is Map)
-                    ? (widget.reel['music']['title'] ??
-                          widget.reel['music']['name'] ??
-                          'Âm thanh gốc')
-                    : 'Âm thanh gốc',
-                artist: (widget.reel['music'] is Map)
-                    ? (widget.reel['music']['artist'] ??
-                          widget.reel['music']['singer'] ??
-                          authorName)
-                    : authorName,
-              ),
+              if (widget.reel['music'] != null)
+                _MusicMarquee(
+                  title: (widget.reel['music'] is Map)
+                      ? (widget.reel['music']['title'] ??
+                            widget.reel['music']['name'] ??
+                            'Âm thanh gốc')
+                      : 'Âm thanh gốc',
+                  artist: (widget.reel['music'] is Map)
+                      ? (widget.reel['music']['artist'] ??
+                            widget.reel['music']['singer'] ??
+                            authorName)
+                      : authorName,
+                ),
             ],
           ),
         ),
@@ -729,6 +740,7 @@ class _ReelItemState extends State<_ReelItem> {
     final TextEditingController ctrl = MentionTextEditingController();
     final FocusNode commentFocusNode = FocusNode();
     String? replyingToName;
+    String? replyingToId;
 
     showModalBottomSheet(
       context: context,
@@ -825,237 +837,419 @@ class _ReelItemState extends State<_ReelItem> {
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 16),
-                              child: Row(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  FutureBuilder<Map<String, String>>(
-                                    future: ApiService.getAuthHeaders(),
-                                    builder: (context, headers) {
-                                      return CircleAvatar(
-                                        radius: 18,
-                                        backgroundColor:
-                                            Colors.blueGrey.shade100,
-                                        backgroundImage: avatarPic != null
-                                            ? NetworkImage(
-                                                ApiService.resolveImageUrl(
-                                                  avatarPic,
-                                                ),
-                                                headers: headers.data,
-                                              )
-                                            : null,
-                                        child: avatarPic == null
-                                            ? Text(
-                                                authorName.isNotEmpty
-                                                    ? authorName[0]
-                                                          .toUpperCase()
-                                                    : 'U',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              )
-                                            : null,
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        // Comment bubble with reactions
-                                        Stack(
-                                          clipBehavior: Clip.none,
-                                          children: [
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 8,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFF1F5F9),
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    authorName,
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      FutureBuilder<Map<String, String>>(
+                                        future: ApiService.getAuthHeaders(),
+                                        builder: (context, headers) {
+                                          return CircleAvatar(
+                                            radius: 18,
+                                            backgroundColor:
+                                                Colors.blueGrey.shade100,
+                                            backgroundImage: avatarPic != null
+                                                ? NetworkImage(
+                                                    ApiService.resolveImageUrl(
+                                                      avatarPic,
+                                                    ),
+                                                    headers: headers.data,
+                                                  )
+                                                : null,
+                                            child: avatarPic == null
+                                                ? Text(
+                                                    authorName.isNotEmpty
+                                                        ? authorName[0]
+                                                              .toUpperCase()
+                                                        : 'U',
                                                     style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 12,
                                                       fontWeight:
                                                           FontWeight.bold,
-                                                      color: Colors.black,
-                                                      fontSize: 12,
                                                     ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    comment['text']
-                                                            ?.toString() ??
-                                                        '',
-                                                    style: const TextStyle(
-                                                      fontSize: 13,
-                                                      color: Colors.black87,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            // Reaction count bubble
-                                            if ((int.tryParse(
-                                                      comment['likes']
-                                                              ?.toString() ??
-                                                          "0",
-                                                    ) ??
-                                                    0) >
-                                                0)
-                                              Positioned(
-                                                bottom: -8,
-                                                right: -8,
-                                                child: Container(
+                                                  )
+                                                : null,
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Comment bubble with reactions
+                                            Stack(
+                                              clipBehavior: Clip.none,
+                                              children: [
+                                                Container(
                                                   padding:
                                                       const EdgeInsets.symmetric(
-                                                        horizontal: 4,
-                                                        vertical: 2,
+                                                        horizontal: 12,
+                                                        vertical: 8,
                                                       ),
                                                   decoration: BoxDecoration(
-                                                    color: Colors.white,
+                                                    color: const Color(
+                                                      0xFFF1F5F9,
+                                                    ),
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                          12,
+                                                          16,
                                                         ),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: Colors.black
-                                                            .withOpacity(0.1),
-                                                        blurRadius: 4,
-                                                        offset: const Offset(
-                                                          0,
-                                                          2,
-                                                        ),
-                                                      ),
-                                                    ],
                                                   ),
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
                                                     children: [
-                                                      const Icon(
-                                                        Icons.favorite,
-                                                        color: Colors.red,
-                                                        size: 10,
-                                                      ),
-                                                      const SizedBox(width: 2),
                                                       Text(
-                                                        comment['likes']
-                                                            .toString(),
+                                                        authorName,
                                                         style: const TextStyle(
-                                                          fontSize: 9,
                                                           fontWeight:
                                                               FontWeight.bold,
-                                                          color: Colors.black54,
+                                                          color: Colors.black,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      MentionText(
+                                                        text:
+                                                            comment['text']
+                                                                ?.toString() ??
+                                                            '',
+                                                        style: const TextStyle(
+                                                          fontSize: 13,
+                                                          color: Colors.black87,
                                                         ),
                                                       ),
                                                     ],
                                                   ),
                                                 ),
-                                              ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        // Action row
-                                        Row(
-                                          children: [
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              comment['time']?.toString() ??
-                                                  'Vừa xong',
-                                              style: const TextStyle(
-                                                color: Colors.grey,
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 14),
-                                            GestureDetector(
-                                              onTap: () async {
-                                                final commentId =
-                                                    (comment['_id'] ??
-                                                            comment['id'])
-                                                        ?.toString();
-                                                if (commentId == null) return;
-
-                                                final bool wasLiked =
-                                                    comment['isLiked'] == true;
-                                                setModalState(() {
-                                                  comment['isLiked'] =
-                                                      !wasLiked;
-                                                  int currentLikes =
-                                                      int.tryParse(
-                                                        comment['likes']
-                                                                ?.toString() ??
-                                                            "0",
-                                                      ) ??
-                                                      0;
-                                                  comment['likes'] = wasLiked
-                                                      ? (currentLikes > 0
-                                                            ? currentLikes - 1
-                                                            : 0)
-                                                      : currentLikes + 1;
-                                                });
-
-                                                ApiService.toggleCommentLike(
-                                                  commentId,
-                                                );
-                                              },
-                                              child: Text(
-                                                comment['isLiked'] == true
-                                                    ? "Đã thích"
-                                                    : "Thích",
-                                                style: TextStyle(
-                                                  color:
-                                                      comment['isLiked'] == true
-                                                      ? Colors.red
-                                                      : Colors.blueGrey,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 14),
-                                            GestureDetector(
-                                              onTap: () {
-                                                setModalState(() {
-                                                  replyingToName = authorName;
-                                                });
-                                                ctrl.text = "@$authorName ";
-                                                ctrl.selection =
-                                                    TextSelection.fromPosition(
-                                                      TextPosition(
-                                                        offset:
-                                                            ctrl.text.length,
+                                                // Reaction count bubble
+                                                if ((int.tryParse(
+                                                          comment['likes']
+                                                                  ?.toString() ??
+                                                              "0",
+                                                        ) ??
+                                                        0) >
+                                                    0)
+                                                  Positioned(
+                                                    bottom: -8,
+                                                    right: -8,
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 4,
+                                                            vertical: 2,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: Colors.black
+                                                                .withOpacity(
+                                                                  0.1,
+                                                                ),
+                                                            blurRadius: 4,
+                                                            offset:
+                                                                const Offset(
+                                                                  0,
+                                                                  2,
+                                                                ),
+                                                          ),
+                                                        ],
                                                       ),
-                                                    );
-                                                commentFocusNode.requestFocus();
-                                              },
-                                              child: const Text(
-                                                "Phản hồi",
-                                                style: TextStyle(
-                                                  color: Colors.blueGrey,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          const Icon(
+                                                            Icons.favorite,
+                                                            color: Colors.red,
+                                                            size: 10,
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 2,
+                                                          ),
+                                                          Text(
+                                                            comment['likes']
+                                                                .toString(),
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 9,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Colors
+                                                                      .black54,
+                                                                ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            // Action row
+                                            Row(
+                                              children: [
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  comment['time']?.toString() ??
+                                                      'Vừa xong',
+                                                  style: const TextStyle(
+                                                    color: Colors.grey,
+                                                    fontSize: 10,
+                                                  ),
                                                 ),
-                                              ),
+                                                const SizedBox(width: 14),
+                                                GestureDetector(
+                                                  onTap: () async {
+                                                    final commentId =
+                                                        (comment['_id'] ??
+                                                                comment['id'])
+                                                            ?.toString();
+                                                    if (commentId == null)
+                                                      return;
+
+                                                    final bool wasLiked =
+                                                        comment['isLiked'] ==
+                                                        true;
+                                                    setModalState(() {
+                                                      comment['isLiked'] =
+                                                          !wasLiked;
+                                                      int currentLikes =
+                                                          int.tryParse(
+                                                            comment['likes']
+                                                                    ?.toString() ??
+                                                                "0",
+                                                          ) ??
+                                                          0;
+                                                      comment['likes'] =
+                                                          wasLiked
+                                                          ? (currentLikes > 0
+                                                                ? currentLikes -
+                                                                      1
+                                                                : 0)
+                                                          : currentLikes + 1;
+                                                    });
+
+                                                    ApiService.toggleCommentLike(
+                                                      commentId,
+                                                    );
+                                                  },
+                                                  child: Text(
+                                                    comment['isLiked'] == true
+                                                        ? "Đã thích"
+                                                        : "Thích",
+                                                    style: TextStyle(
+                                                      color:
+                                                          comment['isLiked'] ==
+                                                              true
+                                                          ? Colors.red
+                                                          : Colors.blueGrey,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 14),
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    setModalState(() {
+                                                      replyingToName =
+                                                          authorName;
+                                                      replyingToId =
+                                                          (comment['_id'] ??
+                                                                  comment['id'])
+                                                              ?.toString();
+                                                    });
+                                                    ctrl.text = "@$authorName ";
+                                                    ctrl.selection =
+                                                        TextSelection.fromPosition(
+                                                          TextPosition(
+                                                            offset: ctrl
+                                                                .text
+                                                                .length,
+                                                          ),
+                                                        );
+                                                    commentFocusNode
+                                                        .requestFocus();
+                                                  },
+                                                  child: const Text(
+                                                    "Phản hồi",
+                                                    style: TextStyle(
+                                                      color: Colors.blueGrey,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ],
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
+                                  if (comment['replies'] != null &&
+                                      (comment['replies'] as List).isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: 42,
+                                        top: 0,
+                                        bottom: 8,
+                                      ),
+                                      child: Column(
+                                        children: (comment['replies'] as List).map((
+                                          reply,
+                                        ) {
+                                          final rAuthor = reply['author'];
+                                          final String rAuthorName =
+                                              (rAuthor is Map)
+                                              ? (rAuthor['fullName'] ??
+                                                    rAuthor['name'] ??
+                                                    'Người dùng')
+                                              : (rAuthor ?? 'Người dùng')
+                                                    .toString();
+                                          final String? rAvatarId =
+                                              (rAuthor is Map)
+                                              ? rAuthor['profilePicture']
+                                                    ?.toString()
+                                              : null;
+
+                                          return Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 10,
+                                            ),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                FutureBuilder<
+                                                  Map<String, String>
+                                                >(
+                                                  future:
+                                                      ApiService.getAuthHeaders(),
+                                                  builder: (context, headers) {
+                                                    return CircleAvatar(
+                                                      radius: 12,
+                                                      backgroundColor: Colors
+                                                          .blueGrey
+                                                          .shade100,
+                                                      backgroundImage:
+                                                          rAvatarId != null
+                                                          ? NetworkImage(
+                                                              ApiService.resolveImageUrl(
+                                                                rAvatarId,
+                                                              ),
+                                                              headers:
+                                                                  headers.data,
+                                                            )
+                                                          : null,
+                                                      child: rAvatarId == null
+                                                          ? Text(
+                                                              rAuthorName
+                                                                      .isNotEmpty
+                                                                  ? rAuthorName[0]
+                                                                        .toUpperCase()
+                                                                  : 'U',
+                                                              style:
+                                                                  const TextStyle(
+                                                                    color: Colors
+                                                                        .white,
+                                                                    fontSize:
+                                                                        10,
+                                                                  ),
+                                                            )
+                                                          : null,
+                                                    );
+                                                  },
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 10,
+                                                              vertical: 6,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(
+                                                            0xFFF1F5F9,
+                                                          ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                12,
+                                                              ),
+                                                        ),
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                              rAuthorName,
+                                                              style: const TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                fontSize: 11,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                              height: 2,
+                                                            ),
+                                                            Text(
+                                                              reply['text']
+                                                                      ?.toString() ??
+                                                                  '',
+                                                              style:
+                                                                  const TextStyle(
+                                                                    fontSize:
+                                                                        12,
+                                                                    color: Colors
+                                                                        .black87,
+                                                                  ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        reply['time']
+                                                                ?.toString() ??
+                                                            'Vừa xong',
+                                                        style: const TextStyle(
+                                                          color: Colors.grey,
+                                                          fontSize: 9,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
                                 ],
                               ),
                             );
@@ -1086,7 +1280,10 @@ class _ReelItemState extends State<_ReelItem> {
                         ),
                         GestureDetector(
                           onTap: () {
-                            setModalState(() => replyingToName = null);
+                            setModalState(() {
+                              replyingToName = null;
+                              replyingToId = null;
+                            });
                             ctrl.clear();
                             commentFocusNode.unfocus();
                           },
@@ -1184,10 +1381,15 @@ class _ReelItemState extends State<_ReelItem> {
                             comments = [tempComment, ...comments];
                           });
 
-                          setModalState(() => replyingToName = null);
+                          final String? parentId = replyingToId;
+                          setModalState(() {
+                            replyingToName = null;
+                            replyingToId = null;
+                          });
 
                           final success = await widget.onComment({
                             "text": userText,
+                            "parentCommentId": parentId,
                           });
                           if (success) {
                             loadComments(); // Refresh with real data
@@ -1376,6 +1578,7 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
   final TextEditingController _captionCtrl = TextEditingController();
   String? _mediaPath;
   XFile? _selectedXFile; // Add this
+  String? _mediaType; // 'image' or 'video'
   Map<String, dynamic>? _selectedMusic;
   bool _publishing = false;
 
@@ -1416,7 +1619,10 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
         _selectedFile = await _picker.pickVideo(source: ImageSource.gallery);
       }
       if (_selectedFile != null) {
-        setState(() => _mediaPath = _selectedFile!.path);
+        setState(() {
+          _mediaPath = _selectedFile!.path;
+          _mediaType = source;
+        });
         // We can also store the file itself if needed for bytes read later
         this._selectedXFile = _selectedFile;
       }
@@ -1446,13 +1652,14 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
         debugPrint("Reel upload error: $e");
       }
     }
+    // Ensure finalMediaPath defaults to something or handles local properly (as per ApiService behavior)
+    final String? finalUrl = finalMediaPath ?? _mediaPath;
 
     widget.onPublish({
-      'mediaPath': finalMediaPath != null
-          ? ApiService.resolveImageUrl(finalMediaPath)
-          : null,
       'caption': _captionCtrl.text.trim(),
-      'musicId': _selectedMusic?['_id'] ?? _selectedMusic?['id'],
+      'mediaType': _mediaType ?? 'video',
+      'music': _selectedMusic?['_id'] ?? _selectedMusic?['id'],
+      'videoUrl': finalUrl,
     });
     Navigator.of(context, rootNavigator: true).pop();
   }

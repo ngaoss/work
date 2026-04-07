@@ -14,7 +14,13 @@ import '../../../../core/widgets/mention_text_controller.dart';
 class WorkHomePage extends StatefulWidget {
   final List<Map<String, dynamic>> reels;
   final Function(int)? onNavigateToReels;
-  const WorkHomePage({super.key, this.onNavigateToReels, required this.reels});
+  final VoidCallback? onRefreshReels;
+  const WorkHomePage({
+    super.key,
+    this.onNavigateToReels,
+    this.onRefreshReels,
+    required this.reels,
+  });
 
   @override
   State<WorkHomePage> createState() => WorkHomePageState();
@@ -23,6 +29,7 @@ class WorkHomePage extends StatefulWidget {
 class WorkHomePageState extends State<WorkHomePage> {
   void refresh() {
     _fetchPosts(refresh: true);
+    widget.onRefreshReels?.call();
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         0,
@@ -294,6 +301,9 @@ class WorkHomePageState extends State<WorkHomePage> {
       builder: (_) => CreateReelDialog(
         onPublish: (reel) async {
           final success = await ApiService.createReel(reel);
+          if (success) {
+            widget.onRefreshReels?.call();
+          }
           if (success && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -512,7 +522,8 @@ class _CreatePostSheet extends StatefulWidget {
 
 class _CreatePostSheetState extends State<_CreatePostSheet> {
   dynamic _selectedBackground; // null means no background
-  final TextEditingController _contentController = TextEditingController();
+  final TextEditingController _contentController =
+      MentionTextEditingController();
   final ImagePicker _picker = ImagePicker();
   final FocusNode _focusNode = FocusNode();
   List<XFile> _selectedFiles = [];
@@ -1050,19 +1061,19 @@ class _PostCardState extends State<_PostCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    displayContent,
+                  MentionText(
+                    text: displayContent,
                     style: const TextStyle(
                       fontSize: 15,
                       height: 1.4,
                       color: Colors.black87,
-                      fontFamilyFallback: [
-                        "Apple Color Emoji",
-                        "Segoe UI Emoji",
-                        "Segoe UI Symbol",
-                        "Noto Color Emoji",
-                      ],
                     ),
+                    fontFamilyFallback: const [
+                      "Apple Color Emoji",
+                      "Segoe UI Emoji",
+                      "Segoe UI Symbol",
+                      "Noto Color Emoji",
+                    ],
                   ),
                   if (isLongText && !_isExpanded)
                     GestureDetector(
@@ -1487,10 +1498,37 @@ class _CommentTile extends StatelessWidget {
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CircleAvatar(
-                                      radius: 12,
-                                      backgroundColor: Colors.blueGrey.shade100,
-                                      child: const Icon(Icons.person, size: 15),
+                                    FutureBuilder<Map<String, String>>(
+                                      future: ApiService.getAuthHeaders(),
+                                      builder: (context, headers) {
+                                        final String? rAvatar =
+                                            (reply["authorAvatar"] ??
+                                                    reply["profilePicture"] ??
+                                                    (reply["author"] is Map
+                                                        ? reply["author"]["profilePicture"]
+                                                        : null) ??
+                                                    reply["author"])
+                                                ?.toString();
+                                        return CircleAvatar(
+                                          radius: 12,
+                                          backgroundColor:
+                                              Colors.blueGrey.shade100,
+                                          backgroundImage: rAvatar != null
+                                              ? NetworkImage(
+                                                  ApiService.resolveImageUrl(
+                                                    rAvatar,
+                                                  ),
+                                                  headers: headers.data,
+                                                )
+                                              : null,
+                                          child: rAvatar == null
+                                              ? const Icon(
+                                                  Icons.person,
+                                                  size: 15,
+                                                )
+                                              : null,
+                                        );
+                                      },
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
@@ -1577,17 +1615,15 @@ class _CommentBubble extends StatelessWidget {
           if (comment["text"]?.toString().isNotEmpty == true)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                comment["text"]?.toString() ?? "",
-                style: TextStyle(
-                  fontSize: small ? 12 : 13,
-                  fontFamilyFallback: const [
-                    "Apple Color Emoji",
-                    "Segoe UI Emoji",
-                    "Segoe UI Symbol",
-                    "Noto Color Emoji",
-                  ],
-                ),
+              child: MentionText(
+                text: comment["text"]?.toString() ?? "",
+                style: TextStyle(fontSize: small ? 12 : 13),
+                fontFamilyFallback: const [
+                  "Apple Color Emoji",
+                  "Segoe UI Emoji",
+                  "Segoe UI Symbol",
+                  "Noto Color Emoji",
+                ],
               ),
             ),
         ],

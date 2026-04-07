@@ -4,12 +4,50 @@ import 'package:flutter/material.dart';
 class MentionTextEditingController extends TextEditingController {
   final Color mentionColor;
   final FontWeight mentionFontWeight;
+  final Color mentionBackgroundColor;
 
   MentionTextEditingController({
     String? text,
     this.mentionColor = const Color(0xFF2563EB),
     this.mentionFontWeight = FontWeight.w600,
+    this.mentionBackgroundColor = const Color(0xFFDBEAFE),
   }) : super(text: text);
+
+  // Regex to find @mention tokens including spaces for fullnames
+  // Matches @ followed by text until it hits common punctuation or a double space
+  static final RegExp _mentionRegex = RegExp(
+    r'@[^@:;!?,\n]+?(?=\s\s+|[:;!?.,]|\n|$)',
+  );
+
+  @override
+  set value(TextEditingValue newValue) {
+    // If we're deleting (new text is shorter)
+    if (newValue.text.length < value.text.length) {
+      final int selectionStart = newValue.selection.start;
+      final String oldText = value.text;
+
+      // Find matches in the OLD text
+      final matches = _mentionRegex.allMatches(oldText);
+      for (final match in matches) {
+        // If the cursor is now within what was a mention, or exactly at the end of what was deleted
+        // basically if any character of the mention was in the deleted range
+        if (selectionStart >= match.start && selectionStart < match.end) {
+          // Atomic deletion: remove the whole mention
+          final String newText = oldText.replaceRange(
+            match.start,
+            match.end,
+            '',
+          );
+          super.value = TextEditingValue(
+            text: newText,
+            selection: TextSelection.collapsed(offset: match.start),
+          );
+          return;
+        }
+      }
+    }
+    super.value = newValue;
+  }
 
   @override
   TextSpan buildTextSpan({
@@ -20,11 +58,9 @@ class MentionTextEditingController extends TextEditingController {
     final String fullText = value.text;
     final List<InlineSpan> spans = [];
 
-    // Regex to find @mention tokens (word boundary after @)
-    final RegExp mentionRegex = RegExp(r'@\S+');
     int lastIndex = 0;
 
-    for (final match in mentionRegex.allMatches(fullText)) {
+    for (final match in _mentionRegex.allMatches(fullText)) {
       // Text before the mention
       if (match.start > lastIndex) {
         spans.add(
@@ -34,13 +70,23 @@ class MentionTextEditingController extends TextEditingController {
           ),
         );
       }
-      // The @mention in blue
+      // The @mention in blue with background
       spans.add(
-        TextSpan(
-          text: match.group(0),
-          style: (style ?? const TextStyle()).copyWith(
-            color: mentionColor,
-            fontWeight: mentionFontWeight,
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: mentionBackgroundColor,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              match.group(0)!,
+              style: (style ?? const TextStyle()).copyWith(
+                color: mentionColor,
+                fontWeight: mentionFontWeight,
+              ),
+            ),
           ),
         ),
       );
@@ -57,5 +103,96 @@ class MentionTextEditingController extends TextEditingController {
     }
 
     return TextSpan(children: spans);
+  }
+
+  /// Helper static method to parse text and return a [List<InlineSpan>] for rendering.
+  static List<InlineSpan> buildSpans(
+    String fullText, {
+    TextStyle? style,
+    Color mentionColor = const Color(0xFF2563EB),
+    FontWeight mentionFontWeight = FontWeight.w600,
+    Color mentionBackgroundColor = const Color(0xFFDBEAFE),
+  }) {
+    final List<InlineSpan> spans = [];
+
+    int lastIndex = 0;
+
+    for (final match in _mentionRegex.allMatches(fullText)) {
+      // Text before the mention
+      if (match.start > lastIndex) {
+        spans.add(
+          TextSpan(
+            text: fullText.substring(lastIndex, match.start),
+            style: style,
+          ),
+        );
+      }
+      // The @mention in blue with background
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: mentionBackgroundColor,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              match.group(0)!,
+              style: (style ?? const TextStyle()).copyWith(
+                color: mentionColor,
+                fontWeight: mentionFontWeight,
+              ),
+            ),
+          ),
+        ),
+      );
+      lastIndex = match.end;
+    }
+
+    // Remaining text after last mention
+    if (lastIndex < fullText.length) {
+      spans.add(TextSpan(text: fullText.substring(lastIndex), style: style));
+    }
+
+    if (spans.isEmpty) {
+      spans.add(TextSpan(text: fullText, style: style));
+    }
+
+    return spans;
+  }
+}
+
+class MentionText extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+  final int? maxLines;
+  final TextOverflow? overflow;
+  final List<String>? fontFamilyFallback;
+
+  const MentionText({
+    super.key,
+    required this.text,
+    this.style,
+    this.maxLines,
+    this.overflow,
+    this.fontFamilyFallback,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveStyle = (style ?? DefaultTextStyle.of(context).style)
+        .copyWith(fontFamilyFallback: fontFamilyFallback);
+
+    return RichText(
+      maxLines: maxLines,
+      overflow: overflow ?? TextOverflow.clip,
+      text: TextSpan(
+        children: MentionTextEditingController.buildSpans(
+          text,
+          style: effectiveStyle,
+        ),
+      ),
+    );
   }
 }

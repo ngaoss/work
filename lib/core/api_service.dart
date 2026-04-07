@@ -381,6 +381,7 @@ class ApiService {
     String reelId,
     String text, {
     String? authorId,
+    String? parentCommentId,
   }) async {
     try {
       final response = await http.post(
@@ -391,6 +392,7 @@ class ApiService {
           "reel": reelId,
           "post": null,
           "author": authorId,
+          "parent": parentCommentId,
           "status": "active",
         }),
       );
@@ -505,7 +507,7 @@ class ApiService {
         if (data is Map && data['image'] is Map) {
           final image = data['image'];
           final String? id = (image['_id'] ?? image['id'])?.toString();
-          if (id != null) return '$baseUrl/images/$id';
+          if (id != null) return '/api/images/$id';
         }
         // Fallback
         return data['url'] ??

@@ -22,6 +22,7 @@ class _ChatShellState extends State<ChatShell> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   List<Map<String, dynamic>> _allReels = [];
   int _initialReelIndex = 0;
+  int _reelNavigationTime = 0;
   final GlobalKey<WorkHomePageState> _homeKey = GlobalKey<WorkHomePageState>();
 
   @override
@@ -49,17 +50,23 @@ class _ChatShellState extends State<ChatShell> {
         return WorkHomePage(
           key: _homeKey,
           onNavigateToReels: (idx) {
-            setState(() => _initialReelIndex = idx);
+            setState(() {
+              _initialReelIndex = idx;
+              _reelNavigationTime = DateTime.now().millisecondsSinceEpoch;
+            });
             _onItemTapped(1);
           },
+          onRefreshReels: _fetchGlobalReels,
           reels: _allReels,
         );
       case 1:
         return ReelsPage(
-          key: ValueKey('reels_$_initialReelIndex'),
+          key: ValueKey('reels_${_initialReelIndex}_$_reelNavigationTime'),
           isActive: _currentIndex == 1,
           initialIndex: _initialReelIndex,
+          reels: _allReels,
           onClose: () => _onItemTapped(0),
+          onRefresh: _fetchGlobalReels,
         );
       case 2:
         return const DocumentsPage();
@@ -200,6 +207,7 @@ class _ChatShellState extends State<ChatShell> {
           _onItemTapped(0);
         }
         // Always trigger refresh when logo is tapped
+        _fetchGlobalReels();
         _homeKey.currentState?.refresh();
       },
       child: Container(
