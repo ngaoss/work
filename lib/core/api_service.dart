@@ -524,4 +524,74 @@ class ApiService {
     }
     return null;
   }
+
+  /// Search users by query
+  static Future<List<dynamic>> searchUsers(String query) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users?q=$query'),
+        headers: await _getHeaders(),
+      );
+      final res = _processResponse(response, 'searchUsers');
+      return res is List ? res : [];
+    } catch (e) {
+      debugPrint('ApiService error (searchUsers): $e');
+      return [];
+    }
+  }
+
+  /// Get notifications for current user
+  static final List<Map<String, dynamic>> _localNotifications = [];
+  static final ValueNotifier<int> notificationRefresh = ValueNotifier<int>(0);
+
+  static void addLocalNotification(Map<String, dynamic> notification) {
+    _localNotifications.insert(0, notification);
+    notificationRefresh.value += 1;
+  }
+
+  static Future<List<dynamic>> getNotifications() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/notifications'),
+        headers: await _getHeaders(),
+      );
+      final res = _processResponse(response, 'getNotifications');
+      final remote = res is List ? res : [];
+      return [..._localNotifications, ...remote];
+    } catch (e) {
+      debugPrint('ApiService error (getNotifications): $e');
+      return [..._localNotifications];
+    }
+  }
+
+  /// Send a notification to a user
+  static Future<bool> sendNotification(
+    String recipientId,
+    String type,
+    String content, {
+    String? link,
+    Map<String, dynamic>? metadata,
+  }) async {
+    try {
+      debugPrint('ApiService sendNotification: POST $baseUrl/notifications');
+      debugPrint('  recipient=$recipientId, type=$type, content=$content');
+      final response = await http.post(
+        Uri.parse('$baseUrl/notifications'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'recipient': recipientId,
+          'type': type,
+          'content': content,
+          'link': link,
+          'metadata': metadata,
+        }),
+      );
+      debugPrint('ApiService sendNotification response: ${response.statusCode}');
+      debugPrint('ApiService sendNotification body: ${response.body}');
+      return response.statusCode == 201 || response.statusCode == 200;
+    } catch (e) {
+      debugPrint('ApiService error (sendNotification): $e');
+      return false;
+    }
+  }
 }

@@ -10,6 +10,7 @@ import '../../../../core/widgets/full_screen_media_viewer.dart';
 import '../../../../core/widgets/video_preview.dart';
 import '../../../reels/presentation/pages/reels_page.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
+import '../../../../core/utils/time_helper.dart';
 
 class WorkHomePage extends StatefulWidget {
   final List<Map<String, dynamic>> reels;
@@ -45,6 +46,7 @@ class WorkHomePageState extends State<WorkHomePage> {
   int _currentPage = 1;
   int _totalPages = 1;
   final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey<_PostCardState>> _postCardKeys = {};
 
   @override
   void initState() {
@@ -233,7 +235,114 @@ class WorkHomePageState extends State<WorkHomePage> {
       "parentComment": parentCommentId,
       "status": "active",
     });
+
+    if (success) {
+      // Send notifications to mentioned users
+      await _sendMentionNotifications(text, postId, authorId);
+    }
+
     return success;
+  }
+
+  Future<void> _sendMentionNotifications(
+    String text,
+    String postId,
+    String? authorId,
+  ) async {
+    if (authorId == null) return;
+
+    debugPrint('DEBUG: _sendMentionNotifications called with text: "$text"');
+
+    // Extract mentions using the same regex as MentionTextEditingController
+    final mentionRegex = RegExp(r'@\S+(?:\s+(?![a-z])[^ \s@:;!?,]+)*');
+    final mentions = mentionRegex
+        .allMatches(text)
+        .map((m) => m.group(0)?.substring(1) ?? '')
+        .toList();
+
+    debugPrint('DEBUG: Found mentions: $mentions');
+
+    if (mentions.isEmpty) return;
+
+    // Remove duplicates
+    final uniqueMentions = mentions.toSet().toList();
+
+    for (final mention in uniqueMentions) {
+      debugPrint('DEBUG: Processing mention: "$mention"');
+      try {
+        // First try search API
+        List<dynamic> users = await ApiService.searchUsers(mention);
+        debugPrint(
+          'DEBUG: searchUsers returned ${users.length} users for "$mention"',
+        );
+
+        // If search API returns no results, try getting all users and filter client-side
+        if (users.isEmpty) {
+          debugPrint(
+            'DEBUG: Search API returned no results, trying getUsers...',
+          );
+          final allUsers = await ApiService.getUsers();
+          users = allUsers.where((u) {
+            final fullName = (u['fullName'] ?? u['name'] ?? '')
+                .toString()
+                .toLowerCase();
+            final username = (u['username'] ?? '').toString().toLowerCase();
+            final query = mention.toLowerCase();
+            return fullName.contains(query) || username.contains(query);
+          }).toList();
+          debugPrint(
+            'DEBUG: Filtered ${users.length} users from getUsers for "$mention"',
+          );
+        }
+
+        final user = users.firstWhere(
+          (u) =>
+              (u['fullName'] ?? u['name'] ?? '').toString().toLowerCase() ==
+                  mention.toLowerCase() ||
+              (u['username'] ?? '').toString().toLowerCase() ==
+                  mention.toLowerCase(),
+          orElse: () => null,
+        );
+
+        debugPrint('DEBUG: Found user: $user');
+
+        if (user != null) {
+          final recipientId = (user['_id'] ?? user['id'])?.toString();
+          debugPrint('DEBUG: recipientId: $recipientId, authorId: $authorId');
+          if (recipientId != null) {
+            final authorName =
+                AuthService().userProfile.value?['fullName']?.toString() ??
+                'Bạn';
+            debugPrint(
+              'DEBUG: Creating local mention notification for $recipientId',
+            );
+            ApiService.addLocalNotification({
+              'recipient': recipientId,
+              'senders': [
+                {
+                  'fullName': authorName,
+                  'profilePicture': AuthService()
+                      .userProfile
+                      .value?['profilePicture']
+                      ?.toString(),
+                },
+              ],
+              'type': 'mention',
+              'content': 'Bạn được đề cập trong một bình luận',
+              'link': '/post/$postId',
+              'metadata': {'postId': postId, 'mentionBy': authorId},
+              'isRead': false,
+              'createdAt': DateTime.now().toIso8601String(),
+            });
+            debugPrint('DEBUG: Local mention notification added');
+          }
+        } else {
+          debugPrint('DEBUG: No user found for mention "$mention"');
+        }
+      } catch (e) {
+        debugPrint('Error sending mention notification: $e');
+      }
+    }
   }
 
   void _toggleCommentLike(int postIndex, int commentIndex) async {
@@ -258,6 +367,32 @@ class WorkHomePageState extends State<WorkHomePage> {
 
     // Run in background
     ApiService.toggleCommentLike(commentId);
+  }
+
+  Future<void> goToPost(String postId) async {
+    final key = _postCardKeys[postId];
+    if (key?.currentContext != null) {
+      await Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.1,
+      );
+      return;
+    }
+
+    // If the post is not currently mounted, refresh and try again.
+    await _fetchPosts(refresh: true);
+    await Future.delayed(const Duration(milliseconds: 500));
+    final retryKey = _postCardKeys[postId];
+    if (retryKey?.currentContext != null) {
+      await Scrollable.ensureVisible(
+        retryKey!.currentContext!,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.1,
+      );
+    }
   }
 
   void _toggleReplyLike(int postIndex, int commentIndex, int replyIndex) {
@@ -321,107 +456,122 @@ class WorkHomePageState extends State<WorkHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _HeroBanner(),
-                _StatusInput(onPostAdded: _onPostAdded),
-                _MomentsSection(
-                  onAddTap: _showCreateReelDialog,
-                  onNavigateToReels: widget.onNavigateToReels,
-                  reels: widget.reels,
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
-          ),
-          if (_isPostsLoading)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            )
-          else if (_posts.isEmpty)
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _fetchPosts(refresh: true);
+          widget.onRefreshReels?.call();
+        },
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.article_outlined,
-                        color: Colors.grey.shade300,
-                        size: 60,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        "Chưa có bài viết nào",
-                        style: TextStyle(
-                          color: Colors.grey.shade500,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _HeroBanner(),
+                  _StatusInput(onPostAdded: _onPostAdded),
+                  _MomentsSection(
+                    onAddTap: _showCreateReelDialog,
+                    onNavigateToReels: widget.onNavigateToReels,
+                    reels: widget.reels,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+            if (_isPostsLoading && _posts.isEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              )
+            else if (_posts.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.article_outlined,
+                          color: Colors.grey.shade300,
+                          size: 60,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        Text(
+                          "Chưa có bài viết nào",
+                          style: TextStyle(
+                            color: Colors.grey.shade500,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverList.builder(
+                itemCount: _posts.length,
+                itemBuilder: (context, index) {
+                  final postId =
+                      (_posts[index]['id'] ?? _posts[index]['_id'])
+                          ?.toString() ??
+                      index.toString();
+                  final cardKey = _postCardKeys.putIfAbsent(
+                    postId,
+                    () => GlobalKey(),
+                  );
+                  return _PostCard(
+                    key: cardKey,
+                    post: _posts[index],
+                    postIndex: index,
+                    onLike: () => _toggleLike(index),
+                    onDelete: () => _deletePost(index),
+                    onComment: (text, media, {replyTo, parentCommentId}) =>
+                        _addComment(
+                          index,
+                          text,
+                          media,
+                          replyTo: replyTo,
+                          parentCommentId: parentCommentId,
+                        ),
+                    onToggleCommentLike: (commentIdx) =>
+                        _toggleCommentLike(index, commentIdx),
+                    onToggleReplyLike: (commentIdx, replyIdx) =>
+                        _toggleReplyLike(index, commentIdx, replyIdx),
+                  );
+                },
+              ),
+            if (_isMoreLoading)
+              SliverToBoxAdapter(
+                child: Padding(
+                  key: const ValueKey("loading_more_spinner"),
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const CircularProgressIndicator(strokeWidth: 2),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Đang tải bài viết mới...",
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            )
-          else
-            SliverList.builder(
-              itemCount: _posts.length,
-              itemBuilder: (context, index) {
-                return _PostCard(
-                  key: ValueKey("post_${_posts[index]['id'] ?? ''}_$index"),
-                  post: _posts[index],
-                  postIndex: index,
-                  onLike: () => _toggleLike(index),
-                  onDelete: () => _deletePost(index),
-                  onComment: (text, media, {replyTo, parentCommentId}) =>
-                      _addComment(
-                        index,
-                        text,
-                        media,
-                        replyTo: replyTo,
-                        parentCommentId: parentCommentId,
-                      ),
-                  onToggleCommentLike: (commentIdx) =>
-                      _toggleCommentLike(index, commentIdx),
-                  onToggleReplyLike: (commentIdx, replyIdx) =>
-                      _toggleReplyLike(index, commentIdx, replyIdx),
-                );
-              },
-            ),
-          if (_isMoreLoading)
-            SliverToBoxAdapter(
-              child: Padding(
-                key: const ValueKey("loading_more_spinner"),
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Column(
-                    children: [
-                      const CircularProgressIndicator(strokeWidth: 2),
-                      const SizedBox(height: 8),
-                      Text(
-                        "Đang tải bài viết mới...",
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          ],
+        ),
       ),
     );
   }
@@ -1017,6 +1167,10 @@ class _PostCardState extends State<_PostCard> {
         children: [
           _PostHeader(
             author: authorName,
+            authorId: widget.post["author"] is Map
+                ? (widget.post["author"]["_id"] ?? widget.post["author"]["id"])
+                      ?.toString()
+                : null,
             avatar:
                 (widget.post["author"] is Map
                     ? widget.post["author"]["profilePicture"]
@@ -1038,21 +1192,11 @@ class _PostCardState extends State<_PostCard> {
                       "IT System")
                   .toString();
             })(),
-            time: (() {
-              final raw =
-                  (widget.post["time"] ??
-                          widget.post["created_at"] ??
-                          widget.post["createdAt"] ??
-                          "")
-                      .toString();
-              try {
-                if (raw.isNotEmpty) {
-                  final dt = DateTime.parse(raw).toLocal();
-                  return "${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year.toString()}";
-                }
-              } catch (_) {}
-              return raw.length >= 10 ? raw.substring(0, 10) : raw;
-            })(),
+            time: formatTime(
+              widget.post["time"] ??
+                  widget.post["created_at"] ??
+                  widget.post["createdAt"],
+            ),
             onDelete: widget.onDelete,
           ),
           if (content.isNotEmpty && (hasMedia || !hasBg))
@@ -1460,7 +1604,11 @@ class _CommentTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 // Action row
                 _CommentActions(
-                  time: comment["time"]?.toString() ?? "",
+                  time: formatTime(
+                    comment["time"] ??
+                        comment["createdAt"] ??
+                        comment["created_at"],
+                  ),
                   likes: int.tryParse(comment["likes"]?.toString() ?? "0") ?? 0,
                   isLiked: comment["isLiked"] == true,
                   onLike: onLike,
@@ -1542,8 +1690,11 @@ class _CommentTile extends StatelessWidget {
                                           ),
                                           const SizedBox(height: 3),
                                           _CommentActions(
-                                            time:
-                                                reply["time"]?.toString() ?? "",
+                                            time: formatTime(
+                                              reply["time"] ??
+                                                  reply["createdAt"] ??
+                                                  reply["created_at"],
+                                            ),
                                             likes: reply["likes"] is int
                                                 ? reply["likes"]
                                                 : 0,
@@ -1617,7 +1768,10 @@ class _CommentBubble extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: MentionText(
                 text: comment["text"]?.toString() ?? "",
-                style: TextStyle(fontSize: small ? 12 : 13),
+                style: TextStyle(
+                  fontSize: small ? 12 : 13,
+                  color: Colors.black87,
+                ),
                 fontFamilyFallback: const [
                   "Apple Color Emoji",
                   "Segoe UI Emoji",
@@ -1707,12 +1861,36 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
   bool _showEmoji = false;
 
   @override
+  void didUpdateWidget(covariant _QuickCommentInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.replyTo != oldWidget.replyTo && widget.replyTo != null) {
+      final mentionText = '@${widget.replyTo} ';
+      if (_controller.text.trim().isEmpty ||
+          !_controller.text.startsWith(mentionText)) {
+        _controller.text = mentionText;
+        _controller.selection = TextSelection.collapsed(
+          offset: _controller.text.length,
+        );
+      }
+      _focusNode.requestFocus();
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _focusNode = widget.focusNode ?? FocusNode();
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) setState(() => _showEmoji = false);
     });
+    if (widget.replyTo != null) {
+      final mentionText = '@${widget.replyTo} ';
+      _controller.text = mentionText;
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
+    }
   }
 
   @override
@@ -1856,6 +2034,11 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
                         child: TextField(
                           controller: _controller,
                           focusNode: _focusNode,
+                          cursorColor: Colors.black87,
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontSize: 13,
+                          ),
                           onSubmitted: (_) => _submit(),
                           decoration: const InputDecoration(
                             hintText: "Viết bình luận...",
@@ -1945,12 +2128,14 @@ class _ReplyBanner extends StatelessWidget {
 
 class _PostHeader extends StatelessWidget {
   final String author;
+  final String? authorId;
   final String? avatar;
   final String role;
   final String time;
   final VoidCallback onDelete;
   const _PostHeader({
     required this.author,
+    this.authorId,
     this.avatar,
     required this.role,
     required this.time,
@@ -1958,6 +2143,13 @@ class _PostHeader extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    // Get current user ID
+    final currentUserId =
+        AuthService().userProfile.value?['_id']?.toString() ??
+        AuthService().userProfile.value?['id']?.toString();
+    final isOwner =
+        authorId != null && currentUserId != null && authorId == currentUserId;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -2002,30 +2194,31 @@ class _PostHeader extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.more_horiz, color: Colors.grey),
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              builder: (c) => Wrap(
-                children: [
-                  ListTile(
-                    leading: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.red,
+          if (isOwner)
+            IconButton(
+              icon: const Icon(Icons.more_horiz, color: Colors.grey),
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                builder: (c) => Wrap(
+                  children: [
+                    ListTile(
+                      leading: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.red,
+                      ),
+                      title: const Text(
+                        "Xóa bài viết",
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      onTap: () {
+                        onDelete();
+                        Navigator.pop(c);
+                      },
                     ),
-                    title: const Text(
-                      "Xóa bài viết",
-                      style: TextStyle(color: Colors.red),
-                    ),
-                    onTap: () {
-                      onDelete();
-                      Navigator.pop(c);
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -2138,27 +2331,36 @@ class _HeroBanner extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                "Chào mừng trở lại, ",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Text(
-                "Long",
-                style: TextStyle(
-                  color: Colors.amber,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text("👋"),
-            ],
+          ValueListenableBuilder<Map<String, dynamic>?>(
+            valueListenable: AuthService().userProfile,
+            builder: (context, profile, _) {
+              final String fullName =
+                  profile?['fullName'] ?? profile?['name'] ?? 'Bạn hiện tại';
+              final String firstName = fullName.split(' ').last;
+
+              return Row(
+                children: [
+                  Text(
+                    "Chào mừng trở lại, ",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    firstName,
+                    style: const TextStyle(
+                      color: Colors.amber,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text("👋", style: TextStyle(fontSize: 18)),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           const Text(

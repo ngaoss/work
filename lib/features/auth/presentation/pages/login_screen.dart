@@ -13,6 +13,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _rememberMe = true;
   String? _errorMessage;
 
   @override
@@ -23,13 +24,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
-    final email = prefs.getString('saved_email');
-    final password = prefs.getString('saved_password');
-    if (mounted && email != null && password != null) {
+    final saved = prefs.getBool('remember_me') ?? false;
+    if (mounted) {
       setState(() {
-        _emailController.text = email;
-        _passwordController.text = password;
+        _rememberMe = saved;
       });
+    }
+
+    if (saved) {
+      final email = prefs.getString('saved_email');
+      final password = prefs.getString('saved_password');
+      if (mounted && email != null && password != null) {
+        setState(() {
+          _emailController.text = email;
+          _passwordController.text = password;
+        });
+      }
     }
   }
 
@@ -50,6 +60,19 @@ class _LoginScreenState extends State<LoginScreen> {
     final success = await AuthService().login(email, password);
 
     if (mounted) {
+      if (success) {
+        final prefs = await SharedPreferences.getInstance();
+        if (_rememberMe) {
+          await prefs.setString('saved_email', email);
+          await prefs.setString('saved_password', password);
+          await prefs.setBool('remember_me', true);
+        } else {
+          await prefs.remove('saved_email');
+          await prefs.remove('saved_password');
+          await prefs.setBool('remember_me', false);
+        }
+      }
+
       setState(() {
         _isLoading = false;
         if (!success) {
@@ -105,7 +128,44 @@ class _LoginScreenState extends State<LoginScreen> {
                 keyboardType: TextInputType.visiblePassword,
                 textInputAction: TextInputAction.done,
               ),
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: Checkbox(
+                      value: _rememberMe,
+                      onChanged: (val) =>
+                          setState(() => _rememberMe = val ?? false),
+                      activeColor: const Color(0xFF3B82F6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () => setState(() => _rememberMe = !_rememberMe),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      "Ghi nhớ đăng nhập",
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 24),
+
               if (_errorMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 24),

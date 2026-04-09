@@ -7,6 +7,7 @@ import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
 import '../../../../core/widgets/video_preview.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
+import '../../../../core/utils/time_helper.dart';
 
 class ReelsPage extends StatefulWidget {
   final bool isActive;
@@ -127,6 +128,88 @@ class _ReelsPageState extends State<ReelsPage> {
     );
   }
 
+  Future<void> _sendMentionNotifications(
+    String text,
+    String reelId,
+    String? authorId,
+  ) async {
+    if (authorId == null) return;
+
+    // Extract mentions using the same regex as MentionTextEditingController
+    final mentionRegex = RegExp(r'@\S+(?:\s+(?![a-z])[^ \s@:;!?,]+)*');
+    final mentions = mentionRegex
+        .allMatches(text)
+        .map((m) => m.group(0)?.substring(1) ?? '')
+        .toList();
+
+    if (mentions.isEmpty) return;
+
+    // Remove duplicates
+    final uniqueMentions = mentions.toSet().toList();
+
+    for (final mention in uniqueMentions) {
+      try {
+        // First try search API
+        List<dynamic> users = await ApiService.searchUsers(mention);
+
+        // If search API returns no results, try getting all users and filter client-side
+        if (users.isEmpty) {
+          final allUsers = await ApiService.getUsers();
+          users = allUsers.where((u) {
+            final fullName = (u['fullName'] ?? u['name'] ?? '')
+                .toString()
+                .toLowerCase();
+            final username = (u['username'] ?? '').toString().toLowerCase();
+            final query = mention.toLowerCase();
+            return fullName.contains(query) || username.contains(query);
+          }).toList();
+        }
+
+        final user = users.firstWhere(
+          (u) =>
+              (u['fullName'] ?? u['name'] ?? '').toString().toLowerCase() ==
+                  mention.toLowerCase() ||
+              (u['username'] ?? '').toString().toLowerCase() ==
+                  mention.toLowerCase(),
+          orElse: () => null,
+        );
+
+        if (user != null) {
+          final recipientId = (user['_id'] ?? user['id'])?.toString();
+          if (recipientId != null) {
+            final authorName =
+                AuthService().userProfile.value?['fullName']?.toString() ??
+                'Bạn';
+            debugPrint(
+              'DEBUG: Creating local mention notification for $recipientId',
+            );
+            ApiService.addLocalNotification({
+              'recipient': recipientId,
+              'senders': [
+                {
+                  'fullName': authorName,
+                  'profilePicture': AuthService()
+                      .userProfile
+                      .value?['profilePicture']
+                      ?.toString(),
+                },
+              ],
+              'type': 'mention',
+              'content': 'Bạn được đề cập trong một bình luận',
+              'link': '/reel/$reelId',
+              'metadata': {'reelId': reelId, 'mentionBy': authorId},
+              'isRead': false,
+              'createdAt': DateTime.now().toIso8601String(),
+            });
+            debugPrint('DEBUG: Local mention notification added');
+          }
+        }
+      } catch (e) {
+        debugPrint('Error sending mention notification: $e');
+      }
+    }
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -181,11 +264,21 @@ class _ReelsPageState extends State<ReelsPage> {
                 final String? authorId =
                     (userProfile?['_id'] ?? userProfile?['id'])?.toString();
 
+                final String commentText = comment["text"]?.toString() ?? "";
                 final bool success = await ApiService.addReelComment(
                   reelId.toString(),
-                  comment["text"]?.toString() ?? "",
+                  commentText,
                   authorId: authorId,
                 );
+
+                if (success) {
+                  await _sendMentionNotifications(
+                    commentText,
+                    reelId.toString(),
+                    authorId,
+                  );
+                }
+
                 return success;
               }
               return false;
@@ -1004,8 +1097,11 @@ class _ReelItemState extends State<_ReelItem> {
                                               children: [
                                                 const SizedBox(width: 8),
                                                 Text(
-                                                  comment['time']?.toString() ??
-                                                      'Vừa xong',
+                                                  formatTime(
+                                                    comment['time'] ??
+                                                        comment['createdAt'] ??
+                                                        comment['created_at'],
+                                                  ),
                                                   style: const TextStyle(
                                                     color: Colors.grey,
                                                     fontSize: 10,
@@ -1074,7 +1170,8 @@ class _ReelItemState extends State<_ReelItem> {
                                                                   comment['id'])
                                                               ?.toString();
                                                     });
-                                                    ctrl.text = "@$authorName ";
+                                                    ctrl.text =
+                                                        "@$authorName  ";
                                                     ctrl.selection =
                                                         TextSelection.fromPosition(
                                                           TextPosition(
@@ -1216,8 +1313,9 @@ class _ReelItemState extends State<_ReelItem> {
                                                             const SizedBox(
                                                               height: 2,
                                                             ),
-                                                            Text(
-                                                              reply['text']
+                                                            MentionText(
+                                                              text:
+                                                                  reply['text']
                                                                       ?.toString() ??
                                                                   '',
                                                               style:
@@ -1233,9 +1331,11 @@ class _ReelItemState extends State<_ReelItem> {
                                                       ),
                                                       const SizedBox(height: 4),
                                                       Text(
-                                                        reply['time']
-                                                                ?.toString() ??
-                                                            'Vừa xong',
+                                                        formatTime(
+                                                          reply['time'] ??
+                                                              reply['createdAt'] ??
+                                                              reply['created_at'],
+                                                        ),
                                                         style: const TextStyle(
                                                           color: Colors.grey,
                                                           fontSize: 9,
@@ -1338,6 +1438,10 @@ class _ReelItemState extends State<_ReelItem> {
                         child: TextField(
                           controller: ctrl,
                           focusNode: commentFocusNode,
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 13,
+                          ),
                           decoration: InputDecoration(
                             hintText: replyingToName != null
                                 ? 'Phản hồi $replyingToName...'

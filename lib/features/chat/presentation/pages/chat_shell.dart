@@ -16,7 +16,7 @@ class ChatShell extends StatefulWidget {
   State<ChatShell> createState() => _ChatShellState();
 }
 
-class _ChatShellState extends State<ChatShell> {
+class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   int _currentIndex = 0;
   final Set<int> _visitedIndexes = {0};
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -24,12 +24,49 @@ class _ChatShellState extends State<ChatShell> {
   int _initialReelIndex = 0;
   int _reelNavigationTime = 0;
   final GlobalKey<WorkHomePageState> _homeKey = GlobalKey<WorkHomePageState>();
+  int _notificationCount = 0;
+  List<dynamic> _notifications = [];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchGlobalReels();
+    _fetchNotifications();
     ApiService.getMe(); // Lấy thông tin cá nhân mới nhất ngầm
+
+    ApiService.notificationRefresh.addListener(_handleNotificationRefresh);
+
+    // Auto-refresh notifications every 3 seconds
+    Future.delayed(Duration(seconds: 3), _autoRefreshNotifications);
+  }
+
+  void _handleNotificationRefresh() {
+    debugPrint('DEBUG: notificationRefresh triggered');
+    _fetchNotifications();
+  }
+
+  @override
+  void dispose() {
+    ApiService.notificationRefresh.removeListener(_handleNotificationRefresh);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _autoRefreshNotifications() async {
+    if (mounted) {
+      debugPrint('DEBUG: Auto-refreshing notifications');
+      await _fetchNotifications();
+      // Schedule next refresh
+      Future.delayed(Duration(seconds: 3), _autoRefreshNotifications);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchNotifications();
+    }
   }
 
   Future<void> _fetchGlobalReels() async {
@@ -39,6 +76,288 @@ class _ChatShellState extends State<ChatShell> {
         _allReels = List<Map<String, dynamic>>.from(reels);
       });
     }
+  }
+
+  Future<void> _fetchNotifications() async {
+    debugPrint('DEBUG: _fetchNotifications called');
+    try {
+      final notifications = await ApiService.getNotifications();
+      debugPrint('DEBUG: getNotifications returned');
+      if (mounted) {
+        // Sort by createdAt descending
+        notifications.sort((a, b) {
+          final aTime = DateTime.tryParse(a['createdAt']?.toString() ?? '') ?? DateTime.now();
+          final bTime = DateTime.tryParse(b['createdAt']?.toString() ?? '') ?? DateTime.now();
+          return bTime.compareTo(aTime);
+        });
+
+        debugPrint('DEBUG: Fetched ${notifications.length} notifications');
+        for (var n in notifications) {
+          debugPrint('DEBUG: Notification: ${n['type']} - ${n['content']}');
+        }
+
+        final latestNotifications = notifications.take(10).toList();
+        debugPrint('DEBUG: Setting state with ${latestNotifications.length} latest notifications');
+        setState(() {
+          _notifications = latestNotifications;
+          _notificationCount = latestNotifications.where((n) => n['isRead'] != true).length;
+          debugPrint('DEBUG: After setState - _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
+          debugPrint('DEBUG: Unread notifications:');
+          for (var n in _notifications.where((n) => n['isRead'] != true)) {
+            debugPrint('  - ${n['content']} (isRead=${n['isRead']})');
+          }
+        });
+      } else {
+        debugPrint('DEBUG: Widget not mounted, skipping setState');
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Error in _fetchNotifications: $e');
+    }
+  }
+
+  void _showNotifications() {
+    debugPrint('DEBUG: _showNotifications called, _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
+    setState(() {
+      _notificationCount = 0;
+      for (var notification in _notifications) {
+        notification['isRead'] = true;
+      }
+    });
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      onPressed: () async {
+                        setModalState(() {});
+                        await _fetchNotifications();
+                        setModalState(() {});
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  'THÔNG BÁO (${_notifications.length})',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: _notifications.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.notifications_none_outlined,
+                              size: 48,
+                              color: Colors.grey.shade300,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Chưa có thông báo nào',
+                              style: TextStyle(color: Colors.grey.shade400),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: ListView.builder(
+                          itemCount: _notifications.length,
+                          itemBuilder: (ctx, i) {
+                          final notification = _notifications[i];
+                          final senders = notification['senders'] as List<dynamic>? ?? [];
+                          final sender = senders.isNotEmpty ? senders[0] : null;
+                          final String senderName = sender?['fullName']?.toString() ?? 'Người dùng';
+                          final String? senderAvatar = sender?['profilePicture']?.toString();
+                          final String type = notification['type']?.toString() ?? 'Thông báo';
+                          final String content = notification['content']?.toString() ?? '';
+                          final String createdAt = notification['createdAt']?.toString() ?? '';
+                          final String link = notification['link']?.toString() ?? '';
+                          final bool isRead = notification['isRead'] == true;
+
+                          // Format time
+                          String timeDisplay = 'Vừa xong';
+                          if (createdAt.isNotEmpty) {
+                            try {
+                              final date = DateTime.parse(createdAt);
+                              final now = DateTime.now();
+                              final diff = now.difference(date);
+                              if (diff.inDays > 0) {
+                                timeDisplay = '${diff.inDays}d';
+                              } else if (diff.inHours > 0) {
+                                timeDisplay = '${diff.inHours}h';
+                              } else if (diff.inMinutes > 0) {
+                                timeDisplay = '${diff.inMinutes}m';
+                              } else {
+                                timeDisplay = 'now';
+                              }
+                            } catch (e) {
+                              timeDisplay = createdAt;
+                            }
+                          }
+
+                          // Get type display name
+                          String typeDisplay = '';
+                          if (type.contains('reply')) {
+                            typeDisplay = '📬';
+                          } else if (type.contains('message')) {
+                            typeDisplay = '💬';
+                          } else {
+                            typeDisplay = '📢';
+                          }
+
+                          return Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: GestureDetector(
+                                  onTap: link.isNotEmpty ? () {
+                                    // Mark as read
+                                    setState(() {
+                                      notification['isRead'] = true;
+                                      _notificationCount = _notifications.where((n) => n['isRead'] != true).length;
+                                    });
+                                    Navigator.pop(ctx); // Close bottom sheet
+                                    _navigateFromNotification(notification);
+                                  } : null,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Avatar
+                                        FutureBuilder<Map<String, String>>(
+                                          future: ApiService.getAuthHeaders(),
+                                          builder: (context, headers) {
+                                            return CircleAvatar(
+                                              radius: 20,
+                                              backgroundColor: Colors.blueGrey.shade100,
+                                              backgroundImage: senderAvatar != null
+                                                  ? NetworkImage(
+                                                      ApiService.resolveImageUrl(senderAvatar),
+                                                      headers: headers.data,
+                                                    )
+                                                  : null,
+                                              child: senderAvatar == null
+                                                  ? Text(
+                                                      senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    )
+                                                  : null,
+                                            );
+                                          },
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Name and notification type badge
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      senderName,
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 13,
+                                                        color: Colors.black87,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: isRead ? Colors.grey.shade200 : const Color(0xFFE3F2FD),
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: Text(
+                                                      typeDisplay,
+                                                      style: const TextStyle(fontSize: 10),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              // Content
+                                              Padding(
+                                                padding: const EdgeInsets.only(right: 12),
+                                                child: Text(
+                                                  content,
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    color: Colors.black54,
+                                                    fontWeight: isRead ? FontWeight.normal : FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              // Time
+                                              Text(
+                                                timeDisplay,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const Divider(height: 1, indent: 52),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildPage(int index) {
@@ -83,6 +402,63 @@ class _ChatShellState extends State<ChatShell> {
     }
   }
 
+  void _navigateToReel(String reelId) async {
+    final int targetIndex = _allReels.indexWhere(
+      (r) => (r['_id'] ?? r['id'])?.toString() == reelId,
+    );
+    if (targetIndex < 0) {
+      await _fetchGlobalReels();
+    }
+    final int newIndex = _allReels.indexWhere(
+      (r) => (r['_id'] ?? r['id'])?.toString() == reelId,
+    );
+    setState(() {
+      _initialReelIndex = newIndex >= 0 ? newIndex : 0;
+      _reelNavigationTime = DateTime.now().millisecondsSinceEpoch;
+    });
+    _onItemTapped(1);
+  }
+
+  void _navigateFromNotification(Map<String, dynamic> notification) {
+    final link = notification['link']?.toString() ?? '';
+    final metadata = notification['metadata'] is Map<String, dynamic>
+        ? notification['metadata'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    String? postId = metadata['postId']?.toString();
+    String? reelId = metadata['reelId']?.toString();
+
+    if ((postId == null || postId.isEmpty) && link.isNotEmpty) {
+      final uri = Uri.tryParse(link);
+      final path = uri?.path ?? link;
+      final segments = path.split('/')..removeWhere((segment) => segment.isEmpty);
+      for (var i = 0; i < segments.length; i++) {
+        if (segments[i] == 'post' && i + 1 < segments.length) {
+          postId = segments[i + 1];
+          break;
+        }
+        if (segments[i] == 'reel' && i + 1 < segments.length) {
+          reelId = segments[i + 1];
+          break;
+        }
+      }
+    }
+
+    if (postId != null && postId.isNotEmpty) {
+      _onItemTapped(0);
+      _homeKey.currentState?.goToPost(postId);
+      return;
+    }
+    if (reelId != null && reelId.isNotEmpty) {
+      _navigateToReel(reelId);
+      return;
+    }
+
+    if (link.contains('/chat/')) {
+      _onItemTapped(6);
+      return;
+    }
+  }
+
   void _onItemTapped(int index) {
     setState(() {
       _currentIndex = index;
@@ -118,7 +494,14 @@ class _ChatShellState extends State<ChatShell> {
             onTap: () => _onItemTapped(6),
             isActive: _currentIndex == 6,
           ),
-          _TopAction(icon: Icons.notifications_none_outlined, badge: "5"),
+          _TopAction(
+            icon: Icons.notifications_none_outlined,
+            badge: _notificationCount > 0 ? _notificationCount.toString() : null,
+            onTap: () {
+              debugPrint('DEBUG: Bell icon tapped, _notificationCount=$_notificationCount');
+              _showNotifications();
+            },
+          ),
           const SizedBox(width: 8),
         ],
         centerTitle: false,
@@ -293,20 +676,32 @@ class _TopAction extends StatelessWidget {
             ),
             if (badge != null)
               Positioned(
-                right: 4,
-                top: 4,
+                right: 0,
+                top: 0,
                 child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
                     color: Colors.red,
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 20,
+                    minHeight: 20,
                   ),
                   child: Text(
                     badge!,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),

@@ -13,14 +13,22 @@ class MentionTextEditingController extends TextEditingController {
     this.mentionBackgroundColor = const Color(0xFFDBEAFE),
   }) : super(text: text);
 
-  // Regex to find @mention tokens including spaces for fullnames
-  // Matches @ followed by text until it hits common punctuation or a double space
+  // Regex to find @mention tokens including fullname words.
+  // - initial @handle can be any non-space string
+  // - additional words are included only when they begin with an uppercase letter
+  //   so comment text after the fullname is not accidentally consumed.
   static final RegExp _mentionRegex = RegExp(
-    r'@[^@:;!?,\n]+?(?=\s\s+|[:;!?.,]|\n|$)',
+    r'@\S+(?:\s+(?![a-z])[^ \s@:;!?,]+)*',
   );
 
   @override
   set value(TextEditingValue newValue) {
+    // If the text is being cleared completely, allow it.
+    if (newValue.text.isEmpty) {
+      super.value = newValue;
+      return;
+    }
+
     // If we're deleting (new text is shorter)
     if (newValue.text.length < value.text.length) {
       final int selectionStart = newValue.selection.start;
@@ -55,6 +63,9 @@ class MentionTextEditingController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
+    final TextStyle effectiveStyle = (style ?? const TextStyle(color: Colors.black87)).copyWith(
+      color: style?.color ?? Colors.black87,
+    );
     final String fullText = value.text;
     final List<InlineSpan> spans = [];
 
@@ -66,7 +77,7 @@ class MentionTextEditingController extends TextEditingController {
         spans.add(
           TextSpan(
             text: fullText.substring(lastIndex, match.start),
-            style: style,
+            style: effectiveStyle,
           ),
         );
       }
@@ -82,7 +93,7 @@ class MentionTextEditingController extends TextEditingController {
             ),
             child: Text(
               match.group(0)!,
-              style: (style ?? const TextStyle()).copyWith(
+              style: effectiveStyle.copyWith(
                 color: mentionColor,
                 fontWeight: mentionFontWeight,
               ),
@@ -95,11 +106,11 @@ class MentionTextEditingController extends TextEditingController {
 
     // Remaining text after last mention
     if (lastIndex < fullText.length) {
-      spans.add(TextSpan(text: fullText.substring(lastIndex), style: style));
+      spans.add(TextSpan(text: fullText.substring(lastIndex), style: effectiveStyle));
     }
 
     if (spans.isEmpty) {
-      return TextSpan(text: fullText, style: style);
+      return TextSpan(text: fullText, style: effectiveStyle);
     }
 
     return TextSpan(children: spans);
@@ -113,6 +124,9 @@ class MentionTextEditingController extends TextEditingController {
     FontWeight mentionFontWeight = FontWeight.w600,
     Color mentionBackgroundColor = const Color(0xFFDBEAFE),
   }) {
+    final TextStyle effectiveStyle = (style ?? const TextStyle(color: Colors.black87)).copyWith(
+      color: style?.color ?? Colors.black87,
+    );
     final List<InlineSpan> spans = [];
 
     int lastIndex = 0;
@@ -123,7 +137,7 @@ class MentionTextEditingController extends TextEditingController {
         spans.add(
           TextSpan(
             text: fullText.substring(lastIndex, match.start),
-            style: style,
+            style: effectiveStyle,
           ),
         );
       }
@@ -139,7 +153,7 @@ class MentionTextEditingController extends TextEditingController {
             ),
             child: Text(
               match.group(0)!,
-              style: (style ?? const TextStyle()).copyWith(
+              style: effectiveStyle.copyWith(
                 color: mentionColor,
                 fontWeight: mentionFontWeight,
               ),
@@ -181,8 +195,10 @@ class MentionText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveStyle = (style ?? DefaultTextStyle.of(context).style)
-        .copyWith(fontFamilyFallback: fontFamilyFallback);
+    final effectiveStyle = (style ?? DefaultTextStyle.of(context).style).copyWith(
+      fontFamilyFallback: fontFamilyFallback,
+      color: style?.color ?? Colors.black87,
+    );
 
     return RichText(
       maxLines: maxLines,
