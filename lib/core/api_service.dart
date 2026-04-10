@@ -282,7 +282,7 @@ class ApiService {
     }
   }
 
-  static Future<bool> deletePost(String postId) async {
+  static Future<Map<String, dynamic>> deletePost(String postId) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/posts/$postId'),
@@ -290,10 +290,51 @@ class ApiService {
       );
       debugPrint('ApiService deletePost status: ${response.statusCode}');
       debugPrint('ApiService deletePost response: ${response.body}');
-      return response.statusCode == 200 || response.statusCode == 204;
+      
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return {'success': true, 'message': 'Xóa bài viết thành công'};
+      } else if (response.statusCode == 401) {
+        return {'success': false, 'message': 'Bạn cần đăng nhập lại'};
+      } else if (response.statusCode == 403) {
+        return {'success': false, 'message': 'Bạn không có quyền xóa bài viết này'};
+      } else if (response.statusCode == 404) {
+        return {'success': false, 'message': 'Bài viết không tồn tại'};
+      } else {
+        return {'success': false, 'message': 'Lỗi xóa bài viết: ${response.statusCode}'};
+      }
     } catch (e) {
       debugPrint('ApiService error (deletePost): $e');
-      return false;
+      return {'success': false, 'message': 'Lỗi kết nối: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updatePost(
+    String postId,
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/posts/$postId'),
+        headers: await _getHeaders(),
+        body: jsonEncode(payload),
+      );
+      debugPrint('ApiService updatePost status: ${response.statusCode}');
+      debugPrint('ApiService updatePost response: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return {'success': true, 'message': 'Cập nhật bài viết thành công'};
+      } else if (response.statusCode == 401) {
+        return {'success': false, 'message': 'Bạn cần đăng nhập lại'};
+      } else if (response.statusCode == 403) {
+        return {'success': false, 'message': 'Bạn không có quyền sửa bài viết này'};
+      } else if (response.statusCode == 404) {
+        return {'success': false, 'message': 'Bài viết không tồn tại'};
+      } else {
+        return {'success': false, 'message': 'Lỗi cập nhật bài viết: ${response.statusCode}'};
+      }
+    } catch (e) {
+      debugPrint('ApiService error (updatePost): $e');
+      return {'success': false, 'message': 'Lỗi kết nối: $e'};
     }
   }
 

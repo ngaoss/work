@@ -411,20 +411,154 @@ class WorkHomePageState extends State<WorkHomePage> {
     });
   }
 
-  void _deletePost(int index) async {
-    final String? postId = (_posts[index]["id"] ?? _posts[index]["_id"])
-        ?.toString();
-    if (postId != null) {
-      final success = await ApiService.deletePost(postId);
-      if (success && mounted) {
-        setState(() {
-          _posts.removeAt(index);
-        });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Đã xóa bài viết")));
-      }
-    }
+  void _deletePost(int index) {
+    showDialog(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Xóa bài viết"),
+        content: const Text("Bạn có chắc chắn muốn xóa bài viết này? Hành động này không thể hoàn tác."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final String? postId = 
+                  (_posts[index]["id"] ?? _posts[index]["_id"])?.toString();
+              if (postId != null) {
+                // Show loading
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Đang xóa bài viết..."),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
+                
+                final result = await ApiService.deletePost(postId);
+                
+                if (mounted) {
+                  if (result['success'] == true) {
+                    setState(() {
+                      _posts.removeAt(index);
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? "Đã xóa bài viết"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } else {
+                    // Show error message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? "Không thể xóa bài viết"),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                    debugPrint('Delete post failed: ${result['message']}');
+                  }
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Xóa"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _editPost(int index) {
+    final String initialContent =
+        (_posts[index]["content"] ?? _posts[index]["text"] ?? _posts[index]["body"] ?? "")
+            .toString();
+    final TextEditingController controller =
+        TextEditingController(text: initialContent);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Chỉnh sửa bài viết"),
+        content: TextField(
+          controller: controller,
+          maxLines: null,
+          decoration: const InputDecoration(
+            hintText: "Nội dung bài viết",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final updatedContent = controller.text.trim();
+              if (updatedContent.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Nội dung không được để trống"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(ctx);
+              final String? postId =
+                  (_posts[index]["id"] ?? _posts[index]["_id"])?.toString();
+              if (postId == null) return;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Đang cập nhật bài viết..."),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+
+              final result = await ApiService.updatePost(
+                postId,
+                {"content": updatedContent},
+              );
+
+              if (mounted) {
+                if (result['success'] == true) {
+                  setState(() {
+                    _posts[index]["content"] = updatedContent;
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(result['message'] ?? "Đã cập nhật bài viết"),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(result['message'] ?? "Không thể cập nhật bài viết"),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                  debugPrint('Edit post failed: ${result['message']}');
+                }
+              }
+            },
+            child: const Text("Lưu"),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCreateReelDialog() {
@@ -531,6 +665,7 @@ class WorkHomePageState extends State<WorkHomePage> {
                     postIndex: index,
                     onLike: () => _toggleLike(index),
                     onDelete: () => _deletePost(index),
+                    onEdit: () => _editPost(index),
                     onComment: (text, media, {replyTo, parentCommentId}) =>
                         _addComment(
                           index,
@@ -1045,6 +1180,7 @@ class _PostCard extends StatefulWidget {
   final int postIndex;
   final VoidCallback onLike;
   final VoidCallback onDelete;
+  final VoidCallback onEdit;
   final Function(int) onToggleCommentLike;
   final Function(int, int) onToggleReplyLike;
   final Future<bool> Function(
@@ -1060,6 +1196,7 @@ class _PostCard extends StatefulWidget {
     required this.postIndex,
     required this.onLike,
     required this.onDelete,
+    required this.onEdit,
     required this.onComment,
     required this.onToggleCommentLike,
     required this.onToggleReplyLike,
@@ -1073,6 +1210,7 @@ class _PostCardState extends State<_PostCard> {
   String? _isReplyingTo;
   dynamic _replyingToCommentId;
   bool _isExpanded = false;
+  bool _isMenuVisible = false;
   List<dynamic> _localComments = [];
   final FocusNode _commentFocusNode = FocusNode();
 
@@ -1143,6 +1281,28 @@ class _PostCardState extends State<_PostCard> {
         : (widget.post["author"]?.toString() ??
               widget.post["user"]?.toString() ??
               "Người dùng");
+    
+    // Extract authorId from multiple possible locations
+    String? _extractAuthorId() {
+      // Try from author object
+      if (widget.post["author"] is Map) {
+        return (widget.post["author"]["_id"] ?? widget.post["author"]["id"])?.toString();
+      }
+      // Try from userId field
+      if (widget.post["userId"] != null) {
+        return widget.post["userId"].toString();
+      }
+      // Try from author_id field
+      if (widget.post["author_id"] != null) {
+        return widget.post["author_id"].toString();
+      }
+      // Try from user object
+      if (widget.post["user"] is Map) {
+        return (widget.post["user"]["_id"] ?? widget.post["user"]["id"])?.toString();
+      }
+      return null;
+    }
+    final String? extractedAuthorId = _extractAuthorId();
     final String content =
         (widget.post["content"] ??
                 widget.post["text"] ??
@@ -1159,47 +1319,49 @@ class _PostCardState extends State<_PostCard> {
         (widget.post["background"] != null &&
             widget.post["background"] != "null");
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _PostHeader(
-            author: authorName,
-            authorId: widget.post["author"] is Map
-                ? (widget.post["author"]["_id"] ?? widget.post["author"]["id"])
-                      ?.toString()
-                : null,
-            avatar:
-                (widget.post["author"] is Map
-                    ? widget.post["author"]["profilePicture"]
-                    : null) ??
-                (widget.post["user"] is Map
-                    ? widget.post["user"]["profilePicture"]
-                    : null) ??
-                widget.post["authorAvatar"]?.toString(),
-            role: (() {
-              if (widget.post["author"] is Map) {
-                return (widget.post["author"]["department"] ??
-                        widget.post["author"]["role"] ??
-                        "IT System")
-                    .toString();
-              }
-              return (widget.post["department"] ??
-                      widget.post["role"] ??
-                      widget.post["position"] ??
-                      "IT System")
-                  .toString();
-            })(),
-            time: formatTime(
-              widget.post["time"] ??
-                  widget.post["created_at"] ??
-                  widget.post["createdAt"],
-            ),
-            onDelete: widget.onDelete,
-          ),
-          if (content.isNotEmpty && (hasMedia || !hasBg))
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          color: Colors.white,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PostHeader(
+                author: authorName,
+                authorId: extractedAuthorId,
+                avatar:
+                    (widget.post["author"] is Map
+                        ? widget.post["author"]["profilePicture"]
+                        : null) ??
+                    (widget.post["user"] is Map
+                        ? widget.post["user"]["profilePicture"]
+                        : null) ??
+                    widget.post["authorAvatar"]?.toString(),
+                role: (() {
+                  if (widget.post["author"] is Map) {
+                    return (widget.post["author"]["department"] ??
+                            widget.post["author"]["role"] ??
+                            "IT System")
+                        .toString();
+                  }
+                  return (widget.post["department"] ??
+                          widget.post["role"] ??
+                          widget.post["position"] ??
+                          "IT System")
+                      .toString();
+                })(),
+                time: formatTime(
+                  widget.post["time"] ??
+                      widget.post["created_at"] ??
+                      widget.post["createdAt"],
+                ),
+                onDelete: widget.onDelete,
+                onEdit: widget.onEdit,
+                onToggleMenu: () => setState(() => _isMenuVisible = !_isMenuVisible),
+              ),
+              if (content.isNotEmpty && (hasMedia || !hasBg))
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Column(
@@ -1361,8 +1523,100 @@ class _PostCardState extends State<_PostCard> {
               _replyingToCommentId = null;
             }),
           ),
-        ],
-      ),
+            ],
+          ),
+        ),
+        if (_isMenuVisible)
+          Positioned(
+            top: 60,
+            right: 16,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _isMenuVisible = false);
+                        widget.onEdit();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.edit_outlined,
+                              color: Colors.black54,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Chỉnh sửa',
+                              style: TextStyle(
+                                color: Colors.grey.shade900,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      height: 1,
+                      color: Colors.grey.shade100,
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _isMenuVisible = false);
+                        widget.onDelete();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Xóa bài viết',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -2133,17 +2387,23 @@ class _PostHeader extends StatelessWidget {
   final String role;
   final String time;
   final VoidCallback onDelete;
+  final VoidCallback onEdit;
+  final VoidCallback onToggleMenu;
+  
   const _PostHeader({
+    Key? key,
     required this.author,
     this.authorId,
     this.avatar,
     required this.role,
     required this.time,
     required this.onDelete,
-  });
+    required this.onEdit,
+    required this.onToggleMenu,
+  }) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
-    // Get current user ID
     final currentUserId =
         AuthService().userProfile.value?['_id']?.toString() ??
         AuthService().userProfile.value?['id']?.toString();
@@ -2197,27 +2457,7 @@ class _PostHeader extends StatelessWidget {
           if (isOwner)
             IconButton(
               icon: const Icon(Icons.more_horiz, color: Colors.grey),
-              onPressed: () => showModalBottomSheet(
-                context: context,
-                builder: (c) => Wrap(
-                  children: [
-                    ListTile(
-                      leading: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.red,
-                      ),
-                      title: const Text(
-                        "Xóa bài viết",
-                        style: TextStyle(color: Colors.red),
-                      ),
-                      onTap: () {
-                        onDelete();
-                        Navigator.pop(c);
-                      },
-                    ),
-                  ],
-                ),
-              ),
+              onPressed: onToggleMenu,
             ),
         ],
       ),
