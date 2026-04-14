@@ -354,6 +354,10 @@ class WorkHomePageState extends State<WorkHomePage> {
     final String? commentId = (comment["id"] ?? comment["_id"])?.toString();
     if (commentId == null) return;
 
+    final currentUserId = (AuthService().userProfile.value?['_id'] ??
+            AuthService().userProfile.value?['id'])
+        ?.toString();
+
     setState(() {
       final bool wasLiked = comment["isLiked"] == true;
       comment["isLiked"] = !wasLiked;
@@ -363,9 +367,36 @@ class WorkHomePageState extends State<WorkHomePage> {
       } else {
         comment["likes"] = (currentLikes > 0) ? currentLikes - 1 : 0;
       }
+
+      if (comment["reactions"] is List) {
+        final reactions = List.from(comment["reactions"] as List);
+        if (!wasLiked) {
+          if (currentUserId != null) {
+            reactions.add({
+              'type': 'like',
+              'reactionType': 'like',
+              'user': currentUserId,
+            });
+          }
+        } else {
+          reactions.removeWhere((action) {
+            if (action is Map) {
+              final user = action['user'];
+              final String? actionType =
+                  action['type']?.toString() ?? action['reactionType']?.toString();
+              return actionType == 'like' &&
+                  (user == currentUserId ||
+                      (user is Map &&
+                          (user['_id']?.toString() == currentUserId ||
+                              user['id']?.toString() == currentUserId)));
+            }
+            return false;
+          });
+        }
+        comment["reactions"] = reactions;
+      }
     });
 
-    // Run in background
     ApiService.toggleCommentLike(commentId);
   }
 
@@ -397,9 +428,9 @@ class WorkHomePageState extends State<WorkHomePage> {
 
   void _toggleReplyLike(int postIndex, int commentIndex, int replyIndex) {
     setState(() {
-      final reply = List<Map<String, dynamic>>.from(
-        _posts[postIndex]["commentList"][commentIndex]["replies"] ?? [],
-      )[replyIndex];
+      final replies = _posts[postIndex]["commentList"]?[commentIndex]["replies"] ?? [];
+      if (replyIndex < 0 || replyIndex >= replies.length) return;
+      final reply = replies[replyIndex];
       final bool wasLiked = reply["isLiked"] == true;
       reply["isLiked"] = !wasLiked;
       int currentLikes = int.tryParse(reply["likes"]?.toString() ?? "0") ?? 0;
@@ -407,6 +438,37 @@ class WorkHomePageState extends State<WorkHomePage> {
         reply["likes"] = currentLikes + 1;
       } else {
         reply["likes"] = (currentLikes > 0) ? currentLikes - 1 : 0;
+      }
+
+      if (reply["reactions"] is List) {
+        final currentUserId = (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
+        final reactions = List.from(reply["reactions"] as List);
+        if (!wasLiked) {
+          if (currentUserId != null) {
+            reactions.add({
+              'type': 'like',
+              'reactionType': 'like',
+              'user': currentUserId,
+            });
+          }
+        } else {
+          reactions.removeWhere((action) {
+            if (action is Map) {
+              final user = action['user'];
+              final String? actionType =
+                  action['type']?.toString() ?? action['reactionType']?.toString();
+              return actionType == 'like' &&
+                  (user == currentUserId ||
+                      (user is Map &&
+                          (user['_id']?.toString() == currentUserId ||
+                              user['id']?.toString() == currentUserId)));
+            }
+            return false;
+          });
+        }
+        reply["reactions"] = reactions;
       }
     });
   }
@@ -1242,6 +1304,112 @@ class _PostCardState extends State<_PostCard> {
     }
   }
 
+  void _toggleLocalCommentLike(int commentIndex) {
+    if (commentIndex < 0 || commentIndex >= _localComments.length) return;
+    final comment = _localComments[commentIndex] as Map<String, dynamic>;
+    final String? currentUserId =
+        (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
+    final String? commentId =
+        (comment["id"] ?? comment["_id"])?.toString();
+
+    setState(() {
+      final bool wasLiked = comment["isLiked"] == true;
+      comment["isLiked"] = !wasLiked;
+      int currentLikes = int.tryParse(comment["likes"]?.toString() ?? "0") ?? 0;
+      comment["likes"] = wasLiked
+          ? (currentLikes > 0 ? currentLikes - 1 : 0)
+          : currentLikes + 1;
+
+      final reactions = comment["reactions"] is List
+          ? List.from(comment["reactions"] as List)
+          : <dynamic>[];
+      if (!wasLiked) {
+        if (currentUserId != null) {
+          reactions.add({
+            'type': 'like',
+            'reactionType': 'like',
+            'user': currentUserId,
+          });
+        }
+      } else {
+        reactions.removeWhere((action) {
+          if (action is Map) {
+            final user = action['user'];
+            final String? actionType = action['type']?.toString() ??
+                action['reactionType']?.toString();
+            return actionType == 'like' &&
+                (user == currentUserId ||
+                    (user is Map &&
+                        (user['_id']?.toString() == currentUserId ||
+                            user['id']?.toString() == currentUserId)));
+          }
+          return false;
+        });
+      }
+      comment["reactions"] = reactions;
+    });
+
+    if (commentId != null && commentId.isNotEmpty) {
+      ApiService.toggleCommentReaction(commentId, reactionType: 'like');
+    }
+  }
+
+  void _toggleLocalReplyLike(int commentIndex, int replyIndex) {
+    if (commentIndex < 0 || commentIndex >= _localComments.length) return;
+    final comment = _localComments[commentIndex] as Map<String, dynamic>;
+    final replies = comment["replies"] as List<dynamic>?;
+    if (replies == null || replyIndex < 0 || replyIndex >= replies.length) return;
+    final reply = replies[replyIndex] as Map<String, dynamic>;
+    final String? currentUserId =
+        (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
+    final String? replyId = (reply["id"] ?? reply["_id"])?.toString();
+
+    setState(() {
+      final bool wasLiked = reply["isLiked"] == true;
+      reply["isLiked"] = !wasLiked;
+      int currentLikes = int.tryParse(reply["likes"]?.toString() ?? "0") ?? 0;
+      reply["likes"] = wasLiked
+          ? (currentLikes > 0 ? currentLikes - 1 : 0)
+          : currentLikes + 1;
+
+      final reactions = reply["reactions"] is List
+          ? List.from(reply["reactions"] as List)
+          : <dynamic>[];
+      if (!wasLiked) {
+        if (currentUserId != null) {
+          reactions.add({
+            'type': 'like',
+            'reactionType': 'like',
+            'user': currentUserId,
+          });
+        }
+      } else {
+        reactions.removeWhere((action) {
+          if (action is Map) {
+            final user = action['user'];
+            final String? actionType = action['type']?.toString() ??
+                action['reactionType']?.toString();
+            return actionType == 'like' &&
+                (user == currentUserId ||
+                    (user is Map &&
+                        (user['_id']?.toString() == currentUserId ||
+                            user['id']?.toString() == currentUserId)));
+          }
+          return false;
+        });
+      }
+      reply["reactions"] = reactions;
+    });
+
+    if (replyId != null && replyId.isNotEmpty) {
+      ApiService.toggleCommentReaction(replyId, reactionType: 'like');
+    }
+  }
+
   void _showFullImage(String path) {
     final bool isNet = path.startsWith('http') || !File(path).existsSync();
     final String resolved = isNet ? ApiService.resolveImageUrl(path) : path;
@@ -1461,7 +1629,7 @@ class _PostCardState extends State<_PostCard> {
                   );
                   return _CommentTile(
                     comment: comment,
-                    onLike: () => widget.onToggleCommentLike(commentIdx),
+                    onLike: () => _toggleLocalCommentLike(commentIdx),
                     onReply: () => setState(() {
                       _isReplyingTo =
                           (comment["author"] is Map
@@ -1474,7 +1642,7 @@ class _PostCardState extends State<_PostCard> {
                     }),
                     replies: replies,
                     onReplyLike: (replyIdx) =>
-                        widget.onToggleReplyLike(commentIdx, replyIdx),
+                        _toggleLocalReplyLike(commentIdx, replyIdx),
                     onReplyReply: (authorName) => setState(() {
                       _isReplyingTo = authorName;
                       _replyingToCommentId = (comment["id"] ?? comment["_id"])
@@ -1867,6 +2035,7 @@ class _CommentTile extends StatelessWidget {
                   isLiked: comment["isLiked"] == true,
                   onLike: onLike,
                   onReply: onReply,
+                  reactions: comment["reactions"] as List<dynamic>?,
                 ),
                 // Replies (threaded)
                 if (replies.isNotEmpty)
@@ -1966,6 +2135,7 @@ class _CommentTile extends StatelessWidget {
                                                   "Người dùng";
                                               onReplyReply(name);
                                             },
+                                            reactions: reply["reactions"] as List<dynamic>?,
                                           ),
                                         ],
                                       ),
@@ -1995,47 +2165,101 @@ class _CommentBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            (comment["author"] is Map
-                        ? (comment["author"]["fullName"] ??
-                              comment["author"]["name"])
-                        : comment["author"])
-                    ?.toString() ??
-                "Người dùng",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
-              fontSize: small ? 11 : 12,
-            ),
+    final reactions = comment['reactions'] as List<dynamic>?;
+    final int likeCount = reactions != null
+        ? reactions.where((r) {
+            final String? actionType =
+                r['type']?.toString() ?? r['reactionType']?.toString();
+            return actionType == 'like';
+          }).length
+        : int.tryParse(comment['likes']?.toString() ?? '0') ?? 0;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(16),
           ),
-          if (comment["text"]?.toString().isNotEmpty == true)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: MentionText(
-                text: comment["text"]?.toString() ?? "",
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                (comment["author"] is Map
+                            ? (comment["author"]["fullName"] ??
+                                  comment["author"]["name"])
+                            : comment["author"])?.toString() ??
+                    "Người dùng",
                 style: TextStyle(
-                  fontSize: small ? 12 : 13,
-                  color: Colors.black87,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                  fontSize: small ? 11 : 12,
                 ),
-                fontFamilyFallback: const [
-                  "Apple Color Emoji",
-                  "Segoe UI Emoji",
-                  "Segoe UI Symbol",
-                  "Noto Color Emoji",
-                ],
+              ),
+              if (comment["text"]?.toString().isNotEmpty == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: MentionText(
+                    text: comment["text"]?.toString() ?? "",
+                    style: TextStyle(
+                      fontSize: small ? 12 : 13,
+                      color: Colors.black87,
+                    ),
+                    fontFamilyFallback: const [
+                      "Apple Color Emoji",
+                      "Segoe UI Emoji",
+                      "Segoe UI Symbol",
+                      "Noto Color Emoji",
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (likeCount > 0)
+          Positioned(
+            bottom: -8,
+            right: -8,
+            child: IgnorePointer(
+              ignoring: true,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.thumb_up,
+                      color: Colors.blue,
+                      size: 10,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      likeCount.toString(),
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -2046,29 +2270,67 @@ class _CommentActions extends StatelessWidget {
   final bool isLiked;
   final VoidCallback onLike;
   final VoidCallback onReply;
+  final List<dynamic>? reactions;
+  
   const _CommentActions({
     required this.time,
     required this.likes,
     required this.isLiked,
     required this.onLike,
     required this.onReply,
+    this.reactions,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Count reactions by type
+    final int totalReactions = reactions?.length ?? likes;
+    final int likeCount = reactions != null
+        ? reactions!.where((r) {
+            final String? actionType =
+                r['type']?.toString() ?? r['reactionType']?.toString();
+            return actionType == 'like';
+          }).length
+        : likes;
+    final currentUserId = (AuthService().userProfile.value?['_id'] ??
+            AuthService().userProfile.value?['id'])
+        ?.toString();
+    final bool likedByReaction = reactions?.any((r) {
+          final String? actionType =
+              r['type']?.toString() ?? r['reactionType']?.toString();
+          if (actionType != 'like') return false;
+          final user = r['user'];
+          if (user == null) return false;
+          if (user is String) return user == currentUserId;
+          if (user is Map) {
+            return (user['_id']?.toString() == currentUserId ||
+                user['id']?.toString() == currentUserId);
+          }
+          return false;
+        }) ??
+        false;
+    final bool effectiveLiked = isLiked || likedByReaction;
+
     return Row(
       children: [
         const SizedBox(width: 8),
         Text(time, style: const TextStyle(color: Colors.grey, fontSize: 10)),
         const SizedBox(width: 14),
-        GestureDetector(
-          onTap: onLike,
-          child: Text(
-            "Thích${likes > 0 ? " ($likes)" : ""}",
-            style: TextStyle(
-              color: isLiked ? Colors.blue : Colors.blueGrey,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: onLike,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Text(
+                "Thích",
+                style: TextStyle(
+                  color: effectiveLiked ? Colors.blue : Colors.blueGrey,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
         ),

@@ -13,6 +13,10 @@ class FullScreenMediaViewer extends StatefulWidget {
     this.initialIndex = 0,
   });
 
+  static bool _isNetworkUrl(String url) {
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
   @override
   State<FullScreenMediaViewer> createState() => _FullScreenMediaViewerState();
 }
@@ -59,6 +63,12 @@ class _FullScreenMediaViewerState extends State<FullScreenMediaViewer> {
         onPageChanged: (index) => setState(() => _currentIndex = index),
         itemBuilder: (context, index) {
           final url = widget.mediaList[index];
+          if (url.isEmpty || (!FullScreenMediaViewer._isNetworkUrl(url) && !File(url).existsSync())) {
+            return const Center(
+              child: Icon(Icons.broken_image, color: Colors.white, size: 64),
+            );
+          }
+          
           final isVideo =
               url.toLowerCase().endsWith('.mp4') ||
               url.toLowerCase().endsWith('.mov');
@@ -78,7 +88,7 @@ class _ImageItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isNet = url.startsWith('http') || !File(url).existsSync();
+    final bool isNet = FullScreenMediaViewer._isNetworkUrl(url) || !File(url).existsSync();
     return InteractiveViewer(
       minScale: 0.5,
       maxScale: 4.0,
@@ -115,12 +125,14 @@ class _VideoItemState extends State<_VideoItem> {
   @override
   void initState() {
     super.initState();
-    final bool isNet =
-        widget.url.startsWith('http') || !File(widget.url).existsSync();
+    final bool isNet = FullScreenMediaViewer._isNetworkUrl(widget.url) && widget.url.length > 10;
     if (isNet) {
       _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
-    } else {
+    } else if (File(widget.url).existsSync()) {
       _controller = VideoPlayerController.file(File(widget.url));
+    } else {
+      // Invalid URL, don't initialize
+      return;
     }
 
     _controller!.initialize().then((_) {
@@ -129,6 +141,9 @@ class _VideoItemState extends State<_VideoItem> {
         _controller!.play();
         _controller!.setLooping(true);
       }
+    }).catchError((error) {
+      // Handle initialization error
+      debugPrint('Video initialization error: $error');
     });
   }
 

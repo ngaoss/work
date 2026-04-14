@@ -251,6 +251,7 @@ class _ChatBubble extends StatelessWidget {
                           ? Colors.white
                           : (isDark ? Colors.white : Colors.black87),
                       fontSize: 14,
+                      fontFamily: 'sans-serif',
                     ),
                   ),
                 ),

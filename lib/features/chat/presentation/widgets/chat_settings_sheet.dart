@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/api_service.dart';
 
 class ChatSettingsSheet extends StatefulWidget {
   final String name;
@@ -112,7 +113,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
   }
 
   void _removeMember(int index) {
-    final memberName = _members[index]["name"] ?? "Thành viên này";
+    final memberName = _members[index]["name"] ?? _members[index]["fullName"] ?? "Thành viên này";
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -212,6 +213,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                         "name": c["name"]!,
                         "role": c["role"]!.toUpperCase(),
                         "isOwner": "false",
+                        "fullName": c["name"]!,
                       });
                     });
                     if (widget.onUpdateMembers != null) {
@@ -282,15 +284,17 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                             decoration: BoxDecoration(
                               color: Colors.grey.shade300,
                               borderRadius: BorderRadius.circular(24),
-                              image: _avatarPath != null
+                              image: _avatarPath != null && _avatarPath!.isNotEmpty
                                   ? DecorationImage(
-                                      image: FileImage(File(_avatarPath!)),
+                                      image: _avatarPath!.startsWith('http')
+                                          ? NetworkImage(ApiService.resolveImageUrl(_avatarPath!)) as ImageProvider
+                                          : FileImage(File(_avatarPath!)),
                                       fit: BoxFit.cover,
                                     )
                                   : null,
                             ),
                             alignment: Alignment.center,
-                            child: _avatarPath == null
+                            child: _avatarPath == null || _avatarPath!.isEmpty
                                 ? Text(
                                     _currentName.length >= 2
                                         ? _currentName
@@ -497,14 +501,18 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                               children: _members.asMap().entries.map((entry) {
                                 final i = entry.key;
                                 final m = entry.value;
+                                final memberName = m["name"] ?? m["fullName"] ?? "";
+                                final memberRole = m["role"] ?? "Thành viên";
+                                final memberIsOwner = m["isOwner"] == "true";
+                                final memberAvatarPath = m["profilePicture"] ?? m["avatar"];
                                 return _MemberTile(
-                                  name: m["name"]!,
-                                  role: m["role"]!,
-                                  isOwner: m["isOwner"] == "true",
-                                  showRemoval:
-                                      widget.isGroup &&
+                                  name: memberName,
+                                  role: memberRole,
+                                  isOwner: memberIsOwner,
+                                  avatarPath: memberAvatarPath,
+                                  showRemoval: widget.isGroup &&
                                       _isOwner &&
-                                      m["isOwner"] != "true",
+                                      !memberIsOwner,
                                   onRemove: () => _removeMember(i),
                                 );
                               }).toList(),
@@ -611,6 +619,7 @@ class _MemberTile extends StatelessWidget {
   final String role;
   final bool isOwner;
   final bool showRemoval;
+  final String? avatarPath;
   final VoidCallback? onRemove;
 
   const _MemberTile({
@@ -618,6 +627,7 @@ class _MemberTile extends StatelessWidget {
     required this.role,
     this.isOwner = false,
     this.showRemoval = false,
+    this.avatarPath,
     this.onRemove,
   });
 
@@ -629,9 +639,12 @@ class _MemberTile extends StatelessWidget {
         children: [
           CircleAvatar(
             backgroundColor: Colors.grey.shade300,
-            backgroundImage: const NetworkImage(
-              "https://picsum.photos/100",
-            ), // Default random avatar
+            backgroundImage: avatarPath != null && avatarPath!.isNotEmpty
+                ? NetworkImage(ApiService.resolveImageUrl(avatarPath!)) as ImageProvider
+                : null,
+            child: avatarPath == null || avatarPath!.isEmpty
+                ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?', style: const TextStyle(color: Colors.black54))
+                : null,
           ),
           const SizedBox(width: 12),
           Expanded(

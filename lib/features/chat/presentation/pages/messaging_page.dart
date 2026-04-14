@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'chat_detail_screen.dart';
 import '../../../../core/api_service.dart';
+import '../../../../core/security.dart';
 
 class MessagingPage extends StatefulWidget {
   const MessagingPage({super.key});
@@ -15,11 +17,50 @@ class _MessagingPageState extends State<MessagingPage> {
   int _currentTab = 0;
 
   List<dynamic> _realUsers = [];
+  StreamSubscription? _chatSubscription;
 
   @override
   void initState() {
     super.initState();
     _fetchUsers();
+    _fetchChats();
+    _chatSubscription = ApiService.newChatStream.listen(_handleNewMessage);
+  }
+
+  void _handleNewMessage(Map<String, dynamic> data) {
+    if (!mounted) return;
+    
+    final chatId = data["chatId"]?.toString() ?? data["chat"]?["_id"]?.toString() ?? data["chat"]?.toString();
+    if (chatId == null) return;
+
+    setState(() {
+      final index = _chats.indexWhere((c) => c["id"]?.toString() == chatId);
+      if (index != -1) {
+        // Update existing chat
+        _chats[index]["lastMsg"] = data["text"] ?? data["content"] ?? "";
+        _chats[index]["time"] = "Vừa xong";
+        
+        // Mark as unread if not sent by us
+        final senderId = data["sender"]?["_id"] ?? data["senderId"] ?? data["sender"];
+        final myId = (AuthService().userProfile.value?["_id"] ?? AuthService().userProfile.value?["id"])?.toString();
+        if (senderId?.toString() != myId) {
+          _chats[index]["hasUnread"] = true;
+        }
+
+        // Move to top
+        final item = _chats.removeAt(index);
+        _chats.insert(0, item);
+      } else {
+        // It's a message for a chat not in the current top list, maybe fetch again
+        _fetchChats();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _chatSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchUsers() async {
@@ -29,6 +70,157 @@ class _MessagingPageState extends State<MessagingPage> {
         _realUsers = users;
       });
     }
+  }
+
+  Future<void> _fetchChats() async {
+    final chats = await ApiService.getChats();
+    if (mounted) {
+      setState(() {
+        _chats.clear();
+        for (var chat in chats) {
+          final participants = List<dynamic>.from(chat["participants"] ?? []);
+          final bool online = participants.any((participant) {
+            final status = participant["status"]?.toString().toLowerCase();
+            return participant["isOnline"] == true || status == "online";
+          });
+          final String name = chat["name"] ?? _resolveChatName(chat, participants);
+          final String statusText = chat["isGroup"] == true
+              ? (online ? "ĐANG HOẠT ĐỘNG" : "${participants.length} thành viên")
+              : (online ? "ĐANG HOẠT ĐỘNG" : "NGOẠI TUYẾN");
+          final String? avatarPath = _extractAvatarForChat(chat, participants);
+          // debugPrint("Extracted Avatar for [${chat['name'] ?? chat['_id']}]: $avatarPath");
+
+          _chats.add({
+            "id": chat["_id"]?.toString(),
+            "name": name,
+            "status": statusText,
+            "lastMsg": chat["lastMessage"]?["text"] ?? "",
+            "time": _formatTime(chat["lastMessage"]?["createdAt"]),
+            "isOnline": online,
+            "initials": _getInitials(chat, participants),
+            "color": Colors.blue,
+            "isGroup": chat["isGroup"] ?? false,
+            "hasUnread": (chat["unreadCount"] ?? 0) > 0,
+            "messages": [],
+            "participants": participants,
+            "avatarPath": avatarPath,
+            "themeColor": chat["themeColor"] ?? "#2563eb",
+          });
+        }
+      });
+    }
+  }
+
+  Map<String, dynamic>? _findOtherParticipant(List<dynamic> participants) {
+    if (participants.isEmpty) return null;
+
+    final currentUserId = AuthService().userProfile.value?["_id"]?.toString();
+    final candidate = participants.firstWhere(
+      (p) {
+        if (p is Map<String, dynamic>) {
+          final participantId = p["_id"]?.toString();
+          return participantId != null && participantId != currentUserId;
+        }
+        return false;
+      },
+      orElse: () => participants.isNotEmpty ? participants.first : {},
+    );
+
+    if (candidate is Map<String, dynamic>) {
+      return candidate;
+    }
+    return null;
+  }
+
+  String _resolveChatName(Map<String, dynamic> chat, List<dynamic> participants) {
+    if (chat["isGroup"] == true) {
+      return chat["name"] ?? "Nhóm";
+    }
+    final other = _findOtherParticipant(participants);
+    if (other != null) {
+      return other["fullName"] ?? other["name"] ?? "Chat";
+    }
+    return "Chat";
+  }
+
+  String _getInitials(Map<String, dynamic> chat, List<dynamic> participants) {
+    if (chat["isGroup"] == true) {
+      return chat["name"]?.substring(0, 2).toUpperCase() ?? "GR";
+    }
+
+    final otherParticipant = _findOtherParticipant(participants) ?? (participants.isNotEmpty ? participants.first as Map<String, dynamic> : null);
+    if (otherParticipant != null) {
+      final name = otherParticipant["fullName"] ?? otherParticipant["name"] ?? "";
+      return name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();
+    }
+    return "CH";
+  }
+
+  String? _extractAvatarForChat(Map<String, dynamic> chat, List<dynamic> participants) {
+    if (chat["groupAvatar"] != null) {
+      final val = _resolveAvatarValue(chat["groupAvatar"]);
+      if (val != null && val.isNotEmpty) return val;
+    }
+    if (chat["avatar"] != null) {
+      final val = _resolveAvatarValue(chat["avatar"]);
+      if (val != null && val.isNotEmpty) return val;
+    }
+
+    final otherParticipant = _findOtherParticipant(participants);
+    if (otherParticipant != null) {
+      return _resolveAvatarValue(otherParticipant["profilePicture"] ?? otherParticipant["avatar"]);
+    }
+
+    if (participants.isNotEmpty) {
+      final firstParticipant = participants.first;
+      if (firstParticipant is Map<String, dynamic>) {
+        return _resolveAvatarValue(firstParticipant["profilePicture"] ?? firstParticipant["avatar"]);
+      }
+    }
+    return null;
+  }
+
+  String _formatTime(String? dateString) {
+    if (dateString == null) return "";
+    try {
+      final date = DateTime.parse(dateString).toLocal();
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 30) {
+        final day = date.day.toString().padLeft(2, '0');
+        final month = date.month.toString().padLeft(2, '0');
+        final year = date.year.toString();
+        final hour = date.hour.toString().padLeft(2, '0');
+        final minute = date.minute.toString().padLeft(2, '0');
+        return "$day/$month/$year $hour:$minute";
+      } else if (difference.inDays >= 30) {
+        return "1 tháng trước";
+      } else if (difference.inDays > 0) {
+        return "${difference.inDays} ngày trước";
+      } else if (difference.inHours > 0) {
+        return "${difference.inHours}h trước";
+      } else if (difference.inMinutes > 0) {
+        return "${difference.inMinutes} phút trước";
+      } else {
+        return "Vừa xong";
+      }
+    } catch (e) {
+      return "";
+    }
+  }
+
+  String? _resolveAvatarValue(dynamic avatar) {
+    if (avatar == null) return null;
+    if (avatar is Map<String, dynamic>) {
+      return _resolveAvatarValue(avatar['url'] ?? avatar['path'] ?? avatar['value'] ?? avatar['id'] ?? avatar.toString());
+    }
+    if (avatar is List && avatar.isNotEmpty) {
+      return _resolveAvatarValue(avatar.first);
+    }
+    final raw = avatar.toString().trim();
+    if (raw.isEmpty) return null;
+    return ApiService.resolveImageUrl(raw);
   }
 
   void _upsertGroup({int? id, required String name}) {
@@ -299,9 +491,9 @@ class _MessagingPageState extends State<MessagingPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               "Sửa thông tin",
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
             ),
             const SizedBox(height: 24),
             TextField(
@@ -371,7 +563,7 @@ class _MessagingPageState extends State<MessagingPage> {
                 ),
                 child: const Text(
                   "LƯU THAY ĐỔI",
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
@@ -496,6 +688,7 @@ class _MessagingPageState extends State<MessagingPage> {
                 children: filteredChats
                     .map(
                       (chat) => _ChatItem(
+                        key: ValueKey(chat["id"]),
                         name: chat["name"],
                         status: chat["status"],
                         lastMsg: chat["lastMsg"],
@@ -538,11 +731,25 @@ class _MessagingPageState extends State<MessagingPage> {
           avatarPath: chat["avatarPath"],
           initialMessages: (chat["messages"] as List?)
               ?.cast<Map<String, dynamic>>(),
-          initialMembers: (chat["messages"] != null && chat["members"] == null)
-              ? []
-              : (chat["members"] as List?)
-                    ?.map((e) => Map<String, String>.from(e as Map))
-                    .toList(),
+          initialMembers: (chat["participants"] as List?)
+              ?.map((e) {
+                if (e is Map<String, dynamic>) {
+                  return <String, String>{
+                    '_id': (e['_id'] ?? '').toString(),
+                    'profilePicture': (e['profilePicture'] ?? '').toString(),
+                    'avatar': (e['avatar'] ?? '').toString(),
+                    'fullName': (e['fullName'] ?? '').toString(),
+                    'name': (e['name'] ?? e['fullName'] ?? '').toString(),
+                    'role': (e['role'] ?? '').toString(),
+                    'isOwner': (e['isOwner'] ?? 'false').toString(),
+                  };
+                }
+                return <String, String>{};
+              })
+              .where((m) => m.isNotEmpty)
+              .toList()
+              .cast<Map<String, String>>(),
+          conversationId: chat["id"]?.toString(),
         ),
       ),
     );
@@ -561,14 +768,13 @@ class _MessagingPageState extends State<MessagingPage> {
           _chats[index]["time"] = result["time"];
           if (result["name"] != null) _chats[index]["name"] = result["name"];
           if (result["color"] != null) _chats[index]["color"] = result["color"];
-          if (result["initials"] != null)
-            _chats[index]["initials"] = result["initials"];
-          if (result["messages"] != null)
-            _chats[index]["messages"] = result["messages"];
-          if (result["members"] != null)
-            _chats[index]["members"] = result["members"];
-          if (result["avatarPath"] != null)
-            _chats[index]["avatarPath"] = result["avatarPath"];
+          if (result["initials"] != null) _chats[index]["initials"] = result["initials"];
+          if (result["messages"] != null) _chats[index]["messages"] = result["messages"];
+          if (result["members"] != null) _chats[index]["members"] = result["members"];
+          if (result["avatarPath"] != null) _chats[index]["avatarPath"] = result["avatarPath"];
+          if (result["conversationId"] != null && result["conversationId"] != chat["id"]) {
+            _chats[index]["id"] = result["conversationId"];
+          }
         }
       });
     }
@@ -649,19 +855,19 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
           Text(
             label,
             style: TextStyle(
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w900,
               fontSize: 13,
-              color: isActive ? const Color(0xFF3B82F6) : Colors.grey,
+              color: isActive ? const Color(0xFF3B82F6) : Colors.grey.shade400,
+              letterSpacing: 0.5,
             ),
           ),
-          if (isActive) ...[
-            const SizedBox(height: 6),
+          const SizedBox(height: 8),
+          if (isActive)
             Container(
               width: 40,
               height: 3,
@@ -669,9 +875,9 @@ class _TabItem extends StatelessWidget {
                 color: const Color(0xFF3B82F6),
                 borderRadius: BorderRadius.circular(2),
               ),
-            ),
-          ] else
-            const SizedBox(height: 9), // Placeholder for animation consistency
+            )
+          else
+            const SizedBox(height: 9),
         ],
       ),
     );
@@ -692,6 +898,7 @@ class _ChatItem extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ChatItem({
+    super.key,
     required this.name,
     required this.status,
     required this.lastMsg,
@@ -707,142 +914,170 @@ class _ChatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      splashColor: color?.withOpacity(0.1) ?? Colors.blue.withOpacity(0.1),
-      highlightColor: color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05),
-      child: Container(
-        color: hasUnread
-            ? (color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05))
-            : Colors.transparent,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        margin: const EdgeInsets.only(bottom: 4),
-        child: Row(
-          children: [
-            Stack(
-              alignment: Alignment.bottomRight,
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: color?.withOpacity(0.2) ?? Colors.blueGrey.shade50,
-                    shape: BoxShape.circle,
-                    image: avatarPath != null
-                        ? DecorationImage(
-                            image: FileImage(File(avatarPath!)),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: Center(
-                    child: avatarPath != null
-                        ? null
-                        : initials != null
-                        ? Text(
-                            initials!,
-                            style: TextStyle(
-                              color: color ?? Colors.blueGrey,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.person,
-                            color: Colors.blueGrey,
-                            size: 30,
-                          ),
-                  ),
-                ),
-                if (isOnline)
-                  Container(
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF22C55E),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                  ),
-              ],
+    final String? avatarSource = avatarPath?.trim();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(20),
+          splashColor: color?.withOpacity(0.1) ?? Colors.blue.withOpacity(0.1),
+          highlightColor: color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: hasUnread ? const Color(0xFFF1F5F9) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                name,
-                                style: TextStyle(
-                                  fontWeight: hasUnread
-                                      ? FontWeight.w900
-                                      : FontWeight.bold,
-                                  fontSize: 13,
-                                  color: const Color(0xFF1E293B),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            child: Row(
+              children: [
+                Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: color?.withOpacity(0.12) ?? Colors.blueGrey.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: ClipOval(
+                        child: avatarSource != null && avatarSource.isNotEmpty
+                            ? Image.network(
+                                avatarSource,
+                                key: ValueKey(avatarSource),
+                                headers: AuthService().authToken.value != null ? {'Authorization': 'Bearer ${AuthService().authToken.value}'} : null,
+                                fit: BoxFit.cover,
+                                height: double.infinity,
+                                width: double.infinity,
+                                errorBuilder: (context, error, stackTrace) {
+                                  // debugPrint("Avatar Load Error [$name] - URL: $avatarSource => Error: $error");
+                                  return Center(
+                                    child: initials != null
+                                        ? Text(
+                                            initials!.toUpperCase(),
+                                            style: TextStyle(
+                                              color: color ?? Colors.blueGrey,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 18,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.person,
+                                            color: Colors.blueGrey,
+                                            size: 26,
+                                          ),
+                                  );
+                                },
+                              )
+                            : Center(
+                                child: initials != null
+                                    ? Text(
+                                        initials!.toUpperCase(),
+                                        style: TextStyle(
+                                          color: color ?? Colors.blueGrey,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.person,
+                                        color: Colors.blueGrey,
+                                        size: 26,
+                                      ),
                               ),
-                            ),
-                            if (hasUnread)
-                              Container(
-                                margin: const EdgeInsets.only(left: 8),
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.redAccent,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
+                      ),
+                    ),
+                    if (isOnline)
+                      Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF22C55E),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
                         ),
                       ),
+                  ],
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name.toUpperCase(),
+                              style: TextStyle(
+                                fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+                                fontSize: 13,
+                                color: const Color(0xFF0F172A),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            time,
+                            style: TextStyle(
+                              color: hasUnread ? const Color(0xFF2563EB) : Colors.grey.shade500,
+                              fontSize: 11,
+                              fontWeight: hasUnread ? FontWeight.bold : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (isOnline)
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          if (isOnline) const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color: isOnline ? const Color(0xFF16A34A) : Colors.grey.shade500,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                                letterSpacing: 0.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
                       Text(
-                        time,
+                        lastMsg,
                         style: TextStyle(
-                          color: hasUnread ? Colors.blueAccent : Colors.grey,
-                          fontSize: 10,
-                          fontWeight: hasUnread
-                              ? FontWeight.w900
-                              : FontWeight.bold,
+                          color: Colors.blueGrey.shade700,
+                          fontSize: 13,
+                          fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w400,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    status,
-                    style: TextStyle(
-                      color: isOnline ? const Color(0xFF22C55E) : Colors.grey,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 9,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    lastMsg,
-                    style: TextStyle(
-                      color: hasUnread ? Colors.black87 : Colors.blueGrey,
-                      fontSize: 12,
-                      fontWeight: hasUnread
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

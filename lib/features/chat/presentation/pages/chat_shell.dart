@@ -39,10 +39,13 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
 
     // Auto-refresh notifications every 3 seconds
     Future.delayed(Duration(seconds: 3), _autoRefreshNotifications);
+    
+    // Initialize Socket Connection for real-time messaging
+    ApiService.initializeSocket();
   }
 
   void _handleNotificationRefresh() {
-    debugPrint('DEBUG: notificationRefresh triggered');
+    // debugPrint('DEBUG: notificationRefresh triggered');
     _fetchNotifications();
   }
 
@@ -50,12 +53,13 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   void dispose() {
     ApiService.notificationRefresh.removeListener(_handleNotificationRefresh);
     WidgetsBinding.instance.removeObserver(this);
+    ApiService.disposeSocket();
     super.dispose();
   }
 
   Future<void> _autoRefreshNotifications() async {
     if (mounted) {
-      debugPrint('DEBUG: Auto-refreshing notifications');
+      // debugPrint('DEBUG: Auto-refreshing notifications');
       await _fetchNotifications();
       // Schedule next refresh
       Future.delayed(Duration(seconds: 3), _autoRefreshNotifications);
@@ -79,10 +83,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   }
 
   Future<void> _fetchNotifications() async {
-    debugPrint('DEBUG: _fetchNotifications called');
+    // debugPrint('DEBUG: _fetchNotifications called');
     try {
       final notifications = await ApiService.getNotifications();
-      debugPrint('DEBUG: getNotifications returned');
+      // debugPrint('DEBUG: getNotifications returned');
       if (mounted) {
         // Sort by createdAt descending
         notifications.sort((a, b) {
@@ -91,32 +95,32 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           return bTime.compareTo(aTime);
         });
 
-        debugPrint('DEBUG: Fetched ${notifications.length} notifications');
-        for (var n in notifications) {
-          debugPrint('DEBUG: Notification: ${n['type']} - ${n['content']}');
-        }
+        // debugPrint('DEBUG: Fetched ${notifications.length} notifications');
+        // for (var n in notifications) {
+        //   debugPrint('DEBUG: Notification: ${n['type']} - ${n['content']}');
+        // }
 
         final latestNotifications = notifications.take(10).toList();
-        debugPrint('DEBUG: Setting state with ${latestNotifications.length} latest notifications');
+        // debugPrint('DEBUG: Setting state with ${latestNotifications.length} latest notifications');
         setState(() {
           _notifications = latestNotifications;
           _notificationCount = latestNotifications.where((n) => n['isRead'] != true).length;
-          debugPrint('DEBUG: After setState - _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
-          debugPrint('DEBUG: Unread notifications:');
-          for (var n in _notifications.where((n) => n['isRead'] != true)) {
-            debugPrint('  - ${n['content']} (isRead=${n['isRead']})');
-          }
+          // debugPrint('DEBUG: After setState - _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
+          // debugPrint('DEBUG: Unread notifications:');
+          // for (var n in _notifications.where((n) => n['isRead'] != true)) {
+          //   debugPrint('  - ${n['content']} (isRead=${n['isRead']})');
+          // }
         });
       } else {
-        debugPrint('DEBUG: Widget not mounted, skipping setState');
+        // debugPrint('DEBUG: Widget not mounted, skipping setState');
       }
     } catch (e) {
-      debugPrint('DEBUG: Error in _fetchNotifications: $e');
+      // debugPrint('DEBUG: Error in _fetchNotifications: $e');
     }
   }
 
   void _showNotifications() {
-    debugPrint('DEBUG: _showNotifications called, _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
+    // debugPrint('DEBUG: _showNotifications called, _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
     setState(() {
       _notificationCount = 0;
       for (var notification in _notifications) {
@@ -498,7 +502,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
             icon: Icons.notifications_none_outlined,
             badge: _notificationCount > 0 ? _notificationCount.toString() : null,
             onTap: () {
-              debugPrint('DEBUG: Bell icon tapped, _notificationCount=$_notificationCount');
+              // debugPrint('DEBUG: Bell icon tapped, _notificationCount=$_notificationCount');
               _showNotifications();
             },
           ),

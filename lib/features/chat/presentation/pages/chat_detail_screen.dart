@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../../core/widgets/full_screen_media_viewer.dart';
 import '../../../../core/widgets/video_preview.dart';
+import '../../../../core/api_service.dart';
+import '../../../../core/security.dart';
 import '../widgets/chat_settings_sheet.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -16,6 +19,7 @@ class ChatDetailScreen extends StatefulWidget {
   final String? avatarPath;
   final List<Map<String, dynamic>>? initialMessages;
   final List<Map<String, String>>? initialMembers;
+  final String? conversationId;
 
   const ChatDetailScreen({
     super.key,
@@ -27,6 +31,7 @@ class ChatDetailScreen extends StatefulWidget {
     this.avatarPath,
     this.initialMessages,
     this.initialMembers,
+    this.conversationId,
   });
 
   @override
@@ -49,6 +54,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   int? _editingMessageId;
 
+  // Pagination states
+  int _currentPage = 1;
+  bool _isLoadingMore = false;
+  bool _hasMoreMessages = true;
+
+  StreamSubscription? _chatSubscription;
+  Timer? _pollingTimer;
+  String? _activeConversationId;
+
   @override
   void initState() {
     super.initState();
@@ -63,10 +77,290 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         setState(() => _showEmoji = false);
       }
     });
+    _activeConversationId = widget.conversationId;
+    if (_activeConversationId != null) {
+      _loadMessages();
+      ApiService.markChatAsRead(_activeConversationId!);
+    }
+    _chatSubscription = ApiService.newChatStream.listen(_handleNewChatEvent);
+    
+    // Start 10-second polling fallback
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (_activeConversationId != null) {
+        _loadMessages(isPolling: true);
+      }
+    });
+  }
+
+  void _handleNewChatEvent(Map<String, dynamic> msgData) {
+    if (!mounted) return;
+    
+    // Check if message belongs to this conversation
+    final rawChatId = msgData['chat'] ?? msgData['chatId'];
+    String? chatId = (rawChatId is Map) ? rawChatId['_id']?.toString() : rawChatId?.toString();
+    
+    // Safety: If we are in a "temporary" chat (numeric ID), 
+    // and we receive a message from a chat with our participation, 
+    // we should accept it and potentially update our ID.
+    bool idMatch = chatId == _activeConversationId;
+    if (!idMatch && _activeConversationId != null && _activeConversationId!.length > 10) {
+      // Temporary IDs are usually long timestamps (milliseconds). String length > 10.
+      // We accept the update if the message has a valid chatId and it's our first real message
+      if (chatId != null && _messages.where((m) => m["isSystem"] != true).length < 5) {
+         idMatch = true;
+         // Update active ID so future polls/fetches use the real one
+         setState(() {
+           _activeConversationId = chatId;
+         });
+      }
+    }
+    
+    if (!idMatch && chatId != null) return;
+
+    final senderId = msgData['sender']?['_id'] ?? msgData['senderId'] ?? msgData['sender'];
+    final senderName = msgData['sender']?['fullName'] ?? msgData['sender']?['name'] ?? "Unknown";
+    final avatarRaw = msgData['sender']?['profilePicture'] ?? msgData['sender']?['avatar'];
+    final bool isSender = senderId?.toString() == (AuthService().userProfile.value?['_id'] ?? AuthService().userProfile.value?['id'])?.toString() || 
+                        msgData['isSender'] == true;
+    
+    final newMessage = {
+      "id": (msgData["_id"] ?? msgData["id"] ?? DateTime.now().millisecondsSinceEpoch).toString(),
+      "text": msgData["text"] ?? msgData["content"] ?? "",
+      "isSender": isSender,
+      "imagePath": (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
+          ? ApiService.resolveImageUrl(msgData["media"][0]["url"] ?? msgData["media"][0]["path"])
+          : (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
+              ? ApiService.resolveImageUrl(msgData["attachments"][0]["url"] ?? msgData["attachments"][0]["path"])
+              : null,
+      "fileName": (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
+          ? msgData["attachments"][0]["name"]
+          : (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
+              ? msgData["media"][0]["name"]
+              : null,
+      "fileSize": (msgData["attachments"] is List && msgData["attachments"].isNotEmpty)
+          ? _formatFileSize(msgData["attachments"][0]["size"])
+          : null,
+      "senderName": senderName,
+      "senderInitials": senderName.isNotEmpty ? senderName[0].toUpperCase() : "?",
+      "senderAvatarPath": ApiService.resolveImageUrl(avatarRaw),
+      "time": _formatMessageTime(msgData["createdAt"] ?? msgData["timestamp"]),
+      "isSystem": msgData["type"] == "system" || msgData["isSystem"] == true,
+    };
+
+    setState(() {
+      // Check if this message from server is a confirmation of our optimistic message
+      bool replaced = false;
+      if (newMessage["isSender"] == true) {
+        final optIndex = _messages.indexWhere((m) => 
+          m["isSender"] == true && 
+          m["text"] == newMessage["text"] &&
+          m["id"].toString().length > 10 // tempId is long timestamp string
+        );
+        if (optIndex != -1) {
+          _messages[optIndex] = newMessage;
+          replaced = true;
+        }
+      }
+
+      // If not replaced and not a duplicate by ID, add it
+      if (!replaced && !_messages.any((m) => m["id"] == newMessage["id"])) {
+        // Ignore empty messages that might be system events
+        if ((newMessage["text"] as String).trim().isNotEmpty || 
+            newMessage["mediaUrl"] != null || 
+            newMessage["isSystem"] == true) {
+          _messages.add(newMessage);
+        }
+      }
+    });
+
+    if (_activeConversationId != null) {
+      ApiService.markChatAsRead(_activeConversationId!);
+    }
+  }
+
+  Future<void> _loadMessages({bool isPolling = false}) async {
+    if (_activeConversationId == null) return;
+    
+    // For polling, we don't show loading indicator and only fetch the latest page
+    if (!isPolling) {
+      if (_isLoadingMore) return;
+      setState(() => _isLoadingMore = true);
+    }
+
+    try {
+      final res = await ApiService.getMessages(
+        _activeConversationId!,
+        page: isPolling ? 1 : _currentPage,
+        limit: 20,
+      );
+      
+      // Mark as read after loading messages
+      ApiService.markChatAsRead(_activeConversationId!);
+      // debugPrint("DEBUG: ChatDetailScreen API Response: $res");
+
+      // Robustly extract message list from various potential response formats
+      final dynamic responseData = res;
+      List<dynamic> rawMessages = [];
+      if (responseData is Map) {
+        rawMessages = responseData["messages"] ?? responseData["data"] ?? responseData["docs"] ?? responseData["results"] ?? [];
+      } else if (responseData is List) {
+        rawMessages = responseData;
+      }
+      
+      _hasMoreMessages = (responseData is Map && (responseData["totalPages"] ?? 1) > _currentPage);
+
+      final processed = rawMessages.map((m) => _parseMessage(m)).toList();
+      // debugPrint("DEBUG: Extracted ${rawMessages.length} raw, processed ${processed.length} messages");
+
+      // Auto-detect if API returns oldest-first or newest-first
+      // We want _messages to end up as [Oldest, ..., Newest] because ListView(reverse: true) 
+      // shows the last element at the bottom.
+      List<Map<String, dynamic>> finalMessages = [];
+      if (processed.isNotEmpty) {
+        DateTime? firstTime = _parseDateTime(rawMessages.first["createdAt"]);
+        DateTime? lastTime = _parseDateTime(rawMessages.last["createdAt"]);
+        
+        if (firstTime != null && lastTime != null && firstTime.isAfter(lastTime)) {
+          // It's newest-first (descending): Newest is at index 0. 
+          // Reverse it to get ascending order [Oldest, ..., Newest]
+          finalMessages = processed.reversed.toList();
+        } else {
+          // It's oldest-first (ascending): Oldest is at index 0. Keep it.
+          finalMessages = processed;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          if (isPolling) {
+            // Merge new messages (usually from page 1)
+            for (var msg in finalMessages) {
+              if (!_messages.any((existing) => existing["id"].toString() == msg["id"].toString())) {
+                _messages.add(msg);
+              }
+            }
+            // Sort to ensure correct order
+            _messages.sort((a,b) {
+               DateTime? tA = _parseDateTime(a["rawCreatedAt"]);
+               DateTime? tB = _parseDateTime(b["rawCreatedAt"]);
+               if (tA == null || tB == null) return 0;
+               return tA.compareTo(tB);
+            });
+          } else {
+            if (_currentPage == 1) {
+              _messages = finalMessages;
+            } else {
+              _messages.insertAll(0, finalMessages);
+            }
+          }
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading messages: $e");
+      if (mounted) setState(() => _isLoadingMore = false);
+    }
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    try {
+      return DateTime.parse(value.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic> _parseMessage(dynamic msgData) {
+    final senderId = msgData['sender']?['_id'] ?? msgData['senderId'] ?? msgData['sender'];
+    final senderName = msgData['sender']?['fullName'] ?? msgData['sender']?['name'] ?? "Unknown";
+    final avatarRaw = msgData['sender']?['profilePicture'] ?? msgData['sender']?['avatar'];
+    
+    final senderIdStr = senderId?.toString();
+    final bool isSender = senderIdStr == (AuthService().userProfile.value?['_id'] ?? AuthService().userProfile.value?['id'])?.toString() || 
+                        msgData['isSender'] == true;
+    return {
+      "id": (msgData["_id"] ?? msgData["id"] ?? DateTime.now().millisecondsSinceEpoch).toString(),
+      "text": msgData["text"] ?? msgData["content"] ?? "",
+      "isSender": isSender,
+      "imagePath": (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
+          ? ApiService.resolveImageUrl(msgData["media"][0]["url"] ?? msgData["media"][0]["path"])
+          : (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
+              ? ApiService.resolveImageUrl(msgData["attachments"][0]["url"] ?? msgData["attachments"][0]["path"])
+              : null,
+      "fileName": (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
+          ? msgData["attachments"][0]["name"]
+          : (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
+              ? msgData["media"][0]["name"]
+              : null,
+      "senderName": senderName,
+      "senderAvatarPath": ApiService.resolveImageUrl(avatarRaw),
+      "rawCreatedAt": msgData["createdAt"] ?? msgData["timestamp"],
+      "time": _formatMessageTime(msgData["createdAt"] ?? msgData["timestamp"]),
+      "isSystem": msgData["type"] == "system" || msgData["isSystem"] == true,
+    };
+  }
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages) return;
+    _currentPage++;
+    await _loadMessages();
+  }
+
+  String _getSenderInitials(dynamic sender) {
+    if (sender is Map<String, dynamic>) {
+      final name = sender["fullName"] ?? sender["name"] ?? "";
+      return name.isNotEmpty ? name[0].toUpperCase() : "?";
+    }
+    return "?";
+  }
+
+  String _formatFileSize(int? bytes) {
+    if (bytes == null) return "";
+    if (bytes < 1024) return "$bytes B";
+    if (bytes < 1024 * 1024) return "${(bytes / 1024).round()} KB";
+    return "${(bytes / (1024 * 1024)).round()} MB";
+  }
+
+  String _formatMessageTime(String? dateString) {
+    if (dateString == null) return "";
+    try {
+      final date = DateTime.parse(dateString).toLocal();
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 30) {
+        final day = date.day.toString().padLeft(2, '0');
+        final month = date.month.toString().padLeft(2, '0');
+        final year = date.year.toString();
+        final hour = date.hour.toString().padLeft(2, '0');
+        final minute = date.minute.toString().padLeft(2, '0');
+        return "$day/$month/$year $hour:$minute";
+      } else if (difference.inDays >= 30) {
+        return "1 tháng trước";
+      } else if (difference.inDays > 0) {
+        return "${difference.inDays} ngày trước";
+      } else if (difference.inHours > 0) {
+        return "${difference.inHours}h trước";
+      } else if (difference.inMinutes > 0) {
+        return "${difference.inMinutes} phút trước";
+      } else {
+        return "Vừa xong";
+      }
+    } catch (e) {
+      return "";
+    }
   }
 
   @override
   void dispose() {
+    _chatSubscription?.cancel();
+    _pollingTimer?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -81,11 +375,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, "image"),
-            child: const Text("ẢNH"),
+            child: const Text("Ảnh"),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, "video"),
-            child: const Text("VIDEO"),
+            child: const Text("Video"),
           ),
         ],
       ),
@@ -172,31 +466,57 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     setState(() => _showEmoji = !_showEmoji);
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    final convId = widget.conversationId;
 
-    setState(() {
-      if (_editingMessageId != null) {
+    if (_editingMessageId != null) {
+      // Handle Edit (if API supports it, otherwise just local for now)
+      setState(() {
         final index = _messages.indexWhere((m) => m["id"] == _editingMessageId);
         if (index != -1) {
           _messages[index]["text"] = text;
           _messages[index]["isEdited"] = true;
         }
         _editingMessageId = null;
-      } else {
-        _messages.add({
-          "id": DateTime.now().millisecondsSinceEpoch,
-          "text": text,
-          "isSender": true,
-          "isEdited": false,
-          "time":
-              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
+        _controller.clear();
+      });
+    } else {
+      // Handle New Message
+      if (_activeConversationId != null) {
+        // Optimistic update
+        final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+        setState(() {
+          _messages.add({
+            "id": tempId,
+            "text": text,
+            "isSender": true,
+            "isEdited": false,
+            "time": "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
+            "senderName": "Bạn",
+          });
+          _controller.clear();
+          _showEmoji = false;
         });
+
+        final success = await ApiService.sendMessage(_activeConversationId!, text);
+        if (!success) {
+          // Rollback or show error
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Gửi tin nhắn thất bại. Vui lòng thử lại.")),
+            );
+            setState(() {
+              _messages.removeWhere((m) => m["id"] == tempId);
+            });
+          }
+        }
+      } else {
+        // Conversation ID is null - this shouldn't happen in detail screen normally
+        debugPrint("Error: conversationId is null");
       }
-      _controller.clear();
-      _showEmoji = false;
-    });
+    }
   }
 
   void _deleteMessage(int id) {
@@ -296,6 +616,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               "color": _currentColor,
               "initials": _currentInitials,
               "avatarPath": _currentAvatarPath,
+              "conversationId": _activeConversationId,
             });
           },
         ),
@@ -441,46 +762,88 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             "time": "Vừa xong",
             "messages": _messages,
             "name": _currentName,
-            "color": _currentColor,
-            "initials": _currentInitials,
+            "avatarPath": _currentAvatarPath,
+            "conversationId": _activeConversationId,
           });
           return Future.value(false);
         },
         child: Column(
           children: [
             Expanded(
-              child: ListView.builder(
-                reverse: true,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 24,
-                ),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final msg = _messages[_messages.length - 1 - index];
-                  return GestureDetector(
-                    onLongPress: () => _showOptions(context, msg),
-                    child: _ChatBubble(
-                      message: msg["text"] ?? "",
-                      isSender: msg["isSender"],
-                      isSystem: msg["isSystem"] ?? false,
-                      isEdited: msg["isEdited"] ?? false,
-                      imagePath: msg["imagePath"],
-                      fileName: msg["fileName"],
-                      fileSize: msg["fileSize"],
-                      senderName: msg["isSender"]
-                          ? "Bạn"
-                          : (msg["senderName"] ?? _currentName),
-                      senderInitials: msg["isSender"]
-                          ? "ME"
-                          : (msg["senderInitials"] ??
-                                (widget.initials ??
-                                    _currentName.substring(0, 1))),
-                      bubbleColor: _currentColor ?? Colors.blue,
-                      time: msg["time"] ?? "Vừa xong",
-                    ),
-                  );
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  // Reset to page 1 and reload
+                  _currentPage = 1;
+                  _hasMoreMessages = true;
+                  await _loadMessages();
                 },
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (ScrollNotification scrollInfo) {
+                    if (scrollInfo.metrics.pixels >=
+                            scrollInfo.metrics.maxScrollExtent - 100 &&
+                        !_isLoadingMore &&
+                        _hasMoreMessages) {
+                      _loadMoreMessages();
+                    }
+                    return true;
+                  },
+                  child: ListView.builder(
+                    reverse: true,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 24,
+                    ),
+                    itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      // Show loading indicator at the top (index 0 when reversed)
+                      if (_isLoadingMore && index == 0) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.blue,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      final msgIndex = _isLoadingMore ? index - 1 : index;
+                      final msg = _messages[_messages.length - 1 - msgIndex];
+                      return GestureDetector(
+                        onLongPress: () => _showOptions(context, msg),
+                        child: _ChatBubble(
+                          message: msg["text"] ?? "",
+                          isSender: msg["isSender"],
+                          isSystem: msg["isSystem"] ?? false,
+                          isEdited: msg["isEdited"] ?? false,
+                          imagePath: msg["imagePath"],
+                          fileName: msg["fileName"],
+                          fileSize: msg["fileSize"],
+                          senderName: msg["isSender"]
+                              ? "Bạn"
+                              : (msg["senderName"] ?? _currentName),
+                          senderInitials: msg["isSender"]
+                              ? "ME"
+                              : (msg["senderInitials"] ??
+                                    (widget.initials ??
+                                        _currentName.substring(0, 1))),
+                          senderAvatarPath: msg["isSender"]
+                              ? ApiService.resolveImageUrl(AuthService().userProfile.value?["profilePicture"] ?? AuthService().userProfile.value?["avatar"])
+                              : msg["senderAvatarPath"],
+                          bubbleColor: _currentColor ?? Colors.blue,
+                          time: msg["time"] ?? "Vừa xong",
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
             if (_editingMessageId != null)
@@ -605,6 +968,7 @@ class _ChatBubble extends StatelessWidget {
   final String? fileSize;
   final String? senderName;
   final String? senderInitials;
+  final String? senderAvatarPath;
   final Color bubbleColor;
   final String time;
   const _ChatBubble({
@@ -617,6 +981,7 @@ class _ChatBubble extends StatelessWidget {
     this.fileSize,
     this.senderName,
     this.senderInitials,
+    this.senderAvatarPath,
     this.bubbleColor = const Color(0xFF3B82F6),
     required this.time,
   });
@@ -656,15 +1021,23 @@ class _ChatBubble extends StatelessWidget {
             CircleAvatar(
               radius: 14,
               backgroundColor: Colors.blueGrey.shade100,
-              child: Text(
-                senderInitials ??
-                    (senderName?.isNotEmpty == true ? senderName![0] : "?"),
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey,
-                ),
-              ),
+              backgroundImage: _getAvatarImageProvider(senderAvatarPath),
+              child:
+                  (senderAvatarPath == null ||
+                      senderAvatarPath!.isEmpty ||
+                      _getAvatarImageProvider(senderAvatarPath) == null)
+                  ? Text(
+                      senderInitials ??
+                          (senderName?.isNotEmpty == true
+                              ? senderName![0]
+                              : "?"),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueGrey,
+                      ),
+                    )
+                  : null,
             ),
             const SizedBox(width: 8),
           ],
@@ -686,7 +1059,7 @@ class _ChatBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (imagePath != null)
+                if (imagePath != null && imagePath!.isNotEmpty)
                   GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -707,11 +1080,25 @@ class _ChatBubble extends StatelessWidget {
                         tag: imagePath!,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child:
-                              imagePath!.toLowerCase().endsWith('.mp4') ||
-                                  imagePath!.toLowerCase().endsWith('.mov')
-                              ? VideoPreview(file: File(imagePath!))
-                              : Image.file(File(imagePath!), fit: BoxFit.cover),
+                          child: _isNetworkUrl(imagePath!)
+                              ? (imagePath!.toLowerCase().endsWith('.mp4') ||
+                                        imagePath!.toLowerCase().endsWith(
+                                          '.mov',
+                                        )
+                                    ? VideoPreview(videoUrl: imagePath!)
+                                    : Image.network(
+                                        imagePath!,
+                                        fit: BoxFit.cover,
+                                      ))
+                              : (imagePath!.toLowerCase().endsWith('.mp4') ||
+                                        imagePath!.toLowerCase().endsWith(
+                                          '.mov',
+                                        )
+                                    ? VideoPreview(file: File(imagePath!))
+                                    : Image.file(
+                                        File(imagePath!),
+                                        fit: BoxFit.cover,
+                                      )),
                         ),
                       ),
                     ),
@@ -784,20 +1171,29 @@ class _ChatBubble extends StatelessWidget {
                 else
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+                      horizontal: 16,
+                      vertical: 14,
                     ),
                     constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.7,
+                      maxWidth: MediaQuery.of(context).size.width * 0.72,
                     ),
                     decoration: BoxDecoration(
-                      color: isSender ? bubbleColor : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16),
-                        topRight: const Radius.circular(16),
-                        bottomLeft: Radius.circular(isSender ? 16 : 4),
-                        bottomRight: Radius.circular(isSender ? 4 : 16),
+                      color: isSender ? bubbleColor : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSender
+                            ? Colors.transparent
+                            : Colors.grey.shade200,
                       ),
+                      boxShadow: isSender
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 14,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                     ),
                     child: Text(
                       message,
@@ -805,11 +1201,13 @@ class _ChatBubble extends StatelessWidget {
                         color: isSender ? Colors.white : Colors.black87,
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
+                        fontFamily: 'sans-serif',
+                        height: 1.5,
                       ),
                     ),
                   ),
                 Padding(
-                  padding: const EdgeInsets.only(top: 4, right: 4, left: 4),
+                  padding: const EdgeInsets.only(top: 6, right: 4, left: 4),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -818,7 +1216,7 @@ class _ChatBubble extends StatelessWidget {
                         style: TextStyle(
                           color: Colors.grey.shade500,
                           fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       if (isEdited &&
@@ -845,19 +1243,44 @@ class _ChatBubble extends StatelessWidget {
             CircleAvatar(
               radius: 14,
               backgroundColor: Colors.blue.shade50,
-              child: const Text(
-                "ME",
-                style: TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
-                ),
-              ),
+              backgroundImage: _getAvatarImageProvider(senderAvatarPath),
+              child: _getAvatarImageProvider(senderAvatarPath) == null 
+                ? const Text(
+                    "ME",
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  )
+                : null,
             ),
           ],
         ],
       ),
     );
+  }
+
+  bool _isNetworkUrl(String url) {
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  ImageProvider? _getAvatarImageProvider(String? avatarPath) {
+    if (avatarPath != null && avatarPath.isNotEmpty) {
+      if (avatarPath.startsWith('http')) {
+        // debugPrint('Avatar Provider: Using network URL directly: $avatarPath');
+        return NetworkImage(avatarPath);
+      } else {
+        final resolvedUrl = ApiService.resolveImageUrl(avatarPath);
+        // debugPrint('Avatar Provider: Resolved $avatarPath -> $resolvedUrl');
+        if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+          // debugPrint('Avatar Provider: Creating NetworkImage for $resolvedUrl');
+          return NetworkImage(resolvedUrl);
+        }
+      }
+    }
+    // debugPrint('Avatar Provider: No valid avatar path, returning null');
+    return null;
   }
 }
 
@@ -1008,16 +1431,31 @@ class _HeaderAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ImageProvider? avatarImage;
+    if (avatarPath != null && avatarPath!.isNotEmpty) {
+      if (avatarPath!.startsWith('http://') ||
+          avatarPath!.startsWith('https://')) {
+        avatarImage = NetworkImage(avatarPath!);
+      } else if (File(avatarPath!).existsSync()) {
+        avatarImage = FileImage(File(avatarPath!));
+      } else {
+        final resolved = ApiService.resolveImageUrl(avatarPath!);
+        if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+          avatarImage = NetworkImage(resolved);
+        } else if (File(resolved).existsSync()) {
+          avatarImage = FileImage(File(resolved));
+        }
+      }
+    }
+
     return Stack(
       alignment: Alignment.bottomRight,
       children: [
         CircleAvatar(
           radius: 18,
           backgroundColor: color?.withOpacity(0.2) ?? Colors.blueGrey.shade50,
-          backgroundImage: avatarPath != null
-              ? FileImage(File(avatarPath!))
-              : null,
-          child: avatarPath != null
+          backgroundImage: avatarImage,
+          child: avatarImage != null
               ? null
               : (initials != null
                     ? Text(
