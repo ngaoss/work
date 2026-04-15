@@ -8,6 +8,7 @@ import '../../../documents/presentation/pages/documents_page.dart';
 import 'messaging_page.dart';
 import '../../../../core/security.dart';
 import '../../../../core/api_service.dart';
+import '../../../../core/utils/notification_helper.dart';
 
 class ChatShell extends StatefulWidget {
   const ChatShell({super.key});
@@ -42,6 +43,40 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     
     // Initialize Socket Connection for real-time messaging
     ApiService.initializeSocket();
+    
+    // Initialize Local Notifications
+    _initNotifications();
+  }
+
+  Future<void> _initNotifications() async {
+    await NotificationHelper.initialize();
+    _listenToMessagesForNotifications();
+  }
+
+  void _listenToMessagesForNotifications() {
+    ApiService.newChatStream.listen((data) {
+      // debugPrint('DEBUG: Notification Listener received: $data');
+      
+      // Determine sender
+      final senderObj = data["sender"];
+      final String senderId = (senderObj is Map ? senderObj["_id"] : senderObj)?.toString() ?? "";
+      final myId = (AuthService().userProfile.value?["_id"] ?? AuthService().userProfile.value?["id"])?.toString();
+      
+      // Don't notify for our own messages
+      if (senderId == myId) return;
+
+      // Extract details for the notification
+      final String senderName = (senderObj is Map ? (senderObj["fullName"] ?? senderObj["name"]) : null) ?? "Tin nhắn mới";
+      final String text = data["text"]?.toString() ?? data["content"]?.toString() ?? "Đã gửi một tập tin";
+
+      // Show notification
+      NotificationHelper.showNotification(
+        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title: senderName,
+        body: text,
+        payload: data["chatId"]?.toString() ?? data["chat"]?.toString(),
+      );
+    });
   }
 
   void _handleNotificationRefresh() {
@@ -501,8 +536,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           _TopAction(
             icon: Icons.notifications_none_outlined,
             badge: _notificationCount > 0 ? _notificationCount.toString() : null,
-            onTap: () {
-              // debugPrint('DEBUG: Bell icon tapped, _notificationCount=$_notificationCount');
+            onTap: () async {
+              // Request permission if not already granted
+              await NotificationHelper.requestPermissions();
               _showNotifications();
             },
           ),

@@ -30,10 +30,14 @@ class _MessagingPageState extends State<MessagingPage> {
   void _handleNewMessage(Map<String, dynamic> data) {
     if (!mounted) return;
 
-    final chatId =
-        data["chatId"]?.toString() ??
-        data["chat"]?["_id"]?.toString() ??
-        data["chat"]?.toString();
+    // Handle new or updated conversation events
+    if (data['isNewConversation'] == true || data['isUpdateConversation'] == true) {
+      _fetchChats();
+      return;
+    }
+
+    final dynamic rawChatId = data["chatId"] ?? data["chat"]?["_id"] ?? data["chat"] ?? data["conversationId"];
+    final String? chatId = rawChatId?.toString();
     if (chatId == null) return;
 
     setState(() {
@@ -41,8 +45,13 @@ class _MessagingPageState extends State<MessagingPage> {
       if (index != -1) {
         // Update existing chat with smart preview
         final String text =
-            data["text"]?.toString() ?? data["content"]?.toString() ?? "";
-        final media = data["media"];
+            data["text"]?.toString() ?? 
+            data["content"]?.toString() ?? 
+            data["message"]?["text"]?.toString() ??
+            data["message"]?["content"]?.toString() ?? 
+            "";
+        
+        final dynamic media = data["media"] ?? data["message"]?["media"];
         String preview;
         if (text.isNotEmpty) {
           preview = text;
@@ -56,8 +65,12 @@ class _MessagingPageState extends State<MessagingPage> {
         _chats[index]["time"] = "Vừa xong";
 
         // Mark as unread if not sent by us
+        final dynamic senderObj = data["sender"] ?? data["message"]?["sender"];
         final senderId =
-            data["sender"]?["_id"] ?? data["senderId"] ?? data["sender"];
+            (senderObj is Map ? (senderObj["_id"] ?? senderObj["id"]) : senderObj) ?? 
+            data["senderId"] ?? 
+            data["message"]?["senderId"];
+            
         final myId =
             (AuthService().userProfile.value?["_id"] ??
                     AuthService().userProfile.value?["id"])
@@ -70,7 +83,7 @@ class _MessagingPageState extends State<MessagingPage> {
         final item = _chats.removeAt(index);
         _chats.insert(0, item);
       } else {
-        // It's a message for a chat not in the current top list, maybe fetch again
+        // It's a message for a chat not in the current list, refresh the whole list
         _fetchChats();
       }
     });
@@ -99,7 +112,7 @@ class _MessagingPageState extends State<MessagingPage> {
         for (var chat in chats) {
           final participants = List<dynamic>.from(chat["participants"] ?? []);
           final bool online = participants.any((participant) {
-            // Priority: use isOnline flag if it exists. 
+            // Priority: use isOnline flag if it exists.
             // If isOnline is explicitly false, they are offline regardless of status string.
             if (participant.containsKey('isOnline')) {
               return participant["isOnline"] == true;
@@ -720,7 +733,7 @@ class _MessagingPageState extends State<MessagingPage> {
             selectedIndex: _currentTab,
             onChanged: (index) => setState(() => _currentTab = index),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Builder(
             builder: (context) {
               final filteredChats = _chats.where((c) {
@@ -993,7 +1006,7 @@ class _ChatItem extends StatelessWidget {
     final String? avatarSource = avatarPath?.trim();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1008,7 +1021,7 @@ class _ChatItem extends StatelessWidget {
               color: hasUnread ? const Color(0xFFF1F5F9) : Colors.white,
               borderRadius: BorderRadius.circular(20),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
             child: Row(
               children: [
                 Stack(

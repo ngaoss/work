@@ -41,9 +41,10 @@ class ApiService {
 
     _socket!.onAny((event, data) {
       if (data is Map &&
-          data.containsKey('text') &&
-          !event.toString().contains('newMessage')) {
-        // Only broadcast other message-like events if they actually contain text/content
+          (data.containsKey('text') || data.containsKey('content') || data.containsKey('message')) &&
+          !event.toString().contains('newMessage') &&
+          !event.toString().contains('newConversation')) {
+        // Broadcast any event that looks like a message or update
         _chatStreamController.add(Map<String, dynamic>.from(data));
       }
     });
@@ -51,6 +52,19 @@ class ApiService {
     _socket!.on('newMessage', (data) {
       if (data is Map) {
         _chatStreamController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('newConversation', (data) {
+      if (data is Map) {
+        // We can broadcast this with a special mark or just let messaging_page handle it
+        _chatStreamController.add({...Map<String, dynamic>.from(data), 'isNewConversation': true});
+      }
+    });
+
+    _socket!.on('updateConversation', (data) {
+      if (data is Map) {
+        _chatStreamController.add({...Map<String, dynamic>.from(data), 'isUpdateConversation': true});
       }
     });
 
