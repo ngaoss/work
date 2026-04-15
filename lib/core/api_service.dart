@@ -278,11 +278,22 @@ class ApiService {
 
   static Future<bool> togglePostLike(String postId) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/posts/$postId/like'),
-        headers: await _getHeaders(),
-      );
-      return response.statusCode == 200;
+      final url = Uri.parse('$baseUrl/posts/$postId/like');
+      var response = await http.post(url, headers: await _getHeaders());
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('DEBUG: togglePostLike SUCCESS (POST)');
+        return true;
+      }
+      
+      response = await http.patch(url, headers: await _getHeaders());
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('DEBUG: togglePostLike SUCCESS (PATCH)');
+        return true;
+      }
+      
+      debugPrint('DEBUG: togglePostLike failed for $postId: ${response.statusCode}');
+      return false;
     } catch (e) {
       debugPrint('ApiService error (togglePostLike): $e');
       return false;
@@ -321,13 +332,44 @@ class ApiService {
     }
   }
 
-  static Future<bool> toggleCommentLike(String commentId) async {
+  static Future<bool> toggleCommentLike(String commentId, {String? postId}) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/comments/$commentId/like'),
-        headers: await _getHeaders(),
-      );
-      return response.statusCode == 200;
+      // Based on provided URL: /api/comments/like/:id
+      final List<String> urlPatterns = [
+        '$baseUrl/comments/like/$commentId',             // Pattern from user
+        '$baseUrl/comments/$commentId/like',             // Traditional pattern
+        '$baseUrl/comments/$commentId/reactions',        // Reaction pattern
+      ];
+      
+      if (postId != null && postId.isNotEmpty) {
+        urlPatterns.add('$baseUrl/posts/$postId/comments/$commentId/like');
+        urlPatterns.add('$baseUrl/comments/$postId/$commentId/like');
+      }
+
+      bool success = false;
+      for (String urlStr in urlPatterns) {
+        final url = Uri.parse(urlStr);
+        final headers = await _getHeaders();
+        final body = urlStr.contains('reactions') ? jsonEncode({'type': 'like'}) : null;
+
+        // Try POST
+        var response = await http.post(url, headers: headers, body: body);
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          debugPrint('DEBUG: toggleCommentLike SUCCESS: $urlStr (POST)');
+          success = true;
+          break;
+        }
+        
+        // Try PATCH
+        response = await http.patch(url, headers: headers, body: body);
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          debugPrint('DEBUG: toggleCommentLike SUCCESS: $urlStr (PATCH)');
+          success = true;
+          break;
+        }
+      }
+      
+      return success;
     } catch (e) {
       debugPrint('ApiService error (toggleCommentLike): $e');
       return false;
@@ -337,18 +379,9 @@ class ApiService {
   static Future<bool> toggleCommentReaction(
     String commentId, {
     String reactionType = 'like',
+    String? postId,
   }) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/comments/$commentId/reactions'),
-        headers: await _getHeaders(),
-        body: jsonEncode({'type': reactionType}),
-      );
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (e) {
-      debugPrint('ApiService error (toggleCommentReaction): $e');
-      return false;
-    }
+    return toggleCommentLike(commentId, postId: postId);
   }
 
   // --- Reels ---

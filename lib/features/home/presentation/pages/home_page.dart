@@ -397,7 +397,8 @@ class WorkHomePageState extends State<WorkHomePage> {
       }
     });
 
-    ApiService.toggleCommentLike(commentId);
+    final String? postId = (_posts[postIndex]["id"] ?? _posts[postIndex]["_id"])?.toString();
+    ApiService.toggleCommentLike(commentId, postId: postId);
   }
 
   Future<void> goToPost(String postId) async {
@@ -1279,9 +1280,10 @@ class _PostCardState extends State<_PostCard> {
   @override
   void initState() {
     super.initState();
-    // Initialize with whatever comments (if any) came from the post object
     final raw = widget.post["commentList"] ?? widget.post["comments"] ?? [];
-    _localComments = List.from(raw);
+    final list = List<dynamic>.from(raw);
+    _processComments(list);
+    _localComments = list;
     _fetchComments();
   }
 
@@ -1291,6 +1293,47 @@ class _PostCardState extends State<_PostCard> {
     super.dispose();
   }
 
+  void _processComments(List<dynamic> comments) {
+    final currentUserId =
+        (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
+
+    for (var c in comments) {
+      if (c is! Map<String, dynamic>) continue;
+
+      final reactions = c['reactions'] as List?;
+      c['isLiked'] =
+          reactions?.any((r) {
+            final rUser = r['user'];
+            return rUser?.toString() == currentUserId ||
+                (rUser is Map &&
+                    (rUser['_id']?.toString() == currentUserId ||
+                        rUser['id']?.toString() == currentUserId));
+          }) ??
+          false;
+      c['likes'] = reactions?.length ?? c['likes'] ?? 0;
+
+      final replies = c['replies'] as List?;
+      if (replies != null) {
+        for (var r in replies) {
+          if (r is! Map<String, dynamic>) continue;
+          final rReactions = r['reactions'] as List?;
+          r['isLiked'] =
+              rReactions?.any((rr) {
+                final rrUser = rr['user'];
+                return rrUser?.toString() == currentUserId ||
+                    (rrUser is Map &&
+                        (rrUser['_id']?.toString() == currentUserId ||
+                            rrUser['id']?.toString() == currentUserId));
+              }) ??
+              false;
+          r['likes'] = rReactions?.length ?? r['likes'] ?? 0;
+        }
+      }
+    }
+  }
+
   Future<void> _fetchComments() async {
     final String? postId = (widget.post["id"] ?? widget.post["_id"])
         ?.toString();
@@ -1298,11 +1341,14 @@ class _PostCardState extends State<_PostCard> {
 
     final fetched = await ApiService.getComments(postId);
     if (mounted) {
+      _processComments(fetched);
       setState(() {
         _localComments = fetched;
       });
     }
   }
+
+
 
   void _toggleLocalCommentLike(int commentIndex) {
     if (commentIndex < 0 || commentIndex >= _localComments.length) return;
@@ -1351,8 +1397,9 @@ class _PostCardState extends State<_PostCard> {
       comment["reactions"] = reactions;
     });
 
+    final String? postId = (widget.post["id"] ?? widget.post["_id"])?.toString();
     if (commentId != null && commentId.isNotEmpty) {
-      ApiService.toggleCommentReaction(commentId, reactionType: 'like');
+      ApiService.toggleCommentReaction(commentId, reactionType: 'like', postId: postId);
     }
   }
 
@@ -1405,8 +1452,9 @@ class _PostCardState extends State<_PostCard> {
       reply["reactions"] = reactions;
     });
 
+    final String? postId = (widget.post["id"] ?? widget.post["_id"])?.toString();
     if (replyId != null && replyId.isNotEmpty) {
-      ApiService.toggleCommentReaction(replyId, reactionType: 'like');
+      ApiService.toggleCommentReaction(replyId, reactionType: 'like', postId: postId);
     }
   }
 

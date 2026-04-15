@@ -29,20 +29,39 @@ class _MessagingPageState extends State<MessagingPage> {
 
   void _handleNewMessage(Map<String, dynamic> data) {
     if (!mounted) return;
-    
-    final chatId = data["chatId"]?.toString() ?? data["chat"]?["_id"]?.toString() ?? data["chat"]?.toString();
+
+    final chatId =
+        data["chatId"]?.toString() ??
+        data["chat"]?["_id"]?.toString() ??
+        data["chat"]?.toString();
     if (chatId == null) return;
 
     setState(() {
       final index = _chats.indexWhere((c) => c["id"]?.toString() == chatId);
       if (index != -1) {
-        // Update existing chat
-        _chats[index]["lastMsg"] = data["text"] ?? data["content"] ?? "";
+        // Update existing chat with smart preview
+        final String text =
+            data["text"]?.toString() ?? data["content"]?.toString() ?? "";
+        final media = data["media"];
+        String preview;
+        if (text.isNotEmpty) {
+          preview = text;
+        } else if (media is List && media.isNotEmpty) {
+          final type = (media[0]['type'] ?? 'image').toString().toLowerCase();
+          preview = type == 'video' ? '📹 Đã gửi 1 video' : ' Đã gửi 1 ảnh';
+        } else {
+          preview = 'Đã gửi 1 tệp đính kèm';
+        }
+        _chats[index]["lastMsg"] = preview;
         _chats[index]["time"] = "Vừa xong";
-        
+
         // Mark as unread if not sent by us
-        final senderId = data["sender"]?["_id"] ?? data["senderId"] ?? data["sender"];
-        final myId = (AuthService().userProfile.value?["_id"] ?? AuthService().userProfile.value?["id"])?.toString();
+        final senderId =
+            data["sender"]?["_id"] ?? data["senderId"] ?? data["sender"];
+        final myId =
+            (AuthService().userProfile.value?["_id"] ??
+                    AuthService().userProfile.value?["id"])
+                ?.toString();
         if (senderId?.toString() != myId) {
           _chats[index]["hasUnread"] = true;
         }
@@ -80,12 +99,20 @@ class _MessagingPageState extends State<MessagingPage> {
         for (var chat in chats) {
           final participants = List<dynamic>.from(chat["participants"] ?? []);
           final bool online = participants.any((participant) {
+            // Priority: use isOnline flag if it exists. 
+            // If isOnline is explicitly false, they are offline regardless of status string.
+            if (participant.containsKey('isOnline')) {
+              return participant["isOnline"] == true;
+            }
             final status = participant["status"]?.toString().toLowerCase();
-            return participant["isOnline"] == true || status == "online";
+            return status == "online";
           });
-          final String name = chat["name"] ?? _resolveChatName(chat, participants);
+          final String name =
+              chat["name"] ?? _resolveChatName(chat, participants);
           final String statusText = chat["isGroup"] == true
-              ? (online ? "ĐANG HOẠT ĐỘNG" : "${participants.length} thành viên")
+              ? (online
+                    ? "ĐANG HOẠT ĐỘNG"
+                    : "${participants.length} thành viên")
               : (online ? "ĐANG HOẠT ĐỘNG" : "NGOẠI TUYẾN");
           final String? avatarPath = _extractAvatarForChat(chat, participants);
           // debugPrint("Extracted Avatar for [${chat['name'] ?? chat['_id']}]: $avatarPath");
@@ -94,7 +121,7 @@ class _MessagingPageState extends State<MessagingPage> {
             "id": chat["_id"]?.toString(),
             "name": name,
             "status": statusText,
-            "lastMsg": chat["lastMessage"]?["text"] ?? "",
+            "lastMsg": _resolveLastMsgPreview(chat["lastMessage"]),
             "time": _formatTime(chat["lastMessage"]?["createdAt"]),
             "isOnline": online,
             "initials": _getInitials(chat, participants),
@@ -111,20 +138,41 @@ class _MessagingPageState extends State<MessagingPage> {
     }
   }
 
+  /// Returns a human-friendly preview string for the last message in a chat.
+  String _resolveLastMsgPreview(dynamic lastMessage) {
+    if (lastMessage == null) return 'Bắt đầu trò chuyện...';
+
+    final String text = lastMessage['text']?.toString() ?? '';
+    if (text.isNotEmpty) return text;
+
+    // No text – check for media
+    final media = lastMessage['media'];
+    if (media is List && media.isNotEmpty) {
+      final type = (media[0]['type'] ?? 'image').toString().toLowerCase();
+      if (type == 'video') return ' Đã gửi 1 video';
+      return 'Đã gửi 1 ảnh';
+    }
+
+    // No text & no media - check attachments
+    final attachments = lastMessage['attachments'];
+    if (attachments is List && attachments.isNotEmpty) {
+      return '📎 Đã gửi 1 tệp đính kèm';
+    }
+
+    return 'Bắt đầu trò chuyện...';
+  }
+
   Map<String, dynamic>? _findOtherParticipant(List<dynamic> participants) {
     if (participants.isEmpty) return null;
 
     final currentUserId = AuthService().userProfile.value?["_id"]?.toString();
-    final candidate = participants.firstWhere(
-      (p) {
-        if (p is Map<String, dynamic>) {
-          final participantId = p["_id"]?.toString();
-          return participantId != null && participantId != currentUserId;
-        }
-        return false;
-      },
-      orElse: () => participants.isNotEmpty ? participants.first : {},
-    );
+    final candidate = participants.firstWhere((p) {
+      if (p is Map<String, dynamic>) {
+        final participantId = p["_id"]?.toString();
+        return participantId != null && participantId != currentUserId;
+      }
+      return false;
+    }, orElse: () => participants.isNotEmpty ? participants.first : {});
 
     if (candidate is Map<String, dynamic>) {
       return candidate;
@@ -132,7 +180,10 @@ class _MessagingPageState extends State<MessagingPage> {
     return null;
   }
 
-  String _resolveChatName(Map<String, dynamic> chat, List<dynamic> participants) {
+  String _resolveChatName(
+    Map<String, dynamic> chat,
+    List<dynamic> participants,
+  ) {
     if (chat["isGroup"] == true) {
       return chat["name"] ?? "Nhóm";
     }
@@ -148,15 +199,25 @@ class _MessagingPageState extends State<MessagingPage> {
       return chat["name"]?.substring(0, 2).toUpperCase() ?? "GR";
     }
 
-    final otherParticipant = _findOtherParticipant(participants) ?? (participants.isNotEmpty ? participants.first as Map<String, dynamic> : null);
+    final otherParticipant =
+        _findOtherParticipant(participants) ??
+        (participants.isNotEmpty
+            ? participants.first as Map<String, dynamic>
+            : null);
     if (otherParticipant != null) {
-      final name = otherParticipant["fullName"] ?? otherParticipant["name"] ?? "";
-      return name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();
+      final name =
+          otherParticipant["fullName"] ?? otherParticipant["name"] ?? "";
+      return name.length >= 2
+          ? name.substring(0, 2).toUpperCase()
+          : name.toUpperCase();
     }
     return "CH";
   }
 
-  String? _extractAvatarForChat(Map<String, dynamic> chat, List<dynamic> participants) {
+  String? _extractAvatarForChat(
+    Map<String, dynamic> chat,
+    List<dynamic> participants,
+  ) {
     if (chat["groupAvatar"] != null) {
       final val = _resolveAvatarValue(chat["groupAvatar"]);
       if (val != null && val.isNotEmpty) return val;
@@ -168,13 +229,17 @@ class _MessagingPageState extends State<MessagingPage> {
 
     final otherParticipant = _findOtherParticipant(participants);
     if (otherParticipant != null) {
-      return _resolveAvatarValue(otherParticipant["profilePicture"] ?? otherParticipant["avatar"]);
+      return _resolveAvatarValue(
+        otherParticipant["profilePicture"] ?? otherParticipant["avatar"],
+      );
     }
 
     if (participants.isNotEmpty) {
       final firstParticipant = participants.first;
       if (firstParticipant is Map<String, dynamic>) {
-        return _resolveAvatarValue(firstParticipant["profilePicture"] ?? firstParticipant["avatar"]);
+        return _resolveAvatarValue(
+          firstParticipant["profilePicture"] ?? firstParticipant["avatar"],
+        );
       }
     }
     return null;
@@ -213,7 +278,13 @@ class _MessagingPageState extends State<MessagingPage> {
   String? _resolveAvatarValue(dynamic avatar) {
     if (avatar == null) return null;
     if (avatar is Map<String, dynamic>) {
-      return _resolveAvatarValue(avatar['url'] ?? avatar['path'] ?? avatar['value'] ?? avatar['id'] ?? avatar.toString());
+      return _resolveAvatarValue(
+        avatar['url'] ??
+            avatar['path'] ??
+            avatar['value'] ??
+            avatar['id'] ??
+            avatar.toString(),
+      );
     }
     if (avatar is List && avatar.isNotEmpty) {
       return _resolveAvatarValue(avatar.first);
@@ -768,11 +839,16 @@ class _MessagingPageState extends State<MessagingPage> {
           _chats[index]["time"] = result["time"];
           if (result["name"] != null) _chats[index]["name"] = result["name"];
           if (result["color"] != null) _chats[index]["color"] = result["color"];
-          if (result["initials"] != null) _chats[index]["initials"] = result["initials"];
-          if (result["messages"] != null) _chats[index]["messages"] = result["messages"];
-          if (result["members"] != null) _chats[index]["members"] = result["members"];
-          if (result["avatarPath"] != null) _chats[index]["avatarPath"] = result["avatarPath"];
-          if (result["conversationId"] != null && result["conversationId"] != chat["id"]) {
+          if (result["initials"] != null)
+            _chats[index]["initials"] = result["initials"];
+          if (result["messages"] != null)
+            _chats[index]["messages"] = result["messages"];
+          if (result["members"] != null)
+            _chats[index]["members"] = result["members"];
+          if (result["avatarPath"] != null)
+            _chats[index]["avatarPath"] = result["avatarPath"];
+          if (result["conversationId"] != null &&
+              result["conversationId"] != chat["id"]) {
             _chats[index]["id"] = result["conversationId"];
           }
         }
@@ -925,7 +1001,8 @@ class _ChatItem extends StatelessWidget {
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(20),
           splashColor: color?.withOpacity(0.1) ?? Colors.blue.withOpacity(0.1),
-          highlightColor: color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05),
+          highlightColor:
+              color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05),
           child: Ink(
             decoration: BoxDecoration(
               color: hasUnread ? const Color(0xFFF1F5F9) : Colors.white,
@@ -941,7 +1018,8 @@ class _ChatItem extends StatelessWidget {
                       width: 56,
                       height: 56,
                       decoration: BoxDecoration(
-                        color: color?.withOpacity(0.12) ?? Colors.blueGrey.shade50,
+                        color:
+                            color?.withOpacity(0.12) ?? Colors.blueGrey.shade50,
                         shape: BoxShape.circle,
                       ),
                       child: ClipOval(
@@ -949,7 +1027,12 @@ class _ChatItem extends StatelessWidget {
                             ? Image.network(
                                 avatarSource,
                                 key: ValueKey(avatarSource),
-                                headers: AuthService().authToken.value != null ? {'Authorization': 'Bearer ${AuthService().authToken.value}'} : null,
+                                headers: AuthService().authToken.value != null
+                                    ? {
+                                        'Authorization':
+                                            'Bearer ${AuthService().authToken.value}',
+                                      }
+                                    : null,
                                 fit: BoxFit.cover,
                                 height: double.infinity,
                                 width: double.infinity,
@@ -1015,7 +1098,9 @@ class _ChatItem extends StatelessWidget {
                             child: Text(
                               name.toUpperCase(),
                               style: TextStyle(
-                                fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+                                fontWeight: hasUnread
+                                    ? FontWeight.bold
+                                    : FontWeight.w600,
                                 fontSize: 13,
                                 color: const Color(0xFF0F172A),
                               ),
@@ -1026,9 +1111,13 @@ class _ChatItem extends StatelessWidget {
                           Text(
                             time,
                             style: TextStyle(
-                              color: hasUnread ? const Color(0xFF2563EB) : Colors.grey.shade500,
+                              color: hasUnread
+                                  ? const Color(0xFF2563EB)
+                                  : Colors.grey.shade500,
                               fontSize: 11,
-                              fontWeight: hasUnread ? FontWeight.bold : FontWeight.w500,
+                              fontWeight: hasUnread
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
                             ),
                           ),
                         ],
@@ -1050,7 +1139,9 @@ class _ChatItem extends StatelessWidget {
                             child: Text(
                               status,
                               style: TextStyle(
-                                color: isOnline ? const Color(0xFF16A34A) : Colors.grey.shade500,
+                                color: isOnline
+                                    ? const Color(0xFF16A34A)
+                                    : Colors.grey.shade500,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 11,
                                 letterSpacing: 0.5,
@@ -1067,7 +1158,9 @@ class _ChatItem extends StatelessWidget {
                         style: TextStyle(
                           color: Colors.blueGrey.shade700,
                           fontSize: 13,
-                          fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w400,
+                          fontWeight: hasUnread
+                              ? FontWeight.w600
+                              : FontWeight.w400,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

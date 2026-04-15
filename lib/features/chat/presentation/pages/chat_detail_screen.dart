@@ -63,9 +63,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Timer? _pollingTimer;
   String? _activeConversationId;
 
+  late ScrollController _scrollController;
+
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_scrollListener);
+    
     _currentName = widget.name;
     _currentInitials = widget.initials;
     _currentColor = widget.color;
@@ -86,6 +91,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     
     // Start 10-second polling fallback
     _startPolling();
+  }
+
+  void _scrollListener() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
+        _hasMoreMessages) {
+      _loadMoreMessages();
+    }
   }
 
   void _startPolling() {
@@ -173,7 +186,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         if ((newMessage["text"] as String).trim().isNotEmpty || 
             newMessage["mediaUrl"] != null || 
             newMessage["isSystem"] == true) {
-          _messages.add(newMessage);
+          _messages.insert(0, newMessage);
         }
       }
     });
@@ -181,6 +194,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (_activeConversationId != null) {
       ApiService.markChatAsRead(_activeConversationId!);
     }
+  }
+
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages) return;
+    _currentPage++;
+    await _loadMessages();
   }
 
   Future<void> _loadMessages({bool isPolling = false}) async {
@@ -201,36 +220,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       
       // Mark as read after loading messages
       ApiService.markChatAsRead(_activeConversationId!);
-      // debugPrint("DEBUG: ChatDetailScreen API Response: $res");
 
-      // Robustly extract message list from various potential response formats
+      // Robustly extract message list
       final dynamic responseData = res;
       List<dynamic> rawMessages = [];
+      int totalPages = 1;
+
       if (responseData is Map) {
         rawMessages = responseData["messages"] ?? responseData["data"] ?? responseData["docs"] ?? responseData["results"] ?? [];
+        totalPages = responseData["totalPages"] ?? responseData["pages"] ?? 1;
       } else if (responseData is List) {
         rawMessages = responseData;
       }
       
-      _hasMoreMessages = (responseData is Map && (responseData["totalPages"] ?? 1) > _currentPage);
+      // Fallback: if totalPages is 1 but we got a full page of 20 items, assume there might be more.
+      _hasMoreMessages = (totalPages > _currentPage) || (totalPages == 1 && rawMessages.length == 20);
 
       final processed = rawMessages.map((m) => _parseMessage(m)).toList();
-      // debugPrint("DEBUG: Extracted ${rawMessages.length} raw, processed ${processed.length} messages");
 
-      // Auto-detect if API returns oldest-first or newest-first
-      // We want _messages to end up as [Oldest, ..., Newest] because ListView(reverse: true) 
-      // shows the last element at the bottom.
+      // We want _messages to be [Newest, ..., Oldest] for ListView(reverse: true)
       List<Map<String, dynamic>> finalMessages = [];
       if (processed.isNotEmpty) {
-        DateTime? firstTime = _parseDateTime(rawMessages.first["createdAt"]);
-        DateTime? lastTime = _parseDateTime(rawMessages.last["createdAt"]);
+        final firstTime = _parseDateTime(rawMessages.first["createdAt"] ?? rawMessages.first["timestamp"]);
+        final lastTime = _parseDateTime(rawMessages.last["createdAt"] ?? rawMessages.last["timestamp"]);
         
-        if (firstTime != null && lastTime != null && firstTime.isAfter(lastTime)) {
-          // It's newest-first (descending): Newest is at index 0. 
-          // Reverse it to get ascending order [Oldest, ..., Newest]
+        if (firstTime != null && lastTime != null && firstTime.isBefore(lastTime)) {
+          // API returned Oldest-first, reverse to get Newest-first
           finalMessages = processed.reversed.toList();
         } else {
-          // It's oldest-first (ascending): Oldest is at index 0. Keep it.
+          // Already Newest-first or could not determine, keep it
           finalMessages = processed;
         }
       }
@@ -238,24 +256,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (mounted) {
         setState(() {
           if (isPolling) {
-            // Merge new messages (usually from page 1)
+            // Merge new messages (usually from page 1) into the Newest-first list
             for (var msg in finalMessages) {
               if (!_messages.any((existing) => existing["id"].toString() == msg["id"].toString())) {
-                _messages.add(msg);
+                _messages.insert(0, msg);
               }
             }
-            // Sort to ensure correct order
+            // Sort to ensure correct Newest-first order [Newest ... Oldest]
             _messages.sort((a,b) {
-               DateTime? tA = _parseDateTime(a["rawCreatedAt"]);
-               DateTime? tB = _parseDateTime(b["rawCreatedAt"]);
+               DateTime? tA = _parseDateTime(a["rawCreatedAt"] ?? a["time"]);
+               DateTime? tB = _parseDateTime(b["rawCreatedAt"] ?? b["time"]);
                if (tA == null || tB == null) return 0;
-               return tA.compareTo(tB);
+               return tB.compareTo(tA); 
             });
           } else {
             if (_currentPage == 1) {
               _messages = finalMessages;
             } else {
-              _messages.insertAll(0, finalMessages);
+              // Append older messages to the end
+              _messages.addAll(finalMessages);
             }
           }
           _isLoadingMore = false;
@@ -263,7 +282,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }
     } catch (e) {
       debugPrint("Error loading messages: $e");
-      if (mounted) setState(() => _isLoadingMore = false);
+      if (mounted) setState(() {
+        _isLoadingMore = false;
+        if (!isPolling && _currentPage > 1) _currentPage--;
+      });
     }
   }
 
@@ -305,11 +327,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       "time": _formatMessageTime(msgData["createdAt"] ?? msgData["timestamp"]),
       "isSystem": msgData["type"] == "system" || msgData["isSystem"] == true,
     };
-  }
-  Future<void> _loadMoreMessages() async {
-    if (_isLoadingMore || !_hasMoreMessages) return;
-    _currentPage++;
-    await _loadMessages();
   }
 
   String _getSenderInitials(dynamic sender) {
@@ -361,6 +378,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void dispose() {
     _chatSubscription?.cancel();
     _pollingTimer?.cancel();
+    _scrollController.dispose();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -394,7 +412,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
       if (file != null) {
         setState(() {
-          _messages.add({
+          _messages.insert(0, {
             "id": DateTime.now().millisecondsSinceEpoch,
             "imagePath": file.path,
             "isSender": true,
@@ -415,7 +433,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (result != null) {
         PlatformFile file = result.files.first;
         setState(() {
-          _messages.add({
+          _messages.insert(0, {
             "id": DateTime.now().millisecondsSinceEpoch,
             "fileName": file.name,
             "fileSize": _formatBytes(file.size),
@@ -488,7 +506,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         // Optimistic update
         final tempId = DateTime.now().millisecondsSinceEpoch.toString();
         setState(() {
-          _messages.add({
+          _messages.insert(0, {
             "id": tempId,
             "text": text,
             "isSender": true,
@@ -674,7 +692,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     setState(() {
                       if (widget.isGroup) {
                         if (newName != _currentName) {
-                          _messages.add({
+                          _messages.insert(0, {
                             "id": DateTime.now().millisecondsSinceEpoch,
                             "text":
                                 "Bạn đã thay đổi tên nhóm thành \"$newName\"",
@@ -684,7 +702,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           });
                         }
                         if (newAvatar != _currentAvatarPath) {
-                          _messages.add({
+                          _messages.insert(0, {
                             "id": DateTime.now().millisecondsSinceEpoch + 1,
                             "text": "Bạn đã thay đổi ảnh đại diện nhóm",
                             "isSender": false,
@@ -715,7 +733,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                             (m) => m["name"] == name,
                           );
                           if (!stillActive) {
-                            _messages.add({
+                            _messages.insert(0, {
                               "id": DateTime.now().millisecondsSinceEpoch,
                               "text":
                                   "Phùng Hoàng Long đã mời $name rời khỏi nhóm",
@@ -745,7 +763,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             setState(() => _showEmoji = false);
             return Future.value(false);
           }
-          final lastRecord = _messages.isNotEmpty ? _messages.last : null;
+          final lastRecord = _messages.isNotEmpty ? _messages.first : null;
           String preview = "";
           if (lastRecord != null) {
             if (lastRecord["imagePath"] != null) {
@@ -777,26 +795,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   _hasMoreMessages = true;
                   await _loadMessages();
                 },
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (ScrollNotification scrollInfo) {
-                    if (scrollInfo.metrics.pixels >=
-                            scrollInfo.metrics.maxScrollExtent - 100 &&
-                        !_isLoadingMore &&
-                        _hasMoreMessages) {
-                      _loadMoreMessages();
-                    }
-                    return true;
-                  },
-                  child: ListView.builder(
-                    reverse: true,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 24,
-                    ),
-                    itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      // Show loading indicator at the top (index 0 when reversed)
-                      if (_isLoadingMore && index == 0) {
+                child: ListView.builder(
+                  controller: _scrollController,
+                  reverse: true,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 24,
+                  ),
+                  itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                      // Show loading spinner at the end of the list (which is the top when reverse: true)
+                      if (_isLoadingMore && index == _messages.length) {
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 16),
                           child: Center(
@@ -814,8 +823,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         );
                       }
 
-                      final msgIndex = _isLoadingMore ? index - 1 : index;
-                      final msg = _messages[_messages.length - 1 - msgIndex];
+                      if (index >= _messages.length) return const SizedBox.shrink();
+                      
+                      final msg = _messages[index];
                       return GestureDetector(
                         onLongPress: () => _showOptions(context, msg),
                         child: _ChatBubble(
@@ -845,7 +855,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ),
               ),
-            ),
             if (_editingMessageId != null)
               _EditingBanner(
                 themeColor: _currentColor ?? const Color(0xFF3B82F6),
