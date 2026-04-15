@@ -50,6 +50,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
 
   Future<void> _initNotifications() async {
     await NotificationHelper.initialize();
+    await NotificationHelper.requestPermissions();
     _listenToMessagesForNotifications();
   }
 
@@ -70,11 +71,21 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       final String text = data["text"]?.toString() ?? data["content"]?.toString() ?? "Đã gửi một tập tin";
 
       // Show notification
+      final dynamic rawChatId = data["chatId"] ?? 
+                                data["chat"]?["_id"] ?? 
+                                data["chat"] ?? 
+                                data["conversationId"] ?? 
+                                data["message"]?["chatId"];
+      final String? chatId = rawChatId?.toString();
+      // Use the chatId hash as notification ID to group notifications from the same chat
+      final int notificationId = chatId?.hashCode ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+
       NotificationHelper.showNotification(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        id: notificationId,
         title: senderName,
         body: text,
-        payload: data["chatId"]?.toString() ?? data["chat"]?.toString(),
+        payload: chatId,
+        checkMute: true,
       );
     });
   }

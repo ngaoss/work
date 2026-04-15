@@ -1,9 +1,11 @@
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_detail_screen.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
+import '../../../../core/utils/notification_helper.dart';
+
 
 class MessagingPage extends StatefulWidget {
   const MessagingPage({super.key});
@@ -14,6 +16,7 @@ class MessagingPage extends StatefulWidget {
 
 class _MessagingPageState extends State<MessagingPage> {
   final List<Map<String, dynamic>> _chats = [];
+  final Set<String> _mutedChatIds = {};
   int _currentTab = 0;
 
   List<dynamic> _realUsers = [];
@@ -22,9 +25,25 @@ class _MessagingPageState extends State<MessagingPage> {
   @override
   void initState() {
     super.initState();
-    _fetchUsers();
-    _fetchChats();
+    _initializeData();
     _chatSubscription = ApiService.newChatStream.listen(_handleNewMessage);
+  }
+
+  Future<void> _initializeData() async {
+    await _fetchUsers();
+    await _fetchMutedChats();
+  }
+
+  Future<void> _fetchMutedChats() async {
+    final prefs = await SharedPreferences.getInstance();
+    final mutedList = prefs.getStringList('muted_chats') ?? [];
+    if (mounted) {
+      setState(() {
+        _mutedChatIds.clear();
+        _mutedChatIds.addAll(mutedList);
+      });
+      _fetchChats(); // Refresh to show icons
+    }
   }
 
   void _handleNewMessage(Map<String, dynamic> data) {
@@ -145,6 +164,7 @@ class _MessagingPageState extends State<MessagingPage> {
             "participants": participants,
             "avatarPath": avatarPath,
             "themeColor": chat["themeColor"] ?? "#2563eb",
+            "isMuted": _mutedChatIds.contains(chat["_id"]?.toString() ?? ""),
           });
         }
       });
@@ -663,37 +683,62 @@ class _MessagingPageState extends State<MessagingPage> {
   void _showChatOptions(Map<String, dynamic> chat) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => Wrap(
-        children: [
-          if (chat["isGroup"])
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
             ListTile(
-              leading: const Icon(Icons.edit_outlined, color: Colors.blue),
-              title: const Text(
-                "Sửa thông tin nhóm",
-                style: TextStyle(color: Colors.blue),
+              leading: Icon(
+                chat["isMuted"] == true ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
+                color: Colors.black87,
+              ),
+              title: Text(
+                chat["isMuted"] == true ? 'Bật thông báo' : 'Tắt thông báo',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              onTap: () async {
+                await _toggleMute(chat);
+                Navigator.pop(context);
+              },
+            ),
+            if (chat["isGroup"] == true)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: Colors.blue),
+                title: const Text("Sửa thông tin nhóm", style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showGroupSheet(existingChat: chat);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: Text(
+                chat["isGroup"] == true ? "Xóa nhóm" : "Xóa hội thoại",
+                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
               ),
               onTap: () {
                 Navigator.pop(context);
-                _showGroupSheet(existingChat: chat);
+                _deleteGroup(chat["id"]);
               },
             ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline, color: Colors.red),
-            title: Text(
-              chat["isGroup"] ? "Xóa nhóm" : "Xóa hội thoại",
-              style: const TextStyle(color: Colors.red),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              _deleteGroup(chat["id"]);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.notifications_off_outlined),
-            title: const Text("Tắt thông báo"),
-            onTap: () => Navigator.pop(context),
-          ),
-        ],
+            const SizedBox(height: 32),
+          ],
+        ),
       ),
     );
   }
@@ -773,17 +818,9 @@ class _MessagingPageState extends State<MessagingPage> {
                     .map(
                       (chat) => _ChatItem(
                         key: ValueKey(chat["id"]),
-                        name: chat["name"],
-                        status: chat["status"],
-                        lastMsg: chat["lastMsg"],
-                        time: chat["time"],
-                        isOnline: chat["isOnline"],
-                        initials: chat["initials"],
-                        color: chat["color"],
-                        hasUnread: chat["hasUnread"] ?? false,
+                        chat: chat,
+                        onNavigate: (c) => _openChatDetailScreen(c),
                         onLongPress: () => _showChatOptions(chat),
-                        onTap: () => _openChatDetailScreen(chat),
-                        avatarPath: chat["avatarPath"],
                       ),
                     )
                     .toList(),
@@ -794,6 +831,34 @@ class _MessagingPageState extends State<MessagingPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleMute(Map<String, dynamic> chat) async {
+    final chatId = chat["id"]?.toString();
+    if (chatId == null) return;
+
+    final isCurrentlyMuted = chat["isMuted"] ?? false;
+    final newMutedStatus = !isCurrentlyMuted;
+
+    await NotificationHelper.setMuted(chatId, newMutedStatus);
+    
+    if (mounted) {
+      setState(() {
+        if (newMutedStatus) {
+          _mutedChatIds.add(chatId);
+        } else {
+          _mutedChatIds.remove(chatId);
+        }
+        chat["isMuted"] = newMutedStatus;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newMutedStatus ? "Đã tắt thông báo" : "Đã bật thông báo"),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
   Future<void> _openChatDetailScreen(Map<String, dynamic> chat) async {
@@ -813,27 +878,37 @@ class _MessagingPageState extends State<MessagingPage> {
           color: chat["color"],
           isGroup: chat["isGroup"] ?? false,
           avatarPath: chat["avatarPath"],
-          initialMessages: (chat["messages"] as List?)
-              ?.cast<Map<String, dynamic>>(),
-          initialMembers: (chat["participants"] as List?)
-              ?.map((e) {
-                if (e is Map<String, dynamic>) {
-                  return <String, String>{
-                    '_id': (e['_id'] ?? '').toString(),
-                    'profilePicture': (e['profilePicture'] ?? '').toString(),
-                    'avatar': (e['avatar'] ?? '').toString(),
-                    'fullName': (e['fullName'] ?? '').toString(),
-                    'name': (e['name'] ?? e['fullName'] ?? '').toString(),
-                    'role': (e['role'] ?? '').toString(),
-                    'isOwner': (e['isOwner'] ?? 'false').toString(),
-                  };
-                }
-                return <String, String>{};
-              })
-              .where((m) => m.isNotEmpty)
-              .toList()
-              .cast<Map<String, String>>(),
+          initialMessages: (chat["messages"] as List?)?.cast<Map<String, dynamic>>(),
+          initialMembers: (chat["participants"] as List?)?.map((e) {
+            if (e is Map<String, dynamic>) {
+              return <String, String>{
+                '_id': (e['_id'] ?? '').toString(),
+                'profilePicture': (e['profilePicture'] ?? '').toString(),
+                'avatar': (e['avatar'] ?? '').toString(),
+                'fullName': (e['fullName'] ?? '').toString(),
+                'name': (e['name'] ?? e['fullName'] ?? '').toString(),
+                'role': (e['role'] ?? '').toString(),
+                'isOwner': (e['isOwner'] ?? 'false').toString(),
+              };
+            }
+            return <String, String>{};
+          }).where((m) => m.isNotEmpty).toList().cast<Map<String, String>>(),
           conversationId: chat["id"]?.toString(),
+          isMuted: chat["isMuted"] ?? false,
+          onMuteToggle: (muted) async {
+            final chatId = chat["id"]?.toString();
+            if (chatId != null) {
+              await NotificationHelper.setMuted(chatId, muted);
+              if (mounted) {
+                setState(() {
+                  if (muted) _mutedChatIds.add(chatId);
+                  else _mutedChatIds.remove(chatId);
+                  final index = _chats.indexWhere((c) => c["id"] == chat["id"]);
+                  if (index != -1) _chats[index]["isMuted"] = muted;
+                });
+              }
+            }
+          },
         ),
       ),
     );
@@ -845,27 +920,35 @@ class _MessagingPageState extends State<MessagingPage> {
         });
         return;
       }
-      setState(() {
-        final index = _chats.indexWhere((c) => c["id"] == chat["id"]);
-        if (index != -1) {
-          _chats[index]["lastMsg"] = result["lastMsg"];
-          _chats[index]["time"] = result["time"];
+      
+      final index = _chats.indexWhere((c) => c["id"] == chat["id"]);
+      if (index != -1) {
+        setState(() {
+          _chats[index]["lastMsg"] = result["lastMsg"] ?? _chats[index]["lastMsg"];
+          _chats[index]["time"] = result["time"] ?? _chats[index]["time"];
+          
+          if (result["isMuted"] != null) {
+            final muted = result["isMuted"] as bool;
+            final chatId = _chats[index]["id"]?.toString();
+            if (chatId != null) {
+              if (muted) _mutedChatIds.add(chatId);
+              else _mutedChatIds.remove(chatId);
+            }
+            _chats[index]["isMuted"] = muted;
+          }
+          
           if (result["name"] != null) _chats[index]["name"] = result["name"];
           if (result["color"] != null) _chats[index]["color"] = result["color"];
-          if (result["initials"] != null)
-            _chats[index]["initials"] = result["initials"];
-          if (result["messages"] != null)
-            _chats[index]["messages"] = result["messages"];
-          if (result["members"] != null)
-            _chats[index]["members"] = result["members"];
-          if (result["avatarPath"] != null)
-            _chats[index]["avatarPath"] = result["avatarPath"];
-          if (result["conversationId"] != null &&
-              result["conversationId"] != chat["id"]) {
+          if (result["initials"] != null) _chats[index]["initials"] = result["initials"];
+          if (result["messages"] != null) _chats[index]["messages"] = result["messages"];
+          if (result["members"] != null) _chats[index]["members"] = result["members"];
+          if (result["avatarPath"] != null) _chats[index]["avatarPath"] = result["avatarPath"];
+          
+          if (result["conversationId"] != null && result["conversationId"] != chat["id"]) {
             _chats[index]["id"] = result["conversationId"];
           }
-        }
-      });
+        });
+      }
     }
   }
 }
@@ -974,35 +1057,28 @@ class _TabItem extends StatelessWidget {
 }
 
 class _ChatItem extends StatelessWidget {
-  final String name;
-  final String status;
-  final String lastMsg;
-  final String time;
-  final bool isOnline;
-  final String? initials;
-  final String? avatarPath;
-  final Color? color;
-  final bool hasUnread;
-  final VoidCallback onLongPress;
-  final VoidCallback onTap;
+  final Map<String, dynamic> chat;
+  final Function(Map<String, dynamic>) onNavigate;
+  final VoidCallback? onLongPress;
 
   const _ChatItem({
     super.key,
-    required this.name,
-    required this.status,
-    required this.lastMsg,
-    required this.time,
-    required this.isOnline,
-    this.initials,
-    this.avatarPath,
-    this.color,
-    required this.hasUnread,
-    required this.onLongPress,
-    required this.onTap,
+    required this.chat,
+    required this.onNavigate,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
+    final String name = chat["name"] ?? "";
+    final String status = chat["status"] ?? "";
+    final String lastMsg = chat["lastMsg"] ?? "";
+    final String time = chat["time"] ?? "";
+    final bool isOnline = chat["isOnline"] ?? false;
+    final String? initials = chat["initials"];
+    final String? avatarPath = chat["avatarPath"];
+    final Color? color = chat["color"];
+    final bool hasUnread = chat["hasUnread"] ?? false;
     final String? avatarSource = avatarPath?.trim();
 
     return Container(
@@ -1010,7 +1086,7 @@ class _ChatItem extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: () => onNavigate(chat),
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(20),
           splashColor: color?.withOpacity(0.1) ?? Colors.blue.withOpacity(0.1),
@@ -1050,7 +1126,6 @@ class _ChatItem extends StatelessWidget {
                                 height: double.infinity,
                                 width: double.infinity,
                                 errorBuilder: (context, error, stackTrace) {
-                                  // debugPrint("Avatar Load Error [$name] - URL: $avatarSource => Error: $error");
                                   return Center(
                                     child: initials != null
                                         ? Text(
@@ -1166,17 +1241,34 @@ class _ChatItem extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        lastMsg,
-                        style: TextStyle(
-                          color: Colors.blueGrey.shade700,
-                          fontSize: 13,
-                          fontWeight: hasUnread
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              lastMsg,
+                              style: TextStyle(
+                                color: hasUnread
+                                    ? Colors.black87
+                                    : Colors.blueGrey.shade600,
+                                fontSize: 13,
+                                fontWeight: hasUnread
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (chat["isMuted"] == true)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.notifications_off_rounded,
+                                size: 16,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),

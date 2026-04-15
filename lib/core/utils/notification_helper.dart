@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationHelper {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -36,12 +37,39 @@ class NotificationHelper {
     }
   }
 
+  static Future<bool> isMuted(String chatId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final mutedList = prefs.getStringList('muted_chats') ?? [];
+    return mutedList.contains(chatId);
+  }
+
+  static Future<void> setMuted(String chatId, bool muted) async {
+    final prefs = await SharedPreferences.getInstance();
+    final mutedList = prefs.getStringList('muted_chats') ?? [];
+    if (muted) {
+      if (!mutedList.contains(chatId)) {
+        mutedList.add(chatId);
+        await prefs.setStringList('muted_chats', mutedList);
+      }
+    } else {
+      if (mutedList.contains(chatId)) {
+        mutedList.remove(chatId);
+        await prefs.setStringList('muted_chats', mutedList);
+      }
+    }
+  }
+
   static Future<void> showNotification({
     int id = 0,
     String? title,
     String? body,
     String? payload,
+    bool checkMute = false,
   }) async {
+    if (checkMute && payload != null) {
+      if (await isMuted(payload)) return;
+    }
+
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'chat_messages',

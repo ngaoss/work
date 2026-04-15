@@ -8,7 +8,8 @@ import '../../../../core/widgets/full_screen_media_viewer.dart';
 import '../../../../core/widgets/video_preview.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
-import '../widgets/chat_settings_sheet.dart';
+import './chat_info_screen.dart';
+
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -20,6 +21,8 @@ class ChatDetailScreen extends StatefulWidget {
   final List<Map<String, dynamic>>? initialMessages;
   final List<Map<String, String>>? initialMembers;
   final String? conversationId;
+  final bool isMuted;
+  final Function(bool)? onMuteToggle;
 
   const ChatDetailScreen({
     super.key,
@@ -32,6 +35,8 @@ class ChatDetailScreen extends StatefulWidget {
     this.initialMessages,
     this.initialMembers,
     this.conversationId,
+    this.isMuted = false,
+    this.onMuteToggle,
   });
 
   @override
@@ -62,6 +67,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   StreamSubscription? _chatSubscription;
   Timer? _pollingTimer;
   String? _activeConversationId;
+  late bool _isMuted;
 
   late ScrollController _scrollController;
 
@@ -75,6 +81,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _currentInitials = widget.initials;
     _currentColor = widget.color;
     _currentAvatarPath = widget.avatarPath;
+    _isMuted = widget.isMuted;
     _messages = List.from(widget.initialMessages ?? []);
     _members = List.from(widget.initialMembers ?? []);
     _focusNode.addListener(() {
@@ -673,85 +680,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.more_horiz, color: Colors.blueAccent),
-            onPressed: () async {
-              final result = await showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => ChatSettingsSheet(
-                  name: _currentName,
-                  initials: _currentInitials ?? "",
-                  color: _currentColor ?? Colors.blue,
-                  isGroup: widget.isGroup,
-                  avatarPath: _currentAvatarPath,
-                  initialMembers: _members,
-                  onUpdate: (newName, newColor, newAvatar) {
-                    if (!mounted) return;
-                    final nowStr =
-                        "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
-                    setState(() {
-                      if (widget.isGroup) {
-                        if (newName != _currentName) {
-                          _messages.insert(0, {
-                            "id": DateTime.now().millisecondsSinceEpoch,
-                            "text":
-                                "Bạn đã thay đổi tên nhóm thành \"$newName\"",
-                            "isSender": false,
-                            "isSystem": true,
-                            "time": nowStr,
-                          });
-                        }
-                        if (newAvatar != _currentAvatarPath) {
-                          _messages.insert(0, {
-                            "id": DateTime.now().millisecondsSinceEpoch + 1,
-                            "text": "Bạn đã thay đổi ảnh đại diện nhóm",
-                            "isSender": false,
-                            "isSystem": true,
-                            "time": nowStr,
-                          });
-                        }
-                      }
-
-                      _currentName = newName;
-                      _currentColor = newColor;
-                      _currentAvatarPath = newAvatar;
-                      _currentInitials = newName.length >= 2
-                          ? newName.substring(0, 2).toUpperCase()
-                          : newName.toUpperCase();
-                    });
-                  },
-                  onUpdateMembers: (newMembers) {
-                    if (!mounted) return;
-                    final nowStr =
-                        "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
-                    setState(() {
-                      // Compare and notify about removals
-                      for (var oldMember in _members) {
-                        final String? name = oldMember["name"];
-                        if (name != null) {
-                          final stillActive = newMembers.any(
-                            (m) => m["name"] == name,
-                          );
-                          if (!stillActive) {
-                            _messages.insert(0, {
-                              "id": DateTime.now().millisecondsSinceEpoch,
-                              "text":
-                                  "Phùng Hoàng Long đã mời $name rời khỏi nhóm",
-                              "isSender": false,
-                              "isSystem": true,
-                              "time": nowStr,
-                            });
-                          }
-                        }
-                      }
-                      _members = newMembers;
-                    });
-                  },
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ChatInfoScreen(
+                    name: _currentName,
+                    avatarPath: _currentAvatarPath,
+                    conversationId: _activeConversationId,
+                    isGroup: widget.isGroup,
+                    isMuted: _isMuted,
+                    onMuteToggle: (muted) {
+                      setState(() => _isMuted = muted);
+                      widget.onMuteToggle?.call(muted);
+                    },
+                  ),
                 ),
               );
-              if (result == 'leave' || result == 'disband') {
-                Navigator.pop(context, {"action": result});
-              }
             },
           ),
           const SizedBox(width: 8),
@@ -782,6 +727,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             "name": _currentName,
             "avatarPath": _currentAvatarPath,
             "conversationId": _activeConversationId,
+            "isMuted": _isMuted,
           });
           return Future.value(false);
         },
