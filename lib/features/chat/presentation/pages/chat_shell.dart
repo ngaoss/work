@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 import '../../../home/presentation/pages/home_page.dart';
 import '../../../personnel/presentation/pages/personnel_page.dart';
 import '../../../community/presentation/pages/community_page.dart';
@@ -9,6 +11,14 @@ import 'messaging_page.dart';
 import '../../../../core/security.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/utils/notification_helper.dart';
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // If you're going to use other Firebase services in the background, such as Firestore,
+  // make sure you call `Firebase.initializeApp()` before using other Firebase services.
+  debugPrint("Handling a background message: ${message.messageId}");
+}
+
 
 class ChatShell extends StatefulWidget {
   const ChatShell({super.key});
@@ -27,6 +37,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   final GlobalKey<WorkHomePageState> _homeKey = GlobalKey<WorkHomePageState>();
   int _notificationCount = 0;
   List<dynamic> _notifications = [];
+  final Map<String, List<String>> _messageHistory = {};
 
   @override
   void initState() {
@@ -51,6 +62,38 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   Future<void> _initNotifications() async {
     await NotificationHelper.initialize();
     await NotificationHelper.requestPermissions();
+    
+    // FCM Configuration
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+    
+    // Request permission for iOS/Android 13+
+    await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Get FCM Token
+    String? token = await messaging.getToken();
+    debugPrint("FCM Token: $token");
+    // In a real app, you would send this token to your backend
+
+    // Set background handler
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    // Handle foreground messages
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint("FCM Foreground Message: ${message.notification?.title}");
+      if (message.notification != null) {
+        NotificationHelper.showNotification(
+          id: message.hashCode,
+          title: message.notification!.title,
+          body: message.notification!.body,
+          payload: message.data['chatId'],
+        );
+      }
+    });
+
     _listenToMessagesForNotifications();
   }
 
@@ -80,13 +123,31 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       // Use the chatId hash as notification ID to group notifications from the same chat
       final int notificationId = chatId?.hashCode ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
-      NotificationHelper.showNotification(
-        id: notificationId,
-        title: senderName,
-        body: text,
-        payload: chatId,
-        checkMute: true,
-      );
+      // Manage message history for bundling (keep last 5)
+      if (chatId != null) {
+        final history = _messageHistory[chatId] ?? [];
+        history.add(text);
+        if (history.length > 5) history.removeAt(0);
+        _messageHistory[chatId] = history;
+
+        final bundledText = history.join("\n");
+
+        NotificationHelper.showNotification(
+          id: notificationId,
+          title: senderName,
+          body: bundledText,
+          payload: chatId,
+          checkMute: true,
+        );
+      } else {
+        NotificationHelper.showNotification(
+          id: notificationId,
+          title: senderName,
+          body: text,
+          payload: chatId,
+          checkMute: true,
+        );
+      }
     });
   }
 
@@ -539,10 +600,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
         title: _buildAppLogo(),
         actions: [
           _TopActionStatus(),
-          _TopAction(
-            icon: Icons.chat_bubble_outline,
-            onTap: () => _onItemTapped(6),
-            isActive: _currentIndex == 6,
+          ValueListenableBuilder<int>(
+            valueListenable: ApiService.unreadChatCount,
+            builder: (context, count, _) {
+              return _TopAction(
+                icon: Icons.chat_bubble_outline,
+                badge: count > 0 ? (count > 99 ? "99+" : count.toString()) : null,
+                onTap: () => _onItemTapped(6),
+                isActive: _currentIndex == 6,
+              );
+            },
           ),
           _TopAction(
             icon: Icons.notifications_none_outlined,

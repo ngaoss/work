@@ -96,6 +96,8 @@ class _MessagingPageState extends State<MessagingPage> {
                 ?.toString();
         if (senderId?.toString() != myId) {
           _chats[index]["hasUnread"] = true;
+          _chats[index]["unreadCount"] = (_chats[index]["unreadCount"] ?? 0) + 1;
+          ApiService.unreadChatCount.value++;
         }
 
         // Move to top
@@ -160,6 +162,7 @@ class _MessagingPageState extends State<MessagingPage> {
             "color": Colors.blue,
             "isGroup": chat["isGroup"] ?? false,
             "hasUnread": (chat["unreadCount"] ?? 0) > 0,
+            "unreadCount": chat["unreadCount"] ?? 0,
             "messages": [],
             "participants": participants,
             "avatarPath": avatarPath,
@@ -167,6 +170,12 @@ class _MessagingPageState extends State<MessagingPage> {
             "isMuted": _mutedChatIds.contains(chat["_id"]?.toString() ?? ""),
           });
         }
+        
+        int totalUnread = 0;
+        for (var c in _chats) {
+          totalUnread += (c["unreadCount"] as num? ?? 0).toInt();
+        }
+        ApiService.unreadChatCount.value = totalUnread;
       });
     }
   }
@@ -747,88 +756,95 @@ class _MessagingPageState extends State<MessagingPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "TIN NHẮN",
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 32,
-                  letterSpacing: -1,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.add_comment_outlined,
-                  color: Color(0xFF3B82F6),
-                ),
-                onPressed: () => _showUserSelectionSheet(),
-                tooltip: "Tạo tin nhắn mới",
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _SearchBar(),
-          const SizedBox(height: 32),
-          _Tabs(
-            selectedIndex: _currentTab,
-            onChanged: (index) => setState(() => _currentTab = index),
-          ),
-          const SizedBox(height: 16),
-          Builder(
-            builder: (context) {
-              final filteredChats = _chats.where((c) {
-                if (_currentTab == 1) return c["hasUnread"] == true;
-                if (_currentTab == 2) return c["isGroup"] == true;
-                return true;
-              }).toList();
-
-              if (filteredChats.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.question_answer_outlined,
-                          color: Colors.grey.shade300,
-                          size: 60,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Chưa có tin nhắn nào",
-                          style: TextStyle(
-                            color: Colors.grey.shade500,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _fetchChats();
+          await _fetchUsers();
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "TIN NHẮN",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 32,
+                    letterSpacing: -1,
                   ),
-                );
-              }
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.add_comment_outlined,
+                    color: Color(0xFF3B82F6),
+                  ),
+                  onPressed: () => _showUserSelectionSheet(),
+                  tooltip: "Tạo tin nhắn mới",
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            _SearchBar(),
+            const SizedBox(height: 32),
+            _Tabs(
+              selectedIndex: _currentTab,
+              onChanged: (index) => setState(() => _currentTab = index),
+            ),
+            const SizedBox(height: 16),
+            Builder(
+              builder: (context) {
+                final filteredChats = _chats.where((c) {
+                  if (_currentTab == 1) return c["hasUnread"] == true;
+                  if (_currentTab == 2) return c["isGroup"] == true;
+                  return true;
+                }).toList();
 
-              return Column(
-                children: filteredChats
-                    .map(
-                      (chat) => _ChatItem(
-                        key: ValueKey(chat["id"]),
-                        chat: chat,
-                        onNavigate: (c) => _openChatDetailScreen(c),
-                        onLongPress: () => _showChatOptions(chat),
+                if (filteredChats.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.question_answer_outlined,
+                            color: Colors.grey.shade300,
+                            size: 60,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "Chưa có tin nhắn nào",
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
-                    )
-                    .toList(),
-              );
-            },
-          ),
-          const SizedBox(height: 100),
-        ],
+                    ),
+                  );
+                }
+
+                return Column(
+                  children: filteredChats
+                      .map(
+                        (chat) => _ChatItem(
+                          key: ValueKey(chat["id"]),
+                          chat: chat,
+                          onNavigate: (c) => _openChatDetailScreen(c),
+                          onLongPress: () => _showChatOptions(chat),
+                        ),
+                      )
+                      .toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 100),
+          ],
+        ),
       ),
     );
   }
@@ -864,7 +880,14 @@ class _MessagingPageState extends State<MessagingPage> {
   Future<void> _openChatDetailScreen(Map<String, dynamic> chat) async {
     setState(() {
       final index = _chats.indexWhere((c) => c["id"] == chat["id"]);
-      if (index != -1) _chats[index]["hasUnread"] = false;
+      if (index != -1) {
+        final count = (chat["unreadCount"] as num? ?? 0).toInt();
+        _chats[index]["hasUnread"] = false;
+        _chats[index]["unreadCount"] = 0;
+        if (count > 0) {
+          ApiService.unreadChatCount.value = (ApiService.unreadChatCount.value - count).clamp(0, 9999);
+        }
+      }
     });
 
     if (!mounted) return;
@@ -1079,6 +1102,7 @@ class _ChatItem extends StatelessWidget {
     final String? avatarPath = chat["avatarPath"];
     final Color? color = chat["color"];
     final bool hasUnread = chat["hasUnread"] ?? false;
+    final int unreadCount = chat["unreadCount"] ?? 0;
     final String? avatarSource = avatarPath?.trim();
 
     return Container(
@@ -1163,13 +1187,44 @@ class _ChatItem extends StatelessWidget {
                       ),
                     ),
                     if (isOnline)
-                      Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF22C55E),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF22C55E),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2.5),
+                          ),
+                        ),
+                      ),
+                    if (hasUnread && unreadCount > 0)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 20,
+                            minHeight: 20,
+                          ),
+                          child: Center(
+                            child: Text(
+                              unreadCount > 99 ? "99+" : unreadCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                   ],

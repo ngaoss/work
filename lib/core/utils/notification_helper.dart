@@ -70,7 +70,14 @@ class NotificationHelper {
       if (await isMuted(payload)) return;
     }
 
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    final BigTextStyleInformation bigTextStyleInformation = BigTextStyleInformation(
+      body ?? '',
+      contentTitle: title,
+      htmlFormatContent: false,
+      htmlFormatContentTitle: false,
+    );
+
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'chat_messages',
       'Chat Messages',
@@ -78,11 +85,12 @@ class NotificationHelper {
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,
+      styleInformation: bigTextStyleInformation,
     );
 
-    const NotificationDetails platformChannelSpecifics = NotificationDetails(
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
-      iOS: DarwinNotificationDetails(),
+      iOS: const DarwinNotificationDetails(),
     );
 
     await _notificationsPlugin.show(

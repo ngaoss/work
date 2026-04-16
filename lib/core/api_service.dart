@@ -16,6 +16,8 @@ class ApiService {
   static Stream<Map<String, dynamic>> get newChatStream =>
       _chatStreamController.stream;
 
+  static final ValueNotifier<int> unreadChatCount = ValueNotifier<int>(0);
+
   static void initializeSocket() {
     if (_socket != null) return;
 
