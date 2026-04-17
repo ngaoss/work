@@ -36,6 +36,8 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
   final bool _isOwner = true; // Hardcoded as owner for UI
 
   late List<Map<String, String>> _members;
+  bool _isMembersExpanded = true;
+  bool _isFilesExpanded = false;
 
   final List<Color> _themeColors = [
     Colors.blue,
@@ -377,102 +379,127 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                       letterSpacing: 1,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    runSpacing: 12,
-                    children: _themeColors.map((color) {
-                      final isSelected = _currentColor.value == color.value;
-                      return GestureDetector(
-                        onTap: () => _changeColor(color),
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isSelected
-                                  ? Colors.grey.shade300
-                                  : Colors.transparent,
-                              width: 2,
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(32),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 0,
+                      runSpacing: 8,
+                      children: _themeColors.map((color) {
+                        final isSelected = _currentColor.value == color.value;
+                        return GestureDetector(
+                          onTap: () => _changeColor(color),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.grey.shade300
+                                    : Colors.transparent,
+                                width: 2,
+                              ),
+                            ),
+                            child: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: color,
+                              child: isSelected
+                                  ? const Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 14,
+                                    )
+                                  : null,
                             ),
                           ),
-                          child: CircleAvatar(
-                            radius: 16,
-                            backgroundColor: color,
-                            child: isSelected
-                                ? const Icon(
-                                    Icons.check,
-                                    color: Colors.white,
-                                    size: 16,
-                                  )
-                                : null,
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }).toList(),
+                    ),
                   ),
 
                   const SizedBox(height: 32),
 
-                  if (widget.isGroup) ...[
-                    // Thành viên
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "THÀNH VIÊN (${_members.length})",
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blueGrey.shade400,
-                            letterSpacing: 1,
+                  // Thành viên
+                  GestureDetector(
+                    onTap: () => setState(() => _isMembersExpanded = !_isMembersExpanded),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      color: Colors.transparent, // to increase touch area
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "THÀNH VIÊN (${_members.length})",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey.shade400,
+                              letterSpacing: 1,
+                            ),
                           ),
-                        ),
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: _addMember,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _currentColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.person_add_alt_1_outlined,
-                                      color: _currentColor,
-                                      size: 14,
+                          Row(
+                            children: [
+                              if (widget.isGroup)
+                                GestureDetector(
+                                  onTap: _addMember,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      "THÊM NGƯỜI",
-                                      style: TextStyle(
-                                        color: _currentColor,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                    decoration: BoxDecoration(
+                                      color: _currentColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                  ],
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.person_add_alt_1_outlined,
+                                          color: _currentColor,
+                                          size: 14,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          "THÊM NGƯỜI",
+                                          style: TextStyle(
+                                            color: _currentColor,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
+                              const SizedBox(width: 12),
+                              Icon(
+                                _isMembersExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: Colors.blueGrey.shade400,
+                                size: 20,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Icon(
-                              Icons.keyboard_arrow_up,
-                              color: Colors.black87,
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
-
+                  ),
+                  if (_isMembersExpanded) ...[
+                    const SizedBox(height: 8),
                     // Danh sách thành viên
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -502,7 +529,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                                 final i = entry.key;
                                 final m = entry.value;
                                 final memberName = m["name"] ?? m["fullName"] ?? "";
-                                final memberRole = m["role"] ?? "Thành viên";
+                                final memberRole = m["role"] ?? "Nhân sự";
                                 final memberIsOwner = m["isOwner"] == "true";
                                 final memberAvatarPath = m["profilePicture"] ?? m["avatar"];
                                 return _MemberTile(
@@ -518,11 +545,70 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                               }).toList(),
                             ),
                     ),
-                    const SizedBox(height: 32),
-                    const SizedBox(height: 32),
-                    const Divider(height: 1),
-                    const SizedBox(height: 32),
                   ],
+                  const SizedBox(height: 24),
+                  const Divider(height: 1),
+                  const SizedBox(height: 24),
+
+                  // Danh sách tệp
+                  GestureDetector(
+                    onTap: () => setState(() => _isFilesExpanded = !_isFilesExpanded),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      color: Colors.transparent,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "DANH SÁCH TỆP (0)",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey.shade400,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Icon(
+                            _isFilesExpanded
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: Colors.blueGrey.shade400,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_isFilesExpanded) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: "Tìm tên file...",
+                          hintStyle: TextStyle(color: Colors.blueGrey.shade300, fontSize: 13),
+                          border: InputBorder.none,
+                          icon: Icon(Icons.search, color: Colors.blueGrey.shade300, size: 18),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Center(
+                      child: Text(
+                        "Chưa có tài liệu nào",
+                        style: TextStyle(
+                          color: Colors.blueGrey.shade300,
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 32),
 
                   if (widget.isGroup) ...[
                     // Nút rời nhóm

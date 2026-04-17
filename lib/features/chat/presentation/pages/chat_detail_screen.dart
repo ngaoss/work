@@ -10,7 +10,6 @@ import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
 import './chat_info_screen.dart';
 
-
 class ChatDetailScreen extends StatefulWidget {
   final String name;
   final bool isOnline;
@@ -58,6 +57,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   String? _currentAvatarPath; // Added _currentAvatarPath state
 
   int? _editingMessageId;
+  Map<String, dynamic>? _replyingTo;
+  bool _isOtherTyping = false;
+  Timer? _typingDebounce;
 
   // Pagination states
   int _currentPage = 1;
@@ -152,6 +154,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       "id": (msgData["_id"] ?? msgData["id"] ?? DateTime.now().millisecondsSinceEpoch).toString(),
       "text": msgData["text"] ?? msgData["content"] ?? "",
       "isSender": isSender,
+      "isRecalled": msgData["isRecalled"] == true || msgData["status"] == "recalled",
+      "replyTo": msgData["replyTo"] ?? msgData["parentMessage"],
       "imagePath": (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
           ? ApiService.resolveImageUrl(msgData["media"][0]["url"] ?? msgData["media"][0]["path"])
           : (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
@@ -187,11 +191,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         }
       }
 
+      // Search for existing message by ID to handle updates (like recall)
+      final existingIndex = _messages.indexWhere((m) => m["id"].toString() == newMessage["id"].toString());
+      
+      if (!replaced && existingIndex != -1) {
+        // Update existing message
+        _messages[existingIndex] = newMessage;
+        replaced = true;
+      }
+
       // If not replaced and not a duplicate by ID, add it
-      if (!replaced && !_messages.any((m) => m["id"] == newMessage["id"])) {
+      if (!replaced) {
         // Ignore empty messages that might be system events
         if ((newMessage["text"] as String).trim().isNotEmpty || 
-            newMessage["mediaUrl"] != null || 
+            newMessage["imagePath"] != null || 
             newMessage["isSystem"] == true) {
           _messages.insert(0, newMessage);
         }
@@ -318,6 +331,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       "id": (msgData["_id"] ?? msgData["id"] ?? DateTime.now().millisecondsSinceEpoch).toString(),
       "text": msgData["text"] ?? msgData["content"] ?? "",
       "isSender": isSender,
+      "isRecalled": msgData["isRecalled"] == true || msgData["status"] == "recalled",
+      "replyTo": msgData["replyTo"] ?? msgData["parentMessage"],
       "imagePath": (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
           ? ApiService.resolveImageUrl(msgData["media"][0]["url"] ?? msgData["media"][0]["path"])
           : (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
@@ -385,6 +400,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void dispose() {
     _chatSubscription?.cancel();
     _pollingTimer?.cancel();
+    _typingDebounce?.cancel();
     _scrollController.dispose();
     _controller.dispose();
     _focusNode.dispose();
@@ -510,6 +526,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     } else {
       // Handle New Message
       if (_activeConversationId != null) {
+        final replyMsg = _replyingTo;
+        final replyToId = replyMsg?["id"]?.toString();
+
         // Optimistic update
         final tempId = DateTime.now().millisecondsSinceEpoch.toString();
         setState(() {
@@ -518,14 +537,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             "text": text,
             "isSender": true,
             "isEdited": false,
+            "replyTo": replyMsg != null ? {
+              "_id": replyMsg["id"],
+              "text": replyMsg["text"],
+              "sender": {"fullName": replyMsg["senderName"]},
+            } : null,
             "time": "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
             "senderName": "Bạn",
           });
           _controller.clear();
+          _replyingTo = null;
           _showEmoji = false;
         });
 
-        final success = await ApiService.sendMessage(_activeConversationId!, text);
+        final success = await ApiService.sendMessage(_activeConversationId!, text, replyTo: replyToId);
         if (!success) {
           // Rollback or show error
           if (mounted) {
@@ -544,19 +569,53 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
-  void _deleteMessage(int id) {
+  void _recallMessage(Map<String, dynamic> msg) async {
+    final msgId = msg["id"]?.toString();
+    if (msgId == null || _activeConversationId == null) return;
+
+    // Optimistic update
     setState(() {
-      _messages.removeWhere((m) => m["id"] == id);
+      final index = _messages.indexWhere((m) => m["id"].toString() == msgId);
+      if (index != -1) {
+        _messages[index]["isRecalled"] = true;
+        _messages[index]["text"] = "Tin nhắn đã được thu hồi";
+        _messages[index]["imagePath"] = null;
+        _messages[index]["fileName"] = null;
+      }
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Đã xóa tin nhắn")));
+
+    final success = await ApiService.recallMessage(_activeConversationId!, msgId);
+    if (!success && mounted) {
+      // Rollback on failure
+      setState(() {
+        final index = _messages.indexWhere((m) => m["id"].toString() == msgId);
+        if (index != -1) {
+          _messages[index]["isRecalled"] = false;
+          _messages[index]["text"] = msg["text"] ?? "";
+          _messages[index]["imagePath"] = msg["imagePath"];
+          _messages[index]["fileName"] = msg["fileName"];
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Thu hồi tin nhắn thất bại")),
+      );
+    }
+  }
+
+  void _startReplying(Map<String, dynamic> msg) {
+    setState(() {
+      _replyingTo = msg;
+      _editingMessageId = null;
+      _controller.clear();
+    });
+    _focusNode.requestFocus();
   }
 
   void _startEditing(Map<String, dynamic> msg) {
     if (msg["imagePath"] != null) return;
     setState(() {
       _editingMessageId = msg["id"];
+      _replyingTo = null;
       _controller.text = msg["text"] ?? "";
       _showEmoji = false;
     });
@@ -564,35 +623,49 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _showOptions(BuildContext context, Map<String, dynamic> msg) {
-    if (!msg["isSender"]) return;
+    final bool isRecalled = msg["isRecalled"] == true;
+    if (isRecalled) return;
 
     showModalBottomSheet(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => Wrap(
         children: [
-          if (msg["imagePath"] == null)
+          ListTile(
+            leading: const Icon(Icons.reply_outlined, color: Colors.blueGrey),
+            title: const Text("Phản hồi"),
+            onTap: () {
+              Navigator.pop(context);
+              _startReplying(msg);
+            },
+          ),
+          if (msg["isSender"] == true) ...[
+            if (msg["imagePath"] == null)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: Colors.blue),
+                title: const Text(
+                  "Chỉnh sửa tin nhắn",
+                  style: TextStyle(color: Colors.blue),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _startEditing(msg);
+                },
+              ),
             ListTile(
-              leading: const Icon(Icons.edit_outlined, color: Colors.blue),
+              leading: const Icon(Icons.undo_outlined, color: Colors.orange),
               title: const Text(
-                "Chỉnh sửa tin nhắn",
-                style: TextStyle(color: Colors.blue),
+                "Thu hồi tin nhắn",
+                style: TextStyle(color: Colors.orange),
               ),
               onTap: () {
                 Navigator.pop(context);
-                _startEditing(msg);
+                _recallMessage(msg);
               },
             ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline, color: Colors.red),
-            title: const Text(
-              "Xóa tin nhắn",
-              style: TextStyle(color: Colors.red),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              _deleteMessage(msg["id"]);
-            },
-          ),
+          ],
           ListTile(
             leading: const Icon(Icons.copy_outlined),
             title: const Text("Sao chép"),
@@ -772,16 +845,30 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       if (index >= _messages.length) return const SizedBox.shrink();
                       
                       final msg = _messages[index];
+                      // Build replyTo preview if present
+                      Map<String, dynamic>? replyData;
+                      final rawReply = msg["replyTo"];
+                      if (rawReply is Map) {
+                        final replyText = (rawReply["text"] ?? rawReply["content"] ?? "").toString();
+                        final replySender = (rawReply["sender"]?["fullName"] ?? rawReply["sender"]?["name"] ?? "").toString();
+                        replyData = {
+                          "id": (rawReply["_id"] ?? rawReply["id"])?.toString(),
+                          "text": replyText,
+                          "senderName": replySender,
+                        };
+                      }
                       return GestureDetector(
                         onLongPress: () => _showOptions(context, msg),
                         child: _ChatBubble(
-                          message: msg["text"] ?? "",
+                          message: msg["isRecalled"] == true ? "Tin nhắn đã được thu hồi" : (msg["text"] ?? ""),
                           isSender: msg["isSender"],
                           isSystem: msg["isSystem"] ?? false,
                           isEdited: msg["isEdited"] ?? false,
-                          imagePath: msg["imagePath"],
-                          fileName: msg["fileName"],
+                          isRecalled: msg["isRecalled"] == true,
+                          imagePath: msg["isRecalled"] == true ? null : msg["imagePath"],
+                          fileName: msg["isRecalled"] == true ? null : msg["fileName"],
                           fileSize: msg["fileSize"],
+                          replyTo: replyData,
                           senderName: msg["isSender"]
                               ? "Bạn"
                               : (msg["senderName"] ?? _currentName),
@@ -808,6 +895,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   _editingMessageId = null;
                   _controller.clear();
                 }),
+              ),
+            if (_replyingTo != null)
+              _ReplyBanner(
+                themeColor: _currentColor ?? const Color(0xFF3B82F6),
+                replyToName: _replyingTo!["senderName"] ?? "Người dùng",
+                replyToText: _replyingTo!["text"] ?? "",
+                onCancel: () => setState(() => _replyingTo = null),
               ),
 
             _ChatInputArea(
@@ -918,9 +1012,11 @@ class _ChatBubble extends StatelessWidget {
   final bool isSender;
   final bool isEdited;
   final bool isSystem;
+  final bool isRecalled;
   final String? imagePath;
   final String? fileName;
   final String? fileSize;
+  final Map<String, dynamic>? replyTo;
   final String? senderName;
   final String? senderInitials;
   final String? senderAvatarPath;
@@ -931,9 +1027,11 @@ class _ChatBubble extends StatelessWidget {
     required this.isSender,
     this.isSystem = false,
     this.isEdited = false,
+    this.isRecalled = false,
     this.imagePath,
     this.fileName,
     this.fileSize,
+    this.replyTo,
     this.senderName,
     this.senderInitials,
     this.senderAvatarPath,
@@ -1133,14 +1231,18 @@ class _ChatBubble extends StatelessWidget {
                       maxWidth: MediaQuery.of(context).size.width * 0.72,
                     ),
                     decoration: BoxDecoration(
-                      color: isSender ? bubbleColor : Colors.white,
+                      color: isRecalled
+                          ? Colors.grey.shade100
+                          : (isSender ? bubbleColor : Colors.white),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isSender
-                            ? Colors.transparent
-                            : Colors.grey.shade200,
+                        color: isRecalled
+                            ? Colors.grey.shade300
+                            : (isSender
+                                ? Colors.transparent
+                                : Colors.grey.shade200),
                       ),
-                      boxShadow: isSender
+                      boxShadow: (isSender || isRecalled)
                           ? null
                           : [
                               BoxShadow(
@@ -1150,15 +1252,76 @@ class _ChatBubble extends StatelessWidget {
                               ),
                             ],
                     ),
-                    child: Text(
-                      message,
-                      style: TextStyle(
-                        color: isSender ? Colors.white : Colors.black87,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        fontFamily: 'sans-serif',
-                        height: 1.5,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (replyTo != null && !isRecalled)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSender
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border(
+                                left: BorderSide(
+                                  color: isSender
+                                      ? Colors.white.withOpacity(0.7)
+                                      : bubbleColor,
+                                  width: 3,
+                                ),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  replyTo!["senderName"] ?? "",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isSender
+                                        ? Colors.white.withOpacity(0.9)
+                                        : bubbleColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  replyTo!["text"] ?? "",
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isSender
+                                        ? Colors.white.withOpacity(0.75)
+                                        : Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Text(
+                          message,
+                          style: TextStyle(
+                            color: isRecalled
+                                ? Colors.grey.shade500
+                                : (isSender ? Colors.white : Colors.black87),
+                            fontSize: 14,
+                            fontWeight:
+                                isRecalled ? FontWeight.w400 : FontWeight.w500,
+                            fontStyle: isRecalled
+                                ? FontStyle.italic
+                                : FontStyle.normal,
+                            fontFamily: 'sans-serif',
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 Padding(
@@ -1358,6 +1521,68 @@ class _EditingBanner extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            constraints: const BoxConstraints(),
+            padding: EdgeInsets.zero,
+            onPressed: onCancel,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplyBanner extends StatelessWidget {
+  final VoidCallback onCancel;
+  final Color themeColor;
+  final String replyToName;
+  final String replyToText;
+  const _ReplyBanner({
+    required this.onCancel,
+    required this.themeColor,
+    required this.replyToName,
+    required this.replyToText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: themeColor.withOpacity(0.05),
+        border: Border(
+          left: BorderSide(color: themeColor, width: 3),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(Icons.reply_outlined, size: 16, color: themeColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  replyToName,
+                  style: TextStyle(
+                    color: themeColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  replyToText.isNotEmpty ? replyToText : "[Ảnh hoặc tệp]",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
             ),
           ),
           IconButton(

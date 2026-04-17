@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 
 class NotificationHelper {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -64,10 +67,16 @@ class NotificationHelper {
     String? title,
     String? body,
     String? payload,
+    String? imageUrl,
     bool checkMute = false,
   }) async {
     if (checkMute && payload != null) {
       if (await isMuted(payload)) return;
+    }
+
+    String? largeIconPath;
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      largeIconPath = await _downloadAndSaveFile(imageUrl, 'notification_icon_$id');
     }
 
     final BigTextStyleInformation bigTextStyleInformation = BigTextStyleInformation(
@@ -86,6 +95,7 @@ class NotificationHelper {
       priority: Priority.high,
       showWhen: true,
       styleInformation: bigTextStyleInformation,
+      largeIcon: largeIconPath != null ? FilePathAndroidBitmap(largeIconPath) : null,
     );
 
     final NotificationDetails platformChannelSpecifics = NotificationDetails(
@@ -100,5 +110,18 @@ class NotificationHelper {
       notificationDetails: platformChannelSpecifics,
       payload: payload,
     );
+  }
+
+  static Future<String?> _downloadAndSaveFile(String url, String fileName) async {
+    try {
+      final Directory directory = await getTemporaryDirectory();
+      final String filePath = '${directory.path}/$fileName';
+      final http.Response response = await http.get(Uri.parse(url));
+      final File file = File(filePath);
+      await file.writeAsBytes(response.bodyBytes);
+      return filePath;
+    } catch (e) {
+      return null;
+    }
   }
 }

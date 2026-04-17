@@ -70,6 +70,12 @@ class ApiService {
       }
     });
 
+    _socket!.on('display_typing', (data) {
+      if (data is Map) {
+        _chatStreamController.add({...Map<String, dynamic>.from(data), 'type': 'typing'});
+      }
+    });
+
     _socket!.onDisconnect((_) {
       debugPrint('ApiService Socket disconnected');
     });
@@ -586,18 +592,104 @@ class ApiService {
     }
   }
 
-  static Future<bool> sendMessage(String conversationId, String content) async {
+  /// Send message via Socket (matches backend 'send_message' event).
+  /// Falls back to REST if socket is unavailable.
+  static Future<bool> sendMessage(String conversationId, String content, {String? replyTo}) async {
+    // Prefer socket if connected
+    if (_socket != null && (_socket!.connected)) {
+      try {
+        _socket!.emit('send_message', {
+          'conversationId': conversationId,
+          'text': content,
+          if (replyTo != null) 'replyTo': replyTo,
+        });
+        return true;
+      } catch (e) {
+        debugPrint('Socket sendMessage error, falling back to REST: $e');
+      }
+    }
+
+    // Fallback: REST API
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/chats/$conversationId/messages'),
         headers: await _getHeaders(),
-        body: jsonEncode({'content': content, 'type': 'text'}),
+        body: jsonEncode({
+          'text': content, 
+          'content': content, 
+          'type': 'text',
+          if (replyTo != null) 'replyTo': replyTo,
+        }),
       );
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (e) {
-      debugPrint('ApiService error (sendMessage): $e');
+      debugPrint('ApiService error (sendMessage REST): $e');
       return false;
     }
+  }
+
+  /// Recalls a message (soft delete)
+  static Future<bool> recallMessage(String conversationId, String messageId) async {
+    if (_socket != null && _socket!.connected) {
+      try {
+        final payload = {
+          'conversationId': conversationId,
+          'messageId': messageId,
+          'message_id': messageId,
+          'id': messageId,
+          '_id': messageId,
+          'status': 'recalled',
+          'isRecalled': true,
+        };
+        _socket!.emit('recall_message', payload);
+        _socket!.emit('delete_message', payload);
+        _socket!.emit('update_message', payload);
+        _socket!.emit('edit_message', payload);
+        return true;
+      } catch (e) {
+        debugPrint('Socket recallMessage error: $e');
+      }
+    }
+
+    // Fallback: REST
+    try {
+      // 1. DELETE .../recall
+      final r1 = await http.delete(Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId/recall'), headers: await _getHeaders());
+      if (r1.statusCode >= 200 && r1.statusCode < 300) return true;
+      
+      // 2. POST .../recall
+      final r2 = await http.post(Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId/recall'), headers: await _getHeaders());
+      if (r2.statusCode >= 200 && r2.statusCode < 300) return true;
+
+      // 3. DELETE generic
+      final r3 = await http.delete(Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId'), headers: await _getHeaders());
+      if (r3.statusCode >= 200 && r3.statusCode < 300) return true;
+
+      // 4. PATCH status
+      final r4 = await http.patch(
+        Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'status': 'recalled', 'isRecalled': true, 'text': 'Tin nhắn đã được thu hồi'}),
+      );
+      if (r4.statusCode >= 200 && r4.statusCode < 300) return true;
+
+      // 5. Try without conversationId prefix (global message ID)
+      final r5 = await http.delete(Uri.parse('$baseUrl/messages/$messageId'), headers: await _getHeaders());
+      if (r5.statusCode >= 200 && r5.statusCode < 300) return true;
+
+      return false;
+    } catch (e) {
+      debugPrint('ApiService error (recallMessage): $e');
+      return false;
+    }
+  }
+
+  /// Emit typing status to other participants in the conversation.
+  static void sendTyping(String conversationId, bool isTyping) {
+    _socket?.emit('typing', {
+      'conversationId': conversationId,
+      'isTyping': isTyping,
+    });
   }
 
   static Future<bool> markChatAsRead(String conversationId) async {

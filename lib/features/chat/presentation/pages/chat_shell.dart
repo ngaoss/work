@@ -90,6 +90,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           title: message.notification!.title,
           body: message.notification!.body,
           payload: message.data['chatId'],
+          imageUrl: message.data['avatar'] ?? message.data['image'],
         );
       }
     });
@@ -109,9 +110,32 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       // Don't notify for our own messages
       if (senderId == myId) return;
 
+      // Don't notify for typing indicators or internal metadata updates
+      if (data['type'] == 'typing' || 
+          data['isNewConversation'] == true || 
+          data['isUpdateConversation'] == true) {
+        return;
+      }
+
       // Extract details for the notification
       final String senderName = (senderObj is Map ? (senderObj["fullName"] ?? senderObj["name"]) : null) ?? "Tin nhắn mới";
-      final String text = data["text"]?.toString() ?? data["content"]?.toString() ?? "Đã gửi một tập tin";
+      final String messageText = data["text"]?.toString() ?? data["content"]?.toString() ?? "Đã gửi một tập tin";
+      
+      // Detect if it's a group message
+      final String? groupName = data["groupName"]?.toString() ?? data["chat"]?["name"]?.toString();
+      final bool isGroup = groupName != null && groupName.isNotEmpty;
+
+      // Formatting: 
+      // - Title: Group Name (if group) or Sender Name (if personal)
+      // - Body: "Sender: Message" (if group) or just "Message" (if personal)
+      final String displayTitle = isGroup ? groupName : senderName;
+      final String displayBody = isGroup ? "$senderName: $messageText" : messageText;
+
+      // Pass localized imageUrl
+      final String? senderAvatar = senderObj is Map ? (senderObj["profilePicture"] ?? senderObj["avatar"])?.toString() : null;
+      final String? groupAvatar = data["groupAvatar"]?.toString() ?? data["chat"]?["avatar"]?.toString();
+      final String? rawIconPath = isGroup ? (groupAvatar ?? senderAvatar) : senderAvatar;
+      final String? resolvedIconUrl = rawIconPath != null ? ApiService.resolveImageUrl(rawIconPath) : null;
 
       // Show notification
       final dynamic rawChatId = data["chatId"] ?? 
@@ -126,7 +150,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       // Manage message history for bundling (keep last 5)
       if (chatId != null) {
         final history = _messageHistory[chatId] ?? [];
-        history.add(text);
+        history.add(displayBody);
         if (history.length > 5) history.removeAt(0);
         _messageHistory[chatId] = history;
 
@@ -134,17 +158,19 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
 
         NotificationHelper.showNotification(
           id: notificationId,
-          title: senderName,
+          title: displayTitle,
           body: bundledText,
           payload: chatId,
+          imageUrl: resolvedIconUrl,
           checkMute: true,
         );
       } else {
         NotificationHelper.showNotification(
           id: notificationId,
-          title: senderName,
-          body: text,
+          title: displayTitle,
+          body: displayBody,
           payload: chatId,
+          imageUrl: resolvedIconUrl,
           checkMute: true,
         );
       }

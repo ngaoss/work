@@ -49,6 +49,9 @@ class _MessagingPageState extends State<MessagingPage> {
   void _handleNewMessage(Map<String, dynamic> data) {
     if (!mounted) return;
 
+    // Skip typing indicators for chat preview updates
+    if (data['type'] == 'typing') return;
+
     // Handle new or updated conversation events
     if (data['isNewConversation'] == true || data['isUpdateConversation'] == true) {
       _fetchChats();
@@ -118,9 +121,14 @@ class _MessagingPageState extends State<MessagingPage> {
 
   Future<void> _fetchUsers() async {
     final users = await ApiService.getUsers();
+    final myId = (AuthService().userProfile.value?["_id"] ?? AuthService().userProfile.value?["id"])?.toString();
+    
     if (mounted) {
       setState(() {
-        _realUsers = users;
+        _realUsers = users.where((u) {
+          final uId = (u["_id"] ?? u["id"])?.toString();
+          return uId != null && uId != myId;
+        }).toList();
       });
     }
   }
@@ -132,15 +140,29 @@ class _MessagingPageState extends State<MessagingPage> {
         _chats.clear();
         for (var chat in chats) {
           final participants = List<dynamic>.from(chat["participants"] ?? []);
-          final bool online = participants.any((participant) {
-            // Priority: use isOnline flag if it exists.
-            // If isOnline is explicitly false, they are offline regardless of status string.
-            if (participant.containsKey('isOnline')) {
-              return participant["isOnline"] == true;
+          
+          bool online = false;
+          if (chat["isGroup"] == true) {
+            online = participants.any((participant) {
+              if (participant.containsKey('isOnline')) {
+                return participant["isOnline"] == true;
+              }
+              final status = participant["status"]?.toString().toLowerCase();
+              return status == "online";
+            });
+          } else {
+            // For 1:1 chats, status depends on the OTHER person
+            final other = _findOtherParticipant(participants);
+            if (other != null) {
+              if (other.containsKey('isOnline')) {
+                online = other["isOnline"] == true;
+              } else {
+                final status = other["status"]?.toString().toLowerCase();
+                online = status == "online";
+              }
             }
-            final status = participant["status"]?.toString().toLowerCase();
-            return status == "online";
-          });
+          }
+
           final String name =
               chat["name"] ?? _resolveChatName(chat, participants);
           final String statusText = chat["isGroup"] == true
@@ -260,13 +282,17 @@ class _MessagingPageState extends State<MessagingPage> {
     Map<String, dynamic> chat,
     List<dynamic> participants,
   ) {
-    if (chat["groupAvatar"] != null) {
-      final val = _resolveAvatarValue(chat["groupAvatar"]);
-      if (val != null && val.isNotEmpty) return val;
-    }
-    if (chat["avatar"] != null) {
-      final val = _resolveAvatarValue(chat["avatar"]);
-      if (val != null && val.isNotEmpty) return val;
+    // If it's a group, only use group-level avatars. Do NOT fall back to participants.
+    if (chat["isGroup"] == true) {
+      if (chat["groupAvatar"] != null) {
+        final val = _resolveAvatarValue(chat["groupAvatar"]);
+        if (val != null && val.isNotEmpty) return val;
+      }
+      if (chat["avatar"] != null) {
+        final val = _resolveAvatarValue(chat["avatar"]);
+        if (val != null && val.isNotEmpty) return val;
+      }
+      return null;
     }
 
     final otherParticipant = _findOtherParticipant(participants);
