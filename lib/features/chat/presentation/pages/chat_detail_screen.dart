@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../../core/widgets/full_screen_media_viewer.dart';
@@ -72,13 +73,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   late bool _isMuted;
 
   late ScrollController _scrollController;
+  Color _themeColor = const Color(0xFF3B82F6);
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
     _scrollController.addListener(_scrollListener);
-    
+
     _currentName = widget.name;
     _currentInitials = widget.initials;
     _currentColor = widget.color;
@@ -97,13 +99,48 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ApiService.markChatAsRead(_activeConversationId!);
     }
     _chatSubscription = ApiService.newChatStream.listen(_handleNewChatEvent);
-    
+
+    // Fetch full conversation details (to get complete member list)
+    if (_activeConversationId != null && _activeConversationId!.length < 25) {
+      _loadChatDetails();
+    }
+
     // Start 10-second polling fallback
     _startPolling();
   }
 
+  Future<void> _loadChatDetails() async {
+    if (_activeConversationId == null) return;
+
+    final details = await ApiService.getChatDetails(_activeConversationId!);
+    if (details != null && details["participants"] is List) {
+      if (!mounted) return;
+      setState(() {
+        _members = (details["participants"] as List)
+            .map((e) {
+              if (e is Map<String, dynamic>) {
+                return <String, String>{
+                  '_id': (e['_id'] ?? '').toString(),
+                  'profilePicture': (e['profilePicture'] ?? '').toString(),
+                  'avatar': (e['avatar'] ?? '').toString(),
+                  'fullName': (e['fullName'] ?? '').toString(),
+                  'name': (e['name'] ?? e['fullName'] ?? '').toString(),
+                  'role': (e['role'] ?? '').toString(),
+                  'isOwner': (e['isOwner'] ?? 'false').toString(),
+                };
+              }
+              return <String, String>{};
+            })
+            .where((m) => m.isNotEmpty)
+            .toList()
+            .cast<Map<String, String>>();
+      });
+    }
+  }
+
   void _scrollListener() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
         !_isLoadingMore &&
         _hasMoreMessages) {
       _loadMoreMessages();
@@ -121,90 +158,123 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   void _handleNewChatEvent(Map<String, dynamic> msgData) {
     if (!mounted) return;
-    
+    // debugPrint(
+    //   "DEBUG: _handleNewChatEvent received data: ${msgData['text'] ?? msgData['content']}",
+    // );
+
     // Check if message belongs to this conversation
-    final rawChatId = msgData['chat'] ?? msgData['chatId'];
-    String? chatId = (rawChatId is Map) ? rawChatId['_id']?.toString() : rawChatId?.toString();
-    
-    // Safety: If we are in a "temporary" chat (numeric ID), 
-    // and we receive a message from a chat with our participation, 
+    final rawChatId =
+        msgData['chatId'] ??
+        msgData['chat']?['_id'] ??
+        msgData['chat'] ??
+        msgData['conversationId'] ??
+        msgData['id_conversation'];
+
+    String? chatId = (rawChatId is Map)
+        ? rawChatId['_id']?.toString()
+        : rawChatId?.toString();
+
+    // Safety: If we are in a "temporary" chat (numeric ID),
+    // and we receive a message from a chat with our participation,
     // we should accept it and potentially update our ID.
     bool idMatch = chatId == _activeConversationId;
-    if (!idMatch && _activeConversationId != null && _activeConversationId!.length > 10) {
+    if (!idMatch &&
+        _activeConversationId != null &&
+        _activeConversationId!.length > 10) {
       // Temporary IDs are usually long timestamps (milliseconds). String length > 10.
       // We accept the update if the message has a valid chatId and it's our first real message
-      if (chatId != null && _messages.where((m) => m["isSystem"] != true).length < 5) {
-         idMatch = true;
-         // Update active ID so future polls/fetches use the real one
-         setState(() {
-           _activeConversationId = chatId;
-         });
+      if (chatId != null &&
+          _messages.where((m) => m["isSystem"] != true).length < 5) {
+        idMatch = true;
+        // Update active ID so future polls/fetches use the real one
+        setState(() {
+          _activeConversationId = chatId;
+        });
       }
     }
-    
+
     if (!idMatch && chatId != null) return;
 
-    final senderId = msgData['sender']?['_id'] ?? msgData['senderId'] ?? msgData['sender'];
-    final senderName = msgData['sender']?['fullName'] ?? msgData['sender']?['name'] ?? "Unknown";
-    final avatarRaw = msgData['sender']?['profilePicture'] ?? msgData['sender']?['avatar'];
-    final bool isSender = senderId?.toString() == (AuthService().userProfile.value?['_id'] ?? AuthService().userProfile.value?['id'])?.toString() || 
-                        msgData['isSender'] == true;
-    
+    final senderId =
+        msgData['sender']?['_id'] ?? msgData['senderId'] ?? msgData['sender'];
+    final senderName =
+        msgData['sender']?['fullName'] ??
+        msgData['sender']?['name'] ??
+        "Unknown";
+    final avatarRaw =
+        msgData['sender']?['profilePicture'] ?? msgData['sender']?['avatar'];
+    final bool isSender =
+        senderId?.toString() ==
+            (AuthService().userProfile.value?['_id'] ??
+                    AuthService().userProfile.value?['id'])
+                ?.toString() ||
+        msgData['isSender'] == true;
+
     final newMessage = {
-      "id": (msgData["_id"] ?? msgData["id"] ?? DateTime.now().millisecondsSinceEpoch).toString(),
+      "id":
+          (msgData["_id"] ??
+                  msgData["id"] ??
+                  DateTime.now().millisecondsSinceEpoch)
+              .toString(),
       "text": msgData["text"] ?? msgData["content"] ?? "",
       "isSender": isSender,
-      "isRecalled": msgData["isRecalled"] == true || msgData["status"] == "recalled",
+      "isRecalled":
+          msgData["isRecalled"] == true || msgData["status"] == "recalled",
       "replyTo": msgData["replyTo"] ?? msgData["parentMessage"],
-      "imagePath": (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
-          ? ApiService.resolveImageUrl(msgData["media"][0]["url"] ?? msgData["media"][0]["path"])
-          : (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
-              ? ApiService.resolveImageUrl(msgData["attachments"][0]["url"] ?? msgData["attachments"][0]["path"])
-              : null,
-      "fileName": (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
-          ? msgData["attachments"][0]["name"]
-          : (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
-              ? msgData["media"][0]["name"]
-              : null,
-      "fileSize": (msgData["attachments"] is List && msgData["attachments"].isNotEmpty)
-          ? _formatFileSize(msgData["attachments"][0]["size"])
-          : null,
+      "imagePath":
+          _extractMediaUrl(msgData["media"]) ??
+          _extractMediaUrl(msgData["attachments"]) ??
+          (msgData["imageUrl"] != null
+              ? ApiService.resolveImageUrl(msgData["imageUrl"])
+              : null) ??
+          (msgData["image"] is String
+              ? ApiService.resolveImageUrl(msgData["image"])
+              : null),
+      "fileName":
+          _extractMediaName(msgData["attachments"]) ??
+          _extractMediaName(msgData["media"]),
+      "fileSize":
+          _extractMediaSize(msgData["attachments"]) ??
+          _extractMediaSize(msgData["media"]),
       "senderName": senderName,
-      "senderInitials": senderName.isNotEmpty ? senderName[0].toUpperCase() : "?",
+      "senderInitials": senderName.isNotEmpty
+          ? senderName[0].toUpperCase()
+          : "?",
       "senderAvatarPath": ApiService.resolveImageUrl(avatarRaw),
       "time": _formatMessageTime(msgData["createdAt"] ?? msgData["timestamp"]),
       "isSystem": msgData["type"] == "system" || msgData["isSystem"] == true,
     };
 
     setState(() {
-      // Check if this message from server is a confirmation of our optimistic message
       bool replaced = false;
       if (newMessage["isSender"] == true) {
-        final optIndex = _messages.indexWhere((m) => 
-          m["isSender"] == true && 
-          m["text"] == newMessage["text"] &&
-          m["id"].toString().length > 10 // tempId is long timestamp string
-        );
+        final optIndex = _messages.indexWhere((m) {
+          if (m["isSender"] != true) return false;
+          final mId = m["id"]?.toString() ?? '';
+          if (mId.length <= 10) return false;
+          final sameText = (m["text"] ?? '') == (newMessage["text"] ?? '');
+          final isUploadingImg =
+              m["isUploading"] == true && newMessage["imagePath"] != null;
+          return sameText || isUploadingImg;
+        });
         if (optIndex != -1) {
           _messages[optIndex] = newMessage;
           replaced = true;
         }
       }
 
-      // Search for existing message by ID to handle updates (like recall)
-      final existingIndex = _messages.indexWhere((m) => m["id"].toString() == newMessage["id"].toString());
-      
+      final existingIndex = _messages.indexWhere(
+        (m) => m["id"]?.toString() == newMessage["id"]?.toString(),
+      );
       if (!replaced && existingIndex != -1) {
-        // Update existing message
         _messages[existingIndex] = newMessage;
         replaced = true;
       }
 
-      // If not replaced and not a duplicate by ID, add it
       if (!replaced) {
-        // Ignore empty messages that might be system events
-        if ((newMessage["text"] as String).trim().isNotEmpty || 
-            newMessage["imagePath"] != null || 
+        final text = (newMessage["text"] ?? '').toString().trim();
+        if (text.isNotEmpty ||
+            newMessage["imagePath"] != null ||
             newMessage["isSystem"] == true) {
           _messages.insert(0, newMessage);
         }
@@ -224,7 +294,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Future<void> _loadMessages({bool isPolling = false}) async {
     if (_activeConversationId == null) return;
-    
+
     // For polling, we don't show loading indicator and only fetch the latest page
     if (!isPolling) {
       if (_isLoadingMore) return;
@@ -237,7 +307,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         page: isPolling ? 1 : _currentPage,
         limit: 20,
       );
-      
+
       // Mark as read after loading messages
       ApiService.markChatAsRead(_activeConversationId!);
 
@@ -247,24 +317,37 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       int totalPages = 1;
 
       if (responseData is Map) {
-        rawMessages = responseData["messages"] ?? responseData["data"] ?? responseData["docs"] ?? responseData["results"] ?? [];
+        rawMessages =
+            responseData["messages"] ??
+            responseData["data"] ??
+            responseData["docs"] ??
+            responseData["results"] ??
+            [];
         totalPages = responseData["totalPages"] ?? responseData["pages"] ?? 1;
       } else if (responseData is List) {
         rawMessages = responseData;
       }
-      
+
       // Fallback: if totalPages is 1 but we got a full page of 20 items, assume there might be more.
-      _hasMoreMessages = (totalPages > _currentPage) || (totalPages == 1 && rawMessages.length == 20);
+      _hasMoreMessages =
+          (totalPages > _currentPage) ||
+          (totalPages == 1 && rawMessages.length == 20);
 
       final processed = rawMessages.map((m) => _parseMessage(m)).toList();
 
       // We want _messages to be [Newest, ..., Oldest] for ListView(reverse: true)
       List<Map<String, dynamic>> finalMessages = [];
       if (processed.isNotEmpty) {
-        final firstTime = _parseDateTime(rawMessages.first["createdAt"] ?? rawMessages.first["timestamp"]);
-        final lastTime = _parseDateTime(rawMessages.last["createdAt"] ?? rawMessages.last["timestamp"]);
-        
-        if (firstTime != null && lastTime != null && firstTime.isBefore(lastTime)) {
+        final firstTime = _parseDateTime(
+          rawMessages.first["createdAt"] ?? rawMessages.first["timestamp"],
+        );
+        final lastTime = _parseDateTime(
+          rawMessages.last["createdAt"] ?? rawMessages.last["timestamp"],
+        );
+
+        if (firstTime != null &&
+            lastTime != null &&
+            firstTime.isBefore(lastTime)) {
           // API returned Oldest-first, reverse to get Newest-first
           finalMessages = processed.reversed.toList();
         } else {
@@ -278,16 +361,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           if (isPolling) {
             // Merge new messages (usually from page 1) into the Newest-first list
             for (var msg in finalMessages) {
-              if (!_messages.any((existing) => existing["id"].toString() == msg["id"].toString())) {
+              if (!_messages.any(
+                (existing) => existing["id"].toString() == msg["id"].toString(),
+              )) {
                 _messages.insert(0, msg);
               }
             }
             // Sort to ensure correct Newest-first order [Newest ... Oldest]
-            _messages.sort((a,b) {
-               DateTime? tA = _parseDateTime(a["rawCreatedAt"] ?? a["time"]);
-               DateTime? tB = _parseDateTime(b["rawCreatedAt"] ?? b["time"]);
-               if (tA == null || tB == null) return 0;
-               return tB.compareTo(tA); 
+            _messages.sort((a, b) {
+              DateTime? tA = _parseDateTime(a["rawCreatedAt"] ?? a["time"]);
+              DateTime? tB = _parseDateTime(b["rawCreatedAt"] ?? b["time"]);
+              if (tA == null || tB == null) return 0;
+              return tB.compareTo(tA);
             });
           } else {
             if (_currentPage == 1) {
@@ -302,10 +387,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }
     } catch (e) {
       debugPrint("Error loading messages: $e");
-      if (mounted) setState(() {
-        _isLoadingMore = false;
-        if (!isPolling && _currentPage > 1) _currentPage--;
-      });
+      if (mounted)
+        setState(() {
+          _isLoadingMore = false;
+          if (!isPolling && _currentPage > 1) _currentPage--;
+        });
     }
   }
 
@@ -320,35 +406,84 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Map<String, dynamic> _parseMessage(dynamic msgData) {
-    final senderId = msgData['sender']?['_id'] ?? msgData['senderId'] ?? msgData['sender'];
-    final senderName = msgData['sender']?['fullName'] ?? msgData['sender']?['name'] ?? "Unknown";
-    final avatarRaw = msgData['sender']?['profilePicture'] ?? msgData['sender']?['avatar'];
-    
+    final senderId =
+        msgData['sender']?['_id'] ?? msgData['senderId'] ?? msgData['sender'];
+    final senderName =
+        msgData['sender']?['fullName'] ??
+        msgData['sender']?['name'] ??
+        "Unknown";
+    final avatarRaw =
+        msgData['sender']?['profilePicture'] ?? msgData['sender']?['avatar'];
+
     final senderIdStr = senderId?.toString();
-    final bool isSender = senderIdStr == (AuthService().userProfile.value?['_id'] ?? AuthService().userProfile.value?['id'])?.toString() || 
-                        msgData['isSender'] == true;
+    final bool isSender =
+        senderIdStr ==
+            (AuthService().userProfile.value?['_id'] ??
+                    AuthService().userProfile.value?['id'])
+                ?.toString() ||
+        msgData['isSender'] == true;
     return {
-      "id": (msgData["_id"] ?? msgData["id"] ?? DateTime.now().millisecondsSinceEpoch).toString(),
+      "id":
+          (msgData["_id"] ??
+                  msgData["id"] ??
+                  DateTime.now().millisecondsSinceEpoch)
+              .toString(),
       "text": msgData["text"] ?? msgData["content"] ?? "",
       "isSender": isSender,
-      "isRecalled": msgData["isRecalled"] == true || msgData["status"] == "recalled",
+      "isRecalled":
+          msgData["isRecalled"] == true || msgData["status"] == "recalled",
       "replyTo": msgData["replyTo"] ?? msgData["parentMessage"],
-      "imagePath": (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
-          ? ApiService.resolveImageUrl(msgData["media"][0]["url"] ?? msgData["media"][0]["path"])
-          : (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
-              ? ApiService.resolveImageUrl(msgData["attachments"][0]["url"] ?? msgData["attachments"][0]["path"])
-              : null,
-      "fileName": (msgData["attachments"] is List && (msgData["attachments"] as List).isNotEmpty)
-          ? msgData["attachments"][0]["name"]
-          : (msgData["media"] is List && (msgData["media"] as List).isNotEmpty)
-              ? msgData["media"][0]["name"]
-              : null,
+      "imagePath":
+          _extractMediaUrl(msgData["media"]) ??
+          _extractMediaUrl(msgData["attachments"]) ??
+          (msgData["imageUrl"] != null
+              ? ApiService.resolveImageUrl(msgData["imageUrl"])
+              : null) ??
+          (msgData["image"] is String
+              ? ApiService.resolveImageUrl(msgData["image"])
+              : null),
+      "fileName":
+          _extractMediaName(msgData["attachments"]) ??
+          _extractMediaName(msgData["media"]),
       "senderName": senderName,
       "senderAvatarPath": ApiService.resolveImageUrl(avatarRaw),
       "rawCreatedAt": msgData["createdAt"] ?? msgData["timestamp"],
       "time": _formatMessageTime(msgData["createdAt"] ?? msgData["timestamp"]),
       "isSystem": msgData["type"] == "system" || msgData["isSystem"] == true,
     };
+  }
+
+  /// Safely extracts an image URL from a media list which may contain
+  /// either Map objects {url, path} or plain URL Strings.
+  String? _extractMediaUrl(dynamic mediaList) {
+    if (mediaList is! List || mediaList.isEmpty) return null;
+    final item = mediaList[0];
+    if (item is String) return ApiService.resolveImageUrl(item);
+    if (item is Map) {
+      final url =
+          item["url"] ?? item["path"] ?? item["imageUrl"] ?? item["src"];
+      if (url != null) return ApiService.resolveImageUrl(url);
+    }
+    return null;
+  }
+
+  String? _extractMediaName(dynamic mediaList) {
+    if (mediaList is! List || mediaList.isEmpty) return null;
+    final item = mediaList[0];
+    if (item is Map)
+      return item["name"]?.toString() ?? item["fileName"]?.toString();
+    return null;
+  }
+
+  String? _extractMediaSize(dynamic mediaList) {
+    if (mediaList is! List || mediaList.isEmpty) return null;
+    final item = mediaList[0];
+    if (item is Map && item["size"] != null) {
+      if (item["size"] is int) return _formatFileSize(item["size"]);
+      if (item["size"] is String)
+        return _formatFileSize(int.tryParse(item["size"]));
+    }
+    return null;
   }
 
   String _getSenderInitials(dynamic sender) {
@@ -430,22 +565,73 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     try {
       final XFile? file = mediaType == "image"
-          ? await _picker.pickImage(source: source)
+          ? await _picker.pickImage(source: source, imageQuality: 85)
           : await _picker.pickVideo(source: source);
 
-      if (file != null) {
-        setState(() {
-          _messages.insert(0, {
-            "id": DateTime.now().millisecondsSinceEpoch,
-            "imagePath": file.path,
-            "isSender": true,
-            "time":
-                "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-          });
+      if (file == null) return;
+
+      // Optimistic local preview
+      final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+      setState(() {
+        _messages.insert(0, {
+          "id": tempId,
+          "imagePath": file.path,
+          "isSender": true,
+          "isUploading": true,
+          "time":
+              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
         });
+      });
+
+      // Upload to server
+      final bytes = await file.readAsBytes();
+      final fileName = file.name.isNotEmpty
+          ? file.name
+          : 'media_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final imageId = await ApiService.uploadImage(bytes, fileName);
+
+      if (imageId != null && _activeConversationId != null) {
+        final imageUrl = ApiService.resolveImageUrl(imageId);
+        // Send message with image via socket/REST
+        final success = await ApiService.sendMediaMessage(
+          _activeConversationId!,
+          imageId: imageId,
+          imageUrl: imageUrl,
+          type: mediaType,
+        );
+        if (success) {
+          // Update local message with server URL
+          setState(() {
+            final idx = _messages.indexWhere((m) => m["id"] == tempId);
+            if (idx != -1) {
+              _messages[idx]["imagePath"] = imageUrl;
+              _messages[idx]["isUploading"] = false;
+            }
+          });
+        } else {
+          // Remove failed message
+          setState(() => _messages.removeWhere((m) => m["id"] == tempId));
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Gửi ảnh thất bại. Vui lòng thử lại."),
+              ),
+            );
+          }
+        }
+      } else {
+        // Upload failed
+        setState(() => _messages.removeWhere((m) => m["id"] == tempId));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Tải ảnh lên thất bại. Vui lòng thử lại."),
+            ),
+          );
+        }
       }
     } catch (e) {
-      debugPrint("Error picking media: $e");
+      debugPrint("Error picking/sending media: $e");
     }
   }
 
@@ -537,12 +723,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             "text": text,
             "isSender": true,
             "isEdited": false,
-            "replyTo": replyMsg != null ? {
-              "_id": replyMsg["id"],
-              "text": replyMsg["text"],
-              "sender": {"fullName": replyMsg["senderName"]},
-            } : null,
-            "time": "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
+            "replyTo": replyMsg != null
+                ? {
+                    "_id": replyMsg["id"],
+                    "text": replyMsg["text"],
+                    "sender": {"fullName": replyMsg["senderName"]},
+                  }
+                : null,
+            "time":
+                "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
             "senderName": "Bạn",
           });
           _controller.clear();
@@ -550,12 +739,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           _showEmoji = false;
         });
 
-        final success = await ApiService.sendMessage(_activeConversationId!, text, replyTo: replyToId);
+        final success = await ApiService.sendMessage(
+          _activeConversationId!,
+          text,
+          replyTo: replyToId,
+        );
         if (!success) {
           // Rollback or show error
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Gửi tin nhắn thất bại. Vui lòng thử lại.")),
+              const SnackBar(
+                content: Text("Gửi tin nhắn thất bại. Vui lòng thử lại."),
+              ),
             );
             setState(() {
               _messages.removeWhere((m) => m["id"] == tempId);
@@ -584,7 +779,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }
     });
 
-    final success = await ApiService.recallMessage(_activeConversationId!, msgId);
+    final success = await ApiService.recallMessage(
+      _activeConversationId!,
+      msgId,
+    );
     if (!success && mounted) {
       // Rollback on failure
       setState(() {
@@ -669,7 +867,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ListTile(
             leading: const Icon(Icons.copy_outlined),
             title: const Text("Sao chép"),
-            onTap: () => Navigator.pop(context),
+            onTap: () async {
+              Navigator.pop(context);
+              if (msg["text"] != null && msg["text"].toString().isNotEmpty) {
+                await Clipboard.setData(ClipboardData(text: msg["text"]));
+              }
+            },
           ),
         ],
       ),
@@ -752,7 +955,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.more_horiz, color: Colors.blueAccent),
+            icon: Icon(Icons.more_horiz, color: _themeColor),
             onPressed: () {
               Navigator.push(
                 context,
@@ -763,9 +966,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     conversationId: _activeConversationId,
                     isGroup: widget.isGroup,
                     isMuted: _isMuted,
+                    themeColor: _themeColor,
+                    initialMembers: _members,
                     onMuteToggle: (muted) {
                       setState(() => _isMuted = muted);
                       widget.onMuteToggle?.call(muted);
+                    },
+                    onThemeChanged: (newColor) {
+                      setState(() => _themeColor = newColor);
                     },
                   ),
                 ),
@@ -823,74 +1031,92 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                   itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
                   itemBuilder: (context, index) {
-                      // Show loading spinner at the end of the list (which is the top when reverse: true)
-                      if (_isLoadingMore && index == _messages.length) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.blue,
-                                ),
+                    // Show loading spinner at the end of the list (which is the top when reverse: true)
+                    if (_isLoadingMore && index == _messages.length) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.blue,
                               ),
                             ),
                           ),
-                        );
-                      }
-
-                      if (index >= _messages.length) return const SizedBox.shrink();
-                      
-                      final msg = _messages[index];
-                      // Build replyTo preview if present
-                      Map<String, dynamic>? replyData;
-                      final rawReply = msg["replyTo"];
-                      if (rawReply is Map) {
-                        final replyText = (rawReply["text"] ?? rawReply["content"] ?? "").toString();
-                        final replySender = (rawReply["sender"]?["fullName"] ?? rawReply["sender"]?["name"] ?? "").toString();
-                        replyData = {
-                          "id": (rawReply["_id"] ?? rawReply["id"])?.toString(),
-                          "text": replyText,
-                          "senderName": replySender,
-                        };
-                      }
-                      return GestureDetector(
-                        onLongPress: () => _showOptions(context, msg),
-                        child: _ChatBubble(
-                          message: msg["isRecalled"] == true ? "Tin nhắn đã được thu hồi" : (msg["text"] ?? ""),
-                          isSender: msg["isSender"],
-                          isSystem: msg["isSystem"] ?? false,
-                          isEdited: msg["isEdited"] ?? false,
-                          isRecalled: msg["isRecalled"] == true,
-                          imagePath: msg["isRecalled"] == true ? null : msg["imagePath"],
-                          fileName: msg["isRecalled"] == true ? null : msg["fileName"],
-                          fileSize: msg["fileSize"],
-                          replyTo: replyData,
-                          senderName: msg["isSender"]
-                              ? "Bạn"
-                              : (msg["senderName"] ?? _currentName),
-                          senderInitials: msg["isSender"]
-                              ? "ME"
-                              : (msg["senderInitials"] ??
-                                    (widget.initials ??
-                                        _currentName.substring(0, 1))),
-                          senderAvatarPath: msg["isSender"]
-                              ? ApiService.resolveImageUrl(AuthService().userProfile.value?["profilePicture"] ?? AuthService().userProfile.value?["avatar"])
-                              : msg["senderAvatarPath"],
-                          bubbleColor: _currentColor ?? Colors.blue,
-                          time: msg["time"] ?? "Vừa xong",
                         ),
                       );
-                    },
-                  ),
+                    }
+
+                    if (index >= _messages.length)
+                      return const SizedBox.shrink();
+
+                    final msg = _messages[index];
+                    // Build replyTo preview if present
+                    Map<String, dynamic>? replyData;
+                    final rawReply = msg["replyTo"];
+                    if (rawReply is Map) {
+                      final replyText =
+                          (rawReply["text"] ?? rawReply["content"] ?? "")
+                              .toString();
+                      final replySender =
+                          (rawReply["sender"]?["fullName"] ??
+                                  rawReply["sender"]?["name"] ??
+                                  "")
+                              .toString();
+                      replyData = {
+                        "id": (rawReply["_id"] ?? rawReply["id"])?.toString(),
+                        "text": replyText,
+                        "senderName": replySender,
+                      };
+                    }
+                    return GestureDetector(
+                      onLongPress: () => _showOptions(context, msg),
+                      child: _ChatBubble(
+                        message: msg["isRecalled"] == true
+                            ? "Tin nhắn đã được thu hồi"
+                            : (msg["text"] ?? ""),
+                        isSender: msg["isSender"],
+                        isSystem: msg["isSystem"] ?? false,
+                        isEdited: msg["isEdited"] ?? false,
+                        isRecalled: msg["isRecalled"] == true,
+                        imagePath: msg["isRecalled"] == true
+                            ? null
+                            : msg["imagePath"],
+                        fileName: msg["isRecalled"] == true
+                            ? null
+                            : msg["fileName"],
+                        fileSize: msg["fileSize"],
+                        replyTo: replyData,
+                        senderName: msg["isSender"]
+                            ? "Bạn"
+                            : (msg["senderName"] ?? _currentName),
+                        senderInitials: msg["isSender"]
+                            ? "ME"
+                            : (msg["senderInitials"] ??
+                                  (widget.initials ??
+                                      _currentName.substring(0, 1))),
+                        senderAvatarPath: msg["isSender"]
+                            ? ApiService.resolveImageUrl(
+                                AuthService()
+                                        .userProfile
+                                        .value?["profilePicture"] ??
+                                    AuthService().userProfile.value?["avatar"],
+                              )
+                            : msg["senderAvatarPath"],
+                        bubbleColor: _currentColor ?? _themeColor,
+                        time: msg["time"] ?? "Vừa xong",
+                      ),
+                    );
+                  },
                 ),
               ),
+            ),
             if (_editingMessageId != null)
               _EditingBanner(
-                themeColor: _currentColor ?? const Color(0xFF3B82F6),
+                themeColor: _themeColor,
                 onCancel: () => setState(() {
                   _editingMessageId = null;
                   _controller.clear();
@@ -898,7 +1124,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             if (_replyingTo != null)
               _ReplyBanner(
-                themeColor: _currentColor ?? const Color(0xFF3B82F6),
+                themeColor: _themeColor,
                 replyToName: _replyingTo!["senderName"] ?? "Người dùng",
                 replyToText: _replyingTo!["text"] ?? "",
                 onCancel: () => setState(() => _replyingTo = null),
@@ -913,7 +1139,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               onCamera: () => _pickMedia(ImageSource.camera),
               onGallery: () => _pickMedia(ImageSource.gallery),
               onPlus: _pickFile,
-              themeColor: _currentColor ?? const Color(0xFF3B82F6),
+              themeColor: _themeColor,
             ),
             if (_showEmoji)
               _EmojiPickerSheet(
@@ -1239,8 +1465,8 @@ class _ChatBubble extends StatelessWidget {
                         color: isRecalled
                             ? Colors.grey.shade300
                             : (isSender
-                                ? Colors.transparent
-                                : Colors.grey.shade200),
+                                  ? Colors.transparent
+                                  : Colors.grey.shade200),
                       ),
                       boxShadow: (isSender || isRecalled)
                           ? null
@@ -1312,8 +1538,9 @@ class _ChatBubble extends StatelessWidget {
                                 ? Colors.grey.shade500
                                 : (isSender ? Colors.white : Colors.black87),
                             fontSize: 14,
-                            fontWeight:
-                                isRecalled ? FontWeight.w400 : FontWeight.w500,
+                            fontWeight: isRecalled
+                                ? FontWeight.w400
+                                : FontWeight.w500,
                             fontStyle: isRecalled
                                 ? FontStyle.italic
                                 : FontStyle.normal,
@@ -1362,16 +1589,16 @@ class _ChatBubble extends StatelessWidget {
               radius: 14,
               backgroundColor: Colors.blue.shade50,
               backgroundImage: _getAvatarImageProvider(senderAvatarPath),
-              child: _getAvatarImageProvider(senderAvatarPath) == null 
-                ? const Text(
-                    "ME",
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  )
-                : null,
+              child: _getAvatarImageProvider(senderAvatarPath) == null
+                  ? const Text(
+                      "ME",
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    )
+                  : null,
             ),
           ],
         ],
@@ -1402,7 +1629,7 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-class _ChatInputArea extends StatelessWidget {
+class _ChatInputArea extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSend;
@@ -1426,63 +1653,122 @@ class _ChatInputArea extends StatelessWidget {
   });
 
   @override
+  State<_ChatInputArea> createState() => _ChatInputAreaState();
+}
+
+class _ChatInputAreaState extends State<_ChatInputArea> {
+  @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width > 600;
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         8,
         12,
         16,
-        isEmojiVisible ? 12 : MediaQuery.of(context).padding.bottom + 12,
+        widget.isEmojiVisible ? 12 : MediaQuery.of(context).padding.bottom + 12,
       ),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.1))),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           IconButton(
-            onPressed: onPlus,
-            icon: Icon(Icons.add_circle, color: themeColor),
+            onPressed: widget.onPlus,
+            icon: Icon(Icons.add_circle, color: widget.themeColor),
           ),
           IconButton(
-            onPressed: onCamera,
-            icon: Icon(Icons.camera_alt, color: themeColor),
+            onPressed: widget.onCamera,
+            icon: Icon(Icons.camera_alt, color: widget.themeColor),
           ),
           IconButton(
-            onPressed: onGallery,
-            icon: Icon(Icons.image, color: themeColor),
+            onPressed: widget.onGallery,
+            icon: Icon(Icons.image, color: widget.themeColor),
           ),
           Expanded(
             child: Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              constraints: const BoxConstraints(maxHeight: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      onSubmitted: (_) => onSend(),
-                      decoration: const InputDecoration(
-                        hintText: "Aa",
-                        border: InputBorder.none,
-                        hintStyle: TextStyle(color: Colors.grey),
-                        contentPadding: EdgeInsets.symmetric(vertical: 10),
+                    child: Focus(
+                      onKeyEvent: isDesktop
+                          ? (FocusNode node, KeyEvent event) {
+                              if (event is KeyDownEvent ||
+                                  event is KeyRepeatEvent) {
+                                final isEnter =
+                                    event.logicalKey ==
+                                    LogicalKeyboardKey.enter;
+                                if (!isEnter) return KeyEventResult.ignored;
+
+                                final isShift =
+                                    HardwareKeyboard.instance.isShiftPressed;
+
+                                if (isShift) {
+                                  // Shift+Enter → insert newline
+                                  final text = widget.controller.text;
+                                  final selection = widget.controller.selection;
+                                  final newText = text.replaceRange(
+                                    selection.start,
+                                    selection.end,
+                                    '\n',
+                                  );
+                                  widget.controller.value = TextEditingValue(
+                                    text: newText,
+                                    selection: TextSelection.collapsed(
+                                      offset: selection.start + 1,
+                                    ),
+                                  );
+                                } else {
+                                  // Enter → send message
+                                  widget.onSend();
+                                }
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            }
+                          : null,
+                      child: TextField(
+                        controller: widget.controller,
+                        focusNode: widget.focusNode,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: isDesktop
+                            ? TextInputAction
+                                  .none // Prevent double newlines
+                            : TextInputAction.send,
+                        onSubmitted: isDesktop ? null : (_) => widget.onSend(),
+
+                        decoration: const InputDecoration(
+                          hintText: "Aa",
+                          border: InputBorder.none,
+                          hintStyle: TextStyle(color: Colors.grey),
+                          contentPadding: EdgeInsets.symmetric(vertical: 10),
+                        ),
                       ),
                     ),
                   ),
                   GestureDetector(
-                    onTap: onEmoji,
-                    child: Icon(
-                      isEmojiVisible
-                          ? Icons.keyboard
-                          : Icons.emoji_emotions_outlined,
-                      size: 20,
-                      color: isEmojiVisible ? themeColor : Colors.blueGrey,
+                    onTap: widget.onEmoji,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Icon(
+                        widget.isEmojiVisible
+                            ? Icons.keyboard
+                            : Icons.emoji_emotions_outlined,
+                        size: 20,
+                        color: widget.isEmojiVisible
+                            ? widget.themeColor
+                            : Colors.blueGrey,
+                      ),
                     ),
                   ),
                 ],
@@ -1491,8 +1777,8 @@ class _ChatInputArea extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           IconButton(
-            onPressed: onSend,
-            icon: Icon(Icons.send_rounded, color: themeColor),
+            onPressed: widget.onSend,
+            icon: Icon(Icons.send_rounded, color: widget.themeColor),
           ),
         ],
       ),
@@ -1552,9 +1838,7 @@ class _ReplyBanner extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: themeColor.withOpacity(0.05),
-        border: Border(
-          left: BorderSide(color: themeColor, width: 3),
-        ),
+        border: Border(left: BorderSide(color: themeColor, width: 3)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -1577,10 +1861,7 @@ class _ReplyBanner extends StatelessWidget {
                   replyToText.isNotEmpty ? replyToText : "[Ảnh hoặc tệp]",
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
                 ),
               ],
             ),

@@ -126,224 +126,420 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width > 900;
+
+    if (!isDesktop) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                child: Column(
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.bottomCenter,
+                      children: [
+                        Container(
+                          height: 220,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.vertical(
+                              bottom: Radius.circular(40),
+                            ),
+                          ),
+                        ),
+                        if (widget.user != null)
+                          Positioned(
+                            top: MediaQuery.of(context).padding.top + 8,
+                            left: 8,
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.arrow_back_ios_new,
+                                color: Colors.white,
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ),
+                        Positioned(
+                          bottom: -60,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(32),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Container(
+                              width: 120,
+                              height: 120,
+                              decoration: BoxDecoration(
+                                color: Colors.blueGrey.shade50,
+                                borderRadius: BorderRadius.circular(28),
+                              ),
+                              child: _avatarUrl != null
+                                  ? FutureBuilder<Map<String, String>>(
+                                      future: ApiService.getAuthHeaders(),
+                                      builder: (context, headers) {
+                                        return ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            28,
+                                          ),
+                                          child: Image.network(
+                                            ApiService.resolveImageUrl(
+                                              _avatarUrl,
+                                            ),
+                                            fit: BoxFit.cover,
+                                            headers: headers.data,
+                                            errorBuilder: (ctx, err, stack) =>
+                                                const Icon(
+                                                  Icons.person,
+                                                  size: 70,
+                                                  color: Colors.blueGrey,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                    )
+                                  : const Icon(
+                                      Icons.person,
+                                      size: 70,
+                                      color: Colors.blueGrey,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 80),
+                    Text(
+                      _name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 24,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.verified_user_sharp,
+                          size: 14,
+                          color: const Color(0xFF3B82F6).withOpacity(0.8),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          (_job +
+                                  (_department.isNotEmpty
+                                      ? ' • $_department'
+                                      : ''))
+                              .toUpperCase(),
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    if (widget.user == null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _AlignedButton(
+                                label: "THIẾT LẬP HỒ SƠ",
+                                icon: Icons.edit_note_outlined,
+                                isSolid: true,
+                                onTap: _showSettings,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 48),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        children: [
+                          _InfoField(
+                            icon: Icons.email_outlined,
+                            label: "EMAIL",
+                            value: _email,
+                          ),
+                          _InfoField(
+                            icon: Icons.phone_outlined,
+                            label: "ĐIỆN THOẠI",
+                            value: _phone,
+                          ),
+                          _InfoField(
+                            icon: Icons.calendar_today_outlined,
+                            label: "NGÀY SINH",
+                            value: _birth,
+                          ),
+                          _InfoField(
+                            icon: Icons.badge_outlined,
+                            label: "ID NHÂN VIÊN",
+                            value: _employeeId,
+                          ),
+                          const _InfoField(
+                            icon: Icons.language_outlined,
+                            label: "NGÔN NGỮ",
+                            value: "Tiếng Việt",
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 100),
+                  ],
+                ),
+              ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFC),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              child: Column(
-                children: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    alignment: Alignment.bottomCenter,
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 40,
+                    horizontal: 24,
+                  ),
+                  child: Column(
                     children: [
+                      // Profile Header Card
                       Container(
-                        height: 220,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.vertical(
-                            bottom: Radius.circular(40),
-                          ),
-                        ),
-                      ),
-                      if (widget.user != null)
-                        Positioned(
-                          top: MediaQuery.of(context).padding.top + 8,
-                          left: 8,
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.arrow_back_ios_new,
-                              color: Colors.white,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(32),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
                             ),
-                            onPressed: () => Navigator.pop(context),
-                          ),
+                          ],
                         ),
-                      Positioned(
-                        bottom: -60,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(32),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Container(
-                            width: 120,
-                            height: 120,
-                            decoration: BoxDecoration(
-                              color: Colors.blueGrey.shade50,
-                              borderRadius: BorderRadius.circular(28),
-                            ),
-                            child: _avatarUrl != null
-                                ? FutureBuilder<Map<String, String>>(
-                                    future: ApiService.getAuthHeaders(),
-                                    builder: (context, headers) {
-                                      return ClipRRect(
-                                        borderRadius: BorderRadius.circular(28),
-                                        child: Image.network(
-                                          ApiService.resolveImageUrl(
-                                            _avatarUrl,
-                                          ),
-                                          fit: BoxFit.cover,
-                                          headers: headers.data,
-                                          errorBuilder: (ctx, err, stack) =>
-                                              const Icon(
-                                                Icons.person,
-                                                size: 70,
-                                                color: Colors.blueGrey,
-                                              ),
-                                        ),
-                                      );
-                                    },
-                                  )
-                                : const Icon(
-                                    Icons.person,
-                                    size: 70,
-                                    color: Colors.blueGrey,
+                        child: Column(
+                          children: [
+                            Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.bottomCenter,
+                              children: [
+                                Container(
+                                  height: 180,
+                                  decoration: const BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Color(0xFF3B82F6),
+                                        Color(0xFF6366F1),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: Radius.circular(32),
+                                      topRight: Radius.circular(32),
+                                      bottomLeft: Radius.circular(40),
+                                      bottomRight: Radius.circular(40),
+                                    ),
                                   ),
-                          ),
+                                ),
+                                if (widget.user != null)
+                                  Positioned(
+                                    top: 16,
+                                    left: 16,
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.arrow_back_ios_new,
+                                        color: Colors.white,
+                                      ),
+                                      onPressed: () => Navigator.pop(context),
+                                    ),
+                                  ),
+                                Positioned(
+                                  bottom: -50,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(32),
+                                    ),
+                                    child: Container(
+                                      width: 100,
+                                      height: 100,
+                                      decoration: BoxDecoration(
+                                        color: Colors.blueGrey.shade50,
+                                        borderRadius: BorderRadius.circular(28),
+                                      ),
+                                      child: _avatarUrl != null
+                                          ? FutureBuilder<Map<String, String>>(
+                                              future:
+                                                  ApiService.getAuthHeaders(),
+                                              builder: (context, headers) {
+                                                return ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(28),
+                                                  child: Image.network(
+                                                    ApiService.resolveImageUrl(
+                                                      _avatarUrl,
+                                                    ),
+                                                    fit: BoxFit.cover,
+                                                    headers: headers.data,
+                                                    errorBuilder:
+                                                        (ctx, err, stack) =>
+                                                            const Icon(
+                                                              Icons.person,
+                                                              size: 60,
+                                                              color: Colors
+                                                                  .blueGrey,
+                                                            ),
+                                                  ),
+                                                );
+                                              },
+                                            )
+                                          : const Icon(
+                                              Icons.person,
+                                              size: 60,
+                                              color: Colors.blueGrey,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 60),
+                            Text(
+                              _name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 24,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.verified_user_sharp,
+                                  size: 14,
+                                  color: const Color(
+                                    0xFF3B82F6,
+                                  ).withOpacity(0.8),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  (_job +
+                                          (_department.isNotEmpty
+                                              ? ' • $_department'
+                                              : ''))
+                                      .toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 10,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            if (widget.user == null)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                child: SizedBox(
+                                  width: 300,
+                                  child: _AlignedButton(
+                                    label: "THIẾT LẬP HỒ SƠ",
+                                    icon: Icons.edit_note_outlined,
+                                    isSolid: true,
+                                    onTap: _showSettings,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 32),
+                          ],
                         ),
                       ),
+                      const SizedBox(height: 24),
+                      // Info Fields Card
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(32),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: GridView.count(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 4,
+                          childAspectRatio: 3.5,
+                          children: [
+                            _InfoField(
+                              icon: Icons.email_outlined,
+                              label: "EMAIL",
+                              value: _email,
+                            ),
+                            _InfoField(
+                              icon: Icons.phone_outlined,
+                              label: "ĐIỆN THOẠI",
+                              value: _phone,
+                            ),
+                            _InfoField(
+                              icon: Icons.calendar_today_outlined,
+                              label: "NGÀY SINH",
+                              value: _birth,
+                            ),
+                            _InfoField(
+                              icon: Icons.badge_outlined,
+                              label: "ID NHÂN VIÊN",
+                              value: _employeeId,
+                            ),
+                            const _InfoField(
+                              icon: Icons.language_outlined,
+                              label: "NGÔN NGỮ",
+                              value: "Tiếng Việt",
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 100),
                     ],
                   ),
-                  const SizedBox(height: 80),
-                  Text(
-                    _name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 24,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.verified_user_sharp,
-                        size: 14,
-                        color: const Color(0xFF3B82F6).withOpacity(0.8),
-                      ),
-                      Text(
-                        (_job +
-                                (_department.isNotEmpty
-                                    ? ' • $_department'
-                                    : ''))
-                            .toUpperCase(),
-                        style: const TextStyle(
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _AlignedButton(
-                            label: "THIẾT LẬP HỒ SƠ",
-                            icon: Icons.edit_note_outlined,
-                            isSolid: true,
-                            onTap: _showSettings,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 48),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      children: [
-                        _InfoField(
-                          icon: Icons.email_outlined,
-                          label: "EMAIL",
-                          value: _email,
-                        ),
-                        _InfoField(
-                          icon: Icons.phone_outlined,
-                          label: "ĐIỆN THOẠI",
-                          value: _phone,
-                        ),
-                        _InfoField(
-                          icon: Icons.calendar_today_outlined,
-                          label: "NGÀY SINH",
-                          value: _birth,
-                        ),
-                        _InfoField(
-                          icon: Icons.badge_outlined,
-                          label: "ID NHÂN VIÊN",
-                          value: _employeeId,
-                        ),
-                        const _InfoField(
-                          icon: Icons.language_outlined,
-                          label: "NGÔN NGỮ",
-                          value: "Tiếng Việt",
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 48),
-                  const _LogoutButton(),
-                  const SizedBox(height: 100),
-                ],
-              ),
-            ),
-    );
-  }
-}
-
-class _LogoutButton extends StatelessWidget {
-  const _LogoutButton();
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: InkWell(
-        onTap: () {
-          AuthService().logout();
-        },
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.red.withOpacity(0.1)),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.logout, color: Colors.red, size: 20),
-              SizedBox(width: 12),
-              Text(
-                "ĐĂNG XUẤT",
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                  letterSpacing: 1.0,
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }

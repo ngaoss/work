@@ -11,6 +11,9 @@ import '../../../../core/widgets/video_preview.dart';
 import '../../../reels/presentation/pages/reels_page.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/utils/time_helper.dart';
+import '../../../../core/utils/image_editor_helper.dart';
+// import '../../../../core/utils/notification_helper.dart';
+import 'package:path_provider/path_provider.dart';
 
 class WorkHomePage extends StatefulWidget {
   final List<Map<String, dynamic>> reels;
@@ -354,9 +357,10 @@ class WorkHomePageState extends State<WorkHomePage> {
     final String? commentId = (comment["id"] ?? comment["_id"])?.toString();
     if (commentId == null) return;
 
-    final currentUserId = (AuthService().userProfile.value?['_id'] ??
-            AuthService().userProfile.value?['id'])
-        ?.toString();
+    final currentUserId =
+        (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
 
     setState(() {
       final bool wasLiked = comment["isLiked"] == true;
@@ -383,7 +387,8 @@ class WorkHomePageState extends State<WorkHomePage> {
             if (action is Map) {
               final user = action['user'];
               final String? actionType =
-                  action['type']?.toString() ?? action['reactionType']?.toString();
+                  action['type']?.toString() ??
+                  action['reactionType']?.toString();
               return actionType == 'like' &&
                   (user == currentUserId ||
                       (user is Map &&
@@ -397,7 +402,8 @@ class WorkHomePageState extends State<WorkHomePage> {
       }
     });
 
-    final String? postId = (_posts[postIndex]["id"] ?? _posts[postIndex]["_id"])?.toString();
+    final String? postId = (_posts[postIndex]["id"] ?? _posts[postIndex]["_id"])
+        ?.toString();
     ApiService.toggleCommentLike(commentId, postId: postId);
   }
 
@@ -429,7 +435,8 @@ class WorkHomePageState extends State<WorkHomePage> {
 
   void _toggleReplyLike(int postIndex, int commentIndex, int replyIndex) {
     setState(() {
-      final replies = _posts[postIndex]["commentList"]?[commentIndex]["replies"] ?? [];
+      final replies =
+          _posts[postIndex]["commentList"]?[commentIndex]["replies"] ?? [];
       if (replyIndex < 0 || replyIndex >= replies.length) return;
       final reply = replies[replyIndex];
       final bool wasLiked = reply["isLiked"] == true;
@@ -442,9 +449,10 @@ class WorkHomePageState extends State<WorkHomePage> {
       }
 
       if (reply["reactions"] is List) {
-        final currentUserId = (AuthService().userProfile.value?['_id'] ??
-                AuthService().userProfile.value?['id'])
-            ?.toString();
+        final currentUserId =
+            (AuthService().userProfile.value?['_id'] ??
+                    AuthService().userProfile.value?['id'])
+                ?.toString();
         final reactions = List.from(reply["reactions"] as List);
         if (!wasLiked) {
           if (currentUserId != null) {
@@ -459,7 +467,8 @@ class WorkHomePageState extends State<WorkHomePage> {
             if (action is Map) {
               final user = action['user'];
               final String? actionType =
-                  action['type']?.toString() ?? action['reactionType']?.toString();
+                  action['type']?.toString() ??
+                  action['reactionType']?.toString();
               return actionType == 'like' &&
                   (user == currentUserId ||
                       (user is Map &&
@@ -480,7 +489,9 @@ class WorkHomePageState extends State<WorkHomePage> {
       useRootNavigator: true,
       builder: (ctx) => AlertDialog(
         title: const Text("Xóa bài viết"),
-        content: const Text("Bạn có chắc chắn muốn xóa bài viết này? Hành động này không thể hoàn tác."),
+        content: const Text(
+          "Bạn có chắc chắn muốn xóa bài viết này? Hành động này không thể hoàn tác.",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -489,7 +500,7 @@ class WorkHomePageState extends State<WorkHomePage> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              final String? postId = 
+              final String? postId =
                   (_posts[index]["id"] ?? _posts[index]["_id"])?.toString();
               if (postId != null) {
                 // Show loading
@@ -501,9 +512,9 @@ class WorkHomePageState extends State<WorkHomePage> {
                     ),
                   );
                 }
-                
+
                 final result = await ApiService.deletePost(postId);
-                
+
                 if (mounted) {
                   if (result['success'] == true) {
                     setState(() {
@@ -519,7 +530,9 @@ class WorkHomePageState extends State<WorkHomePage> {
                     // Show error message
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(result['message'] ?? "Không thể xóa bài viết"),
+                        content: Text(
+                          result['message'] ?? "Không thể xóa bài viết",
+                        ),
                         backgroundColor: Colors.red,
                         duration: const Duration(seconds: 3),
                       ),
@@ -542,10 +555,14 @@ class WorkHomePageState extends State<WorkHomePage> {
 
   void _editPost(int index) {
     final String initialContent =
-        (_posts[index]["content"] ?? _posts[index]["text"] ?? _posts[index]["body"] ?? "")
+        (_posts[index]["content"] ??
+                _posts[index]["text"] ??
+                _posts[index]["body"] ??
+                "")
             .toString();
-    final TextEditingController controller =
-        TextEditingController(text: initialContent);
+    final TextEditingController controller = TextEditingController(
+      text: initialContent,
+    );
 
     showDialog(
       context: context,
@@ -589,10 +606,9 @@ class WorkHomePageState extends State<WorkHomePage> {
                 ),
               );
 
-              final result = await ApiService.updatePost(
-                postId,
-                {"content": updatedContent},
-              );
+              final result = await ApiService.updatePost(postId, {
+                "content": updatedContent,
+              });
 
               if (mounted) {
                 if (result['success'] == true) {
@@ -601,14 +617,18 @@ class WorkHomePageState extends State<WorkHomePage> {
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(result['message'] ?? "Đã cập nhật bài viết"),
+                      content: Text(
+                        result['message'] ?? "Đã cập nhật bài viết",
+                      ),
                       backgroundColor: Colors.green,
                     ),
                   );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(result['message'] ?? "Không thể cập nhật bài viết"),
+                      content: Text(
+                        result['message'] ?? "Không thể cập nhật bài viết",
+                      ),
                       backgroundColor: Colors.red,
                       duration: const Duration(seconds: 3),
                     ),
@@ -651,18 +671,18 @@ class WorkHomePageState extends State<WorkHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await _fetchPosts(refresh: true);
-          widget.onRefreshReels?.call();
-        },
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
+    final bool isDesktop = MediaQuery.of(context).size.width > 1100;
+
+    Widget scrollBody = CustomScrollView(
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Center(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: isDesktop ? 680 : double.infinity,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -677,52 +697,58 @@ class WorkHomePageState extends State<WorkHomePage> {
                 ],
               ),
             ),
-            if (_isPostsLoading && _posts.isEmpty)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              )
-            else if (_posts.isEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.article_outlined,
-                          color: Colors.grey.shade300,
-                          size: 60,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Chưa có bài viết nào",
-                          style: TextStyle(
-                            color: Colors.grey.shade500,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+          ),
+        ),
+        if (_isPostsLoading && _posts.isEmpty)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (_posts.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.article_outlined,
+                      color: Colors.grey.shade300,
+                      size: 60,
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "Chưa có bài viết nào",
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
-              )
-            else
-              SliverList.builder(
-                itemCount: _posts.length,
-                itemBuilder: (context, index) {
-                  final postId =
-                      (_posts[index]['id'] ?? _posts[index]['_id'])
-                          ?.toString() ??
-                      index.toString();
-                  final cardKey = _postCardKeys.putIfAbsent(
-                    postId,
-                    () => GlobalKey(),
-                  );
-                  return _PostCard(
+              ),
+            ),
+          )
+        else
+          SliverList.builder(
+            itemCount: _posts.length,
+            itemBuilder: (context, index) {
+              final postId =
+                  (_posts[index]['id'] ?? _posts[index]['_id'])?.toString() ??
+                  index.toString();
+              final cardKey = _postCardKeys.putIfAbsent(
+                postId,
+                () => GlobalKey(),
+              );
+              return Center(
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: isDesktop ? 680 : double.infinity,
+                  ),
+                  child: _PostCard(
                     key: cardKey,
                     post: _posts[index],
                     postIndex: index,
@@ -741,35 +767,46 @@ class WorkHomePageState extends State<WorkHomePage> {
                         _toggleCommentLike(index, commentIdx),
                     onToggleReplyLike: (commentIdx, replyIdx) =>
                         _toggleReplyLike(index, commentIdx, replyIdx),
-                  );
-                },
-              ),
-            if (_isMoreLoading)
-              SliverToBoxAdapter(
-                child: Padding(
-                  key: const ValueKey("loading_more_spinner"),
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        const CircularProgressIndicator(strokeWidth: 2),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Đang tải bài viết mới...",
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
+              );
+            },
+          ),
+        if (_isMoreLoading)
+          SliverToBoxAdapter(
+            child: Padding(
+              key: const ValueKey("loading_more_spinner"),
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Column(
+                  children: [
+                    const CircularProgressIndicator(strokeWidth: 2),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Đang tải bài viết mới...",
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
-          ],
-        ),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+      ],
+    );
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _fetchPosts(refresh: true);
+          widget.onRefreshReels?.call();
+        },
+        child: scrollBody,
       ),
     );
   }
@@ -907,6 +944,34 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   Future<void> _pickVideo() async {
     final XFile? file = await _picker.pickVideo(source: ImageSource.gallery);
     if (file != null) setState(() => _selectedFiles.add(file));
+  }
+
+  Future<void> _editImage(int index) async {
+    final file = _selectedFiles[index];
+    final isImage =
+        !file.name.toLowerCase().endsWith('.mp4') &&
+        !file.name.toLowerCase().endsWith('.mov');
+    if (!isImage) return;
+
+    try {
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      final editedBytes = await ImageEditorHelper.editImage(context, bytes);
+
+      if (editedBytes != null) {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File(
+          '${tempDir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        await tempFile.writeAsBytes(editedBytes);
+
+        setState(() {
+          _selectedFiles[index] = XFile(tempFile.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Edit image error: $e');
+    }
   }
 
   void _insertEmoji(String emoji) {
@@ -1076,6 +1141,33 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                                                       )),
                                         ),
                                       ),
+                                      if (!file.name.toLowerCase().endsWith(
+                                            '.mp4',
+                                          ) &&
+                                          !file.name.toLowerCase().endsWith(
+                                            '.mov',
+                                          ))
+                                        Positioned(
+                                          top: 4,
+                                          left: 4,
+                                          child: GestureDetector(
+                                            onTap: () => _editImage(idx),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.withOpacity(
+                                                  0.6,
+                                                ),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.edit,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       Positioned(
                                         top: 4,
                                         right: 4,
@@ -1348,8 +1440,6 @@ class _PostCardState extends State<_PostCard> {
     }
   }
 
-
-
   void _toggleLocalCommentLike(int commentIndex) {
     if (commentIndex < 0 || commentIndex >= _localComments.length) return;
     final comment = _localComments[commentIndex] as Map<String, dynamic>;
@@ -1357,8 +1447,7 @@ class _PostCardState extends State<_PostCard> {
         (AuthService().userProfile.value?['_id'] ??
                 AuthService().userProfile.value?['id'])
             ?.toString();
-    final String? commentId =
-        (comment["id"] ?? comment["_id"])?.toString();
+    final String? commentId = (comment["id"] ?? comment["_id"])?.toString();
 
     setState(() {
       final bool wasLiked = comment["isLiked"] == true;
@@ -1383,7 +1472,8 @@ class _PostCardState extends State<_PostCard> {
         reactions.removeWhere((action) {
           if (action is Map) {
             final user = action['user'];
-            final String? actionType = action['type']?.toString() ??
+            final String? actionType =
+                action['type']?.toString() ??
                 action['reactionType']?.toString();
             return actionType == 'like' &&
                 (user == currentUserId ||
@@ -1397,9 +1487,14 @@ class _PostCardState extends State<_PostCard> {
       comment["reactions"] = reactions;
     });
 
-    final String? postId = (widget.post["id"] ?? widget.post["_id"])?.toString();
+    final String? postId = (widget.post["id"] ?? widget.post["_id"])
+        ?.toString();
     if (commentId != null && commentId.isNotEmpty) {
-      ApiService.toggleCommentReaction(commentId, reactionType: 'like', postId: postId);
+      ApiService.toggleCommentReaction(
+        commentId,
+        reactionType: 'like',
+        postId: postId,
+      );
     }
   }
 
@@ -1407,7 +1502,8 @@ class _PostCardState extends State<_PostCard> {
     if (commentIndex < 0 || commentIndex >= _localComments.length) return;
     final comment = _localComments[commentIndex] as Map<String, dynamic>;
     final replies = comment["replies"] as List<dynamic>?;
-    if (replies == null || replyIndex < 0 || replyIndex >= replies.length) return;
+    if (replies == null || replyIndex < 0 || replyIndex >= replies.length)
+      return;
     final reply = replies[replyIndex] as Map<String, dynamic>;
     final String? currentUserId =
         (AuthService().userProfile.value?['_id'] ??
@@ -1438,7 +1534,8 @@ class _PostCardState extends State<_PostCard> {
         reactions.removeWhere((action) {
           if (action is Map) {
             final user = action['user'];
-            final String? actionType = action['type']?.toString() ??
+            final String? actionType =
+                action['type']?.toString() ??
                 action['reactionType']?.toString();
             return actionType == 'like' &&
                 (user == currentUserId ||
@@ -1452,9 +1549,14 @@ class _PostCardState extends State<_PostCard> {
       reply["reactions"] = reactions;
     });
 
-    final String? postId = (widget.post["id"] ?? widget.post["_id"])?.toString();
+    final String? postId = (widget.post["id"] ?? widget.post["_id"])
+        ?.toString();
     if (replyId != null && replyId.isNotEmpty) {
-      ApiService.toggleCommentReaction(replyId, reactionType: 'like', postId: postId);
+      ApiService.toggleCommentReaction(
+        replyId,
+        reactionType: 'like',
+        postId: postId,
+      );
     }
   }
 
@@ -1497,12 +1599,13 @@ class _PostCardState extends State<_PostCard> {
         : (widget.post["author"]?.toString() ??
               widget.post["user"]?.toString() ??
               "Người dùng");
-    
+
     // Extract authorId from multiple possible locations
     String? _extractAuthorId() {
       // Try from author object
       if (widget.post["author"] is Map) {
-        return (widget.post["author"]["_id"] ?? widget.post["author"]["id"])?.toString();
+        return (widget.post["author"]["_id"] ?? widget.post["author"]["id"])
+            ?.toString();
       }
       // Try from userId field
       if (widget.post["userId"] != null) {
@@ -1514,10 +1617,12 @@ class _PostCardState extends State<_PostCard> {
       }
       // Try from user object
       if (widget.post["user"] is Map) {
-        return (widget.post["user"]["_id"] ?? widget.post["user"]["id"])?.toString();
+        return (widget.post["user"]["_id"] ?? widget.post["user"]["id"])
+            ?.toString();
       }
       return null;
     }
+
     final String? extractedAuthorId = _extractAuthorId();
     final String content =
         (widget.post["content"] ??
@@ -1575,170 +1680,171 @@ class _PostCardState extends State<_PostCard> {
                 ),
                 onDelete: widget.onDelete,
                 onEdit: widget.onEdit,
-                onToggleMenu: () => setState(() => _isMenuVisible = !_isMenuVisible),
+                onToggleMenu: () =>
+                    setState(() => _isMenuVisible = !_isMenuVisible),
               ),
               if (content.isNotEmpty && (hasMedia || !hasBg))
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  MentionText(
-                    text: displayContent,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      height: 1.4,
-                      color: Colors.black87,
-                    ),
-                    fontFamilyFallback: const [
-                      "Apple Color Emoji",
-                      "Segoe UI Emoji",
-                      "Segoe UI Symbol",
-                      "Noto Color Emoji",
-                    ],
-                  ),
-                  if (isLongText && !_isExpanded)
-                    GestureDetector(
-                      onTap: () => setState(() => _isExpanded = true),
-                      child: const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text(
-                          "Xem thêm",
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MentionText(
+                        text: displayContent,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          height: 1.4,
+                          color: Colors.black87,
+                        ),
+                        fontFamilyFallback: const [
+                          "Apple Color Emoji",
+                          "Segoe UI Emoji",
+                          "Segoe UI Symbol",
+                          "Noto Color Emoji",
+                        ],
+                      ),
+                      if (isLongText && !_isExpanded)
+                        GestureDetector(
+                          onTap: () => setState(() => _isExpanded = true),
+                          child: const Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: Text(
+                              "Xem thêm",
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          if (hasMedia) _buildMediaGrid(mediaItems),
-          if (!hasMedia && hasBg)
-            Container(
-              width: double.infinity,
-              height: 250,
-              decoration: PostBackgroundHelper.getDecoration(
-                widget.post["bgColor"] ?? widget.post["background"],
-              ),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.all(32),
-              child: Text(
-                content,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  fontFamilyFallback: [
-                    "Apple Color Emoji",
-                    "Segoe UI Emoji",
-                    "Segoe UI Symbol",
-                    "Noto Color Emoji",
-                  ],
-                ),
-              ),
-            ),
-
-          _PostEngagement(likes: likesCount, comments: commentsCount),
-          const Divider(height: 1),
-          _PostActions(
-            isLiked: widget.post["isLiked"] == true,
-            onLike: widget.onLike,
-            onCommentTap: () => _commentFocusNode.requestFocus(),
-          ),
-          const Divider(height: 1),
-
-          if (comments.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  "HÃY LÀ NGƯỜI ĐẦU TIÊN BÌNH LUẬN",
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                    ],
                   ),
                 ),
+              if (hasMedia) _buildMediaGrid(mediaItems),
+              if (!hasMedia && hasBg)
+                Container(
+                  width: double.infinity,
+                  height: 250,
+                  decoration: PostBackgroundHelper.getDecoration(
+                    widget.post["bgColor"] ?? widget.post["background"],
+                  ),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.all(32),
+                  child: Text(
+                    content,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      fontFamilyFallback: [
+                        "Apple Color Emoji",
+                        "Segoe UI Emoji",
+                        "Segoe UI Symbol",
+                        "Noto Color Emoji",
+                      ],
+                    ),
+                  ),
+                ),
+
+              _PostEngagement(likes: likesCount, comments: commentsCount),
+              const Divider(height: 1),
+              _PostActions(
+                isLiked: widget.post["isLiked"] == true,
+                onLike: widget.onLike,
+                onCommentTap: () => _commentFocusNode.requestFocus(),
               ),
-            ),
-          if (comments.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Column(
-                children: comments.asMap().entries.map((e) {
-                  final commentIdx = e.key;
-                  final comment = e.value;
-                  final replies = List<Map<String, dynamic>>.from(
-                    comment["replies"] ?? [],
+              const Divider(height: 1),
+
+              if (comments.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      "HÃY LÀ NGƯỜI ĐẦU TIÊN BÌNH LUẬN",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              if (comments.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Column(
+                    children: comments.asMap().entries.map((e) {
+                      final commentIdx = e.key;
+                      final comment = e.value;
+                      final replies = List<Map<String, dynamic>>.from(
+                        comment["replies"] ?? [],
+                      );
+                      return _CommentTile(
+                        comment: comment,
+                        onLike: () => _toggleLocalCommentLike(commentIdx),
+                        onReply: () => setState(() {
+                          _isReplyingTo =
+                              (comment["author"] is Map
+                                      ? (comment["author"]["fullName"] ??
+                                            comment["author"]["name"])
+                                      : comment["author"])
+                                  ?.toString();
+                          _replyingToCommentId =
+                              (comment["id"] ?? comment["_id"])?.toString();
+                        }),
+                        replies: replies,
+                        onReplyLike: (replyIdx) =>
+                            _toggleLocalReplyLike(commentIdx, replyIdx),
+                        onReplyReply: (authorName) => setState(() {
+                          _isReplyingTo = authorName;
+                          _replyingToCommentId =
+                              (comment["id"] ?? comment["_id"])?.toString();
+                        }),
+                      );
+                    }).toList(),
+                  ),
+                ),
+
+              _QuickCommentInput(
+                focusNode: _commentFocusNode,
+                onSubmit: (text, media, {replyTo, parentCommentId}) async {
+                  // Optimistic UI Update
+                  final tempComment = {
+                    "author": AuthService().userProfile.value,
+                    "text": text,
+                    "time": "Vừa xong",
+                    "likes": 0,
+                    "mediaPath": media,
+                    "id": "temp_${DateTime.now().millisecondsSinceEpoch}",
+                  };
+
+                  setState(() {
+                    _localComments = [tempComment, ..._localComments];
+                  });
+
+                  final success = await widget.onComment(
+                    text,
+                    media,
+                    replyTo: replyTo,
+                    parentCommentId: parentCommentId,
                   );
-                  return _CommentTile(
-                    comment: comment,
-                    onLike: () => _toggleLocalCommentLike(commentIdx),
-                    onReply: () => setState(() {
-                      _isReplyingTo =
-                          (comment["author"] is Map
-                                  ? (comment["author"]["fullName"] ??
-                                        comment["author"]["name"])
-                                  : comment["author"])
-                              ?.toString();
-                      _replyingToCommentId = (comment["id"] ?? comment["_id"])
-                          ?.toString();
-                    }),
-                    replies: replies,
-                    onReplyLike: (replyIdx) =>
-                        _toggleLocalReplyLike(commentIdx, replyIdx),
-                    onReplyReply: (authorName) => setState(() {
-                      _isReplyingTo = authorName;
-                      _replyingToCommentId = (comment["id"] ?? comment["_id"])
-                          ?.toString();
-                    }),
-                  );
-                }).toList(),
+
+                  if (success) {
+                    _fetchComments();
+                  } else {
+                    // Rollback if failed
+                    _fetchComments();
+                  }
+                },
+                replyTo: _isReplyingTo,
+                replyingToCommentId: _replyingToCommentId,
+                onCancelReply: () => setState(() {
+                  _isReplyingTo = null;
+                  _replyingToCommentId = null;
+                }),
               ),
-            ),
-
-          _QuickCommentInput(
-            focusNode: _commentFocusNode,
-            onSubmit: (text, media, {replyTo, parentCommentId}) async {
-              // Optimistic UI Update
-              final tempComment = {
-                "author": AuthService().userProfile.value,
-                "text": text,
-                "time": "Vừa xong",
-                "likes": 0,
-                "mediaPath": media,
-                "id": "temp_${DateTime.now().millisecondsSinceEpoch}",
-              };
-
-              setState(() {
-                _localComments = [tempComment, ..._localComments];
-              });
-
-              final success = await widget.onComment(
-                text,
-                media,
-                replyTo: replyTo,
-                parentCommentId: parentCommentId,
-              );
-
-              if (success) {
-                _fetchComments();
-              } else {
-                // Rollback if failed
-                _fetchComments();
-              }
-            },
-            replyTo: _isReplyingTo,
-            replyingToCommentId: _replyingToCommentId,
-            onCancelReply: () => setState(() {
-              _isReplyingTo = null;
-              _replyingToCommentId = null;
-            }),
-          ),
             ],
           ),
         ),
@@ -1793,10 +1899,7 @@ class _PostCardState extends State<_PostCard> {
                         ),
                       ),
                     ),
-                    Container(
-                      height: 1,
-                      color: Colors.grey.shade100,
-                    ),
+                    Container(height: 1, color: Colors.grey.shade100),
                     GestureDetector(
                       onTap: () {
                         setState(() => _isMenuVisible = false);
@@ -1904,7 +2007,7 @@ class _PostCardState extends State<_PostCard> {
         width: double.infinity,
         height: height ?? (single ? null : 250),
         constraints: single
-            ? const BoxConstraints(minHeight: 250, maxHeight: 400)
+            ? const BoxConstraints(minHeight: 200, maxHeight: 800)
             : null,
         child: Hero(
           tag: "post_${widget.postIndex}_$url",
@@ -2183,7 +2286,9 @@ class _CommentTile extends StatelessWidget {
                                                   "Người dùng";
                                               onReplyReply(name);
                                             },
-                                            reactions: reply["reactions"] as List<dynamic>?,
+                                            reactions:
+                                                reply["reactions"]
+                                                    as List<dynamic>?,
                                           ),
                                         ],
                                       ),
@@ -2238,7 +2343,8 @@ class _CommentBubble extends StatelessWidget {
                 (comment["author"] is Map
                             ? (comment["author"]["fullName"] ??
                                   comment["author"]["name"])
-                            : comment["author"])?.toString() ??
+                            : comment["author"])
+                        ?.toString() ??
                     "Người dùng",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -2288,11 +2394,7 @@ class _CommentBubble extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.thumb_up,
-                      color: Colors.blue,
-                      size: 10,
-                    ),
+                    const Icon(Icons.thumb_up, color: Colors.blue, size: 10),
                     const SizedBox(width: 2),
                     Text(
                       likeCount.toString(),
@@ -2319,7 +2421,7 @@ class _CommentActions extends StatelessWidget {
   final VoidCallback onLike;
   final VoidCallback onReply;
   final List<dynamic>? reactions;
-  
+
   const _CommentActions({
     required this.time,
     required this.likes,
@@ -2340,10 +2442,12 @@ class _CommentActions extends StatelessWidget {
             return actionType == 'like';
           }).length
         : likes;
-    final currentUserId = (AuthService().userProfile.value?['_id'] ??
-            AuthService().userProfile.value?['id'])
-        ?.toString();
-    final bool likedByReaction = reactions?.any((r) {
+    final currentUserId =
+        (AuthService().userProfile.value?['_id'] ??
+                AuthService().userProfile.value?['id'])
+            ?.toString();
+    final bool likedByReaction =
+        reactions?.any((r) {
           final String? actionType =
               r['type']?.toString() ?? r['reactionType']?.toString();
           if (actionType != 'like') return false;
@@ -2699,7 +2803,7 @@ class _PostHeader extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onEdit;
   final VoidCallback onToggleMenu;
-  
+
   const _PostHeader({
     Key? key,
     required this.author,
@@ -2918,20 +3022,27 @@ class _HeroBanner extends StatelessWidget {
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              "USER",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  "USER",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -19,7 +20,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("Handling a background message: ${message.messageId}");
 }
 
-
 class ChatShell extends StatefulWidget {
   const ChatShell({super.key});
 
@@ -37,7 +37,6 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   final GlobalKey<WorkHomePageState> _homeKey = GlobalKey<WorkHomePageState>();
   int _notificationCount = 0;
   List<dynamic> _notifications = [];
-  final Map<String, List<String>> _messageHistory = {};
 
   @override
   void initState() {
@@ -51,10 +50,13 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
 
     // Auto-refresh notifications every 3 seconds
     Future.delayed(Duration(seconds: 3), _autoRefreshNotifications);
-    
+
     // Initialize Socket Connection for real-time messaging
     ApiService.initializeSocket();
-    
+
+    // Start listening to messages immediately
+    _listenToMessagesForNotifications();
+
     // Initialize Local Notifications
     _initNotifications();
   }
@@ -62,109 +64,135 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   Future<void> _initNotifications() async {
     await NotificationHelper.initialize();
     await NotificationHelper.requestPermissions();
-    
-    // FCM Configuration
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
-    
-    // Request permission for iOS/Android 13+
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
 
-    // Get FCM Token
-    String? token = await messaging.getToken();
-    debugPrint("FCM Token: $token");
-    // In a real app, you would send this token to your backend
+    // FCM Configuration - Skip or handle gracefully on Desktop
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        FirebaseMessaging messaging = FirebaseMessaging.instance;
 
-    // Set background handler
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint("FCM Foreground Message: ${message.notification?.title}");
-      if (message.notification != null) {
-        NotificationHelper.showNotification(
-          id: message.hashCode,
-          title: message.notification!.title,
-          body: message.notification!.body,
-          payload: message.data['chatId'],
-          imageUrl: message.data['avatar'] ?? message.data['image'],
+        // Request permission for iOS/Android 13+
+        await messaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
         );
-      }
-    });
 
-    _listenToMessagesForNotifications();
+        // Get FCM Token
+        String? token = await messaging.getToken();
+        debugPrint("FCM Token: $token");
+
+        // Set background handler
+        FirebaseMessaging.onBackgroundMessage(
+          _firebaseMessagingBackgroundHandler,
+        );
+
+        // Handle foreground messages
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          if (message.notification != null) {
+            NotificationHelper.showNotification(
+              id: message.hashCode,
+              title: message.notification!.title,
+              body: message.notification!.body,
+              payload: message.data['chatId'],
+              imageUrl: message.data['avatar'] ?? message.data['image'],
+            );
+          }
+        });
+      }
+    } catch (e) {
+      // Firebase not available on this platform
+    }
   }
 
   void _listenToMessagesForNotifications() {
     ApiService.newChatStream.listen((data) {
-      // debugPrint('DEBUG: Notification Listener received: $data');
-      
+      final messageData = data["message"] is Map ? data["message"] : data;
+
       // Determine sender
-      final senderObj = data["sender"];
-      final String senderId = (senderObj is Map ? senderObj["_id"] : senderObj)?.toString() ?? "";
-      final myId = (AuthService().userProfile.value?["_id"] ?? AuthService().userProfile.value?["id"])?.toString();
-      
+      final senderObj = messageData["sender"] ?? messageData["senderId"];
+      final String senderId =
+          (senderObj is Map ? (senderObj["_id"] ?? senderObj["id"]) : senderObj)
+              ?.toString() ??
+          "";
+      final myId =
+          (AuthService().userProfile.value?["_id"] ??
+                  AuthService().userProfile.value?["id"])
+              ?.toString();
+
       // Don't notify for our own messages
-      if (senderId == myId) return;
+      if (senderId == myId && senderId.isNotEmpty) return;
 
       // Don't notify for typing indicators or internal metadata updates
-      if (data['type'] == 'typing' || 
-          data['isNewConversation'] == true || 
+      if (data['type'] == 'typing' ||
+          data['isNewConversation'] == true ||
           data['isUpdateConversation'] == true) {
         return;
       }
 
       // Extract details for the notification
-      final String senderName = (senderObj is Map ? (senderObj["fullName"] ?? senderObj["name"]) : null) ?? "Tin nhắn mới";
-      final String messageText = data["text"]?.toString() ?? data["content"]?.toString() ?? "Đã gửi một tập tin";
-      
+      final String senderName =
+          (senderObj is Map
+              ? (senderObj["fullName"] ?? senderObj["name"])
+              : null) ??
+          messageData["senderName"] ??
+          "Tin nhắn mới";
+
+      final String messageText =
+          messageData["text"]?.toString() ??
+          messageData["content"]?.toString() ??
+          "Đã gửi một tập tin";
+
       // Detect if it's a group message
-      final String? groupName = data["groupName"]?.toString() ?? data["chat"]?["name"]?.toString();
+      final String? groupName =
+          data["groupName"]?.toString() ??
+          messageData["groupName"]?.toString() ??
+          (data["chat"] is Map ? data["chat"]["name"]?.toString() : null) ??
+          (messageData["chat"] is Map
+              ? messageData["chat"]["name"]?.toString()
+              : null);
+
       final bool isGroup = groupName != null && groupName.isNotEmpty;
 
-      // Formatting: 
-      // - Title: Group Name (if group) or Sender Name (if personal)
-      // - Body: "Sender: Message" (if group) or just "Message" (if personal)
       final String displayTitle = isGroup ? groupName : senderName;
-      final String displayBody = isGroup ? "$senderName: $messageText" : messageText;
+      final String displayBody = isGroup
+          ? "$senderName: $messageText"
+          : messageText;
 
       // Pass localized imageUrl
-      final String? senderAvatar = senderObj is Map ? (senderObj["profilePicture"] ?? senderObj["avatar"])?.toString() : null;
-      final String? groupAvatar = data["groupAvatar"]?.toString() ?? data["chat"]?["avatar"]?.toString();
-      final String? rawIconPath = isGroup ? (groupAvatar ?? senderAvatar) : senderAvatar;
-      final String? resolvedIconUrl = rawIconPath != null ? ApiService.resolveImageUrl(rawIconPath) : null;
+      final String? senderAvatar = senderObj is Map
+          ? (senderObj["profilePicture"] ?? senderObj["avatar"])?.toString()
+          : messageData["senderAvatar"];
 
-      // Show notification
-      final dynamic rawChatId = data["chatId"] ?? 
-                                data["chat"]?["_id"] ?? 
-                                data["chat"] ?? 
-                                data["conversationId"] ?? 
-                                data["message"]?["chatId"];
+      final String? groupAvatar =
+          data["groupAvatar"]?.toString() ??
+          messageData["groupAvatar"]?.toString() ??
+          (data["chat"] is Map ? data["chat"]["avatar"]?.toString() : null);
+      final String? rawIconPath = isGroup
+          ? (groupAvatar ?? senderAvatar)
+          : senderAvatar;
+      final String? resolvedIconUrl = rawIconPath != null
+          ? ApiService.resolveImageUrl(rawIconPath)
+          : null;
+
+      // Find the conversation ID
+      final dynamic rawChatId =
+          data["chatId"] ??
+          data["conversationId"] ??
+          messageData["chatId"] ??
+          messageData["conversationId"] ??
+          (data["chat"] is Map ? data["chat"]["_id"] : data["chat"]) ??
+          (messageData["chat"] is Map
+              ? messageData["chat"]["_id"]
+              : messageData["chat"]);
+
       final String? chatId = rawChatId?.toString();
-      // Use the chatId hash as notification ID to group notifications from the same chat
-      final int notificationId = chatId?.hashCode ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
-      // Manage message history for bundling (keep last 5)
+      // Use a safe notification ID (32-bit int)
+      final int notificationId = chatId != null
+          ? (chatId.hashCode.abs() % 1000000)
+          : (DateTime.now().millisecondsSinceEpoch % 1000000);
+
       if (chatId != null) {
-        final history = _messageHistory[chatId] ?? [];
-        history.add(displayBody);
-        if (history.length > 5) history.removeAt(0);
-        _messageHistory[chatId] = history;
-
-        final bundledText = history.join("\n");
-
-        NotificationHelper.showNotification(
-          id: notificationId,
-          title: displayTitle,
-          body: bundledText,
-          payload: chatId,
-          imageUrl: resolvedIconUrl,
-          checkMute: true,
-        );
-      } else {
         NotificationHelper.showNotification(
           id: notificationId,
           title: displayTitle,
@@ -223,8 +251,12 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       if (mounted) {
         // Sort by createdAt descending
         notifications.sort((a, b) {
-          final aTime = DateTime.tryParse(a['createdAt']?.toString() ?? '') ?? DateTime.now();
-          final bTime = DateTime.tryParse(b['createdAt']?.toString() ?? '') ?? DateTime.now();
+          final aTime =
+              DateTime.tryParse(a['createdAt']?.toString() ?? '') ??
+              DateTime.now();
+          final bTime =
+              DateTime.tryParse(b['createdAt']?.toString() ?? '') ??
+              DateTime.now();
           return bTime.compareTo(aTime);
         });
 
@@ -237,7 +269,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
         // debugPrint('DEBUG: Setting state with ${latestNotifications.length} latest notifications');
         setState(() {
           _notifications = latestNotifications;
-          _notificationCount = latestNotifications.where((n) => n['isRead'] != true).length;
+          _notificationCount = latestNotifications
+              .where((n) => n['isRead'] != true)
+              .length;
           // debugPrint('DEBUG: After setState - _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
           // debugPrint('DEBUG: Unread notifications:');
           // for (var n in _notifications.where((n) => n['isRead'] != true)) {
@@ -253,13 +287,18 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   }
 
   void _showNotifications() {
-    // debugPrint('DEBUG: _showNotifications called, _notificationCount=$_notificationCount, _notifications.length=${_notifications.length}');
     setState(() {
       _notificationCount = 0;
       for (var notification in _notifications) {
         notification['isRead'] = true;
       }
     });
+
+    if (MediaQuery.of(context).size.width > 1100) {
+      _showDesktopNotifications();
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -274,7 +313,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 16,
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -333,166 +375,461 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                         child: ListView.builder(
                           itemCount: _notifications.length,
                           itemBuilder: (ctx, i) {
-                          final notification = _notifications[i];
-                          final senders = notification['senders'] as List<dynamic>? ?? [];
-                          final sender = senders.isNotEmpty ? senders[0] : null;
-                          final String senderName = sender?['fullName']?.toString() ?? 'Người dùng';
-                          final String? senderAvatar = sender?['profilePicture']?.toString();
-                          final String type = notification['type']?.toString() ?? 'Thông báo';
-                          final String content = notification['content']?.toString() ?? '';
-                          final String createdAt = notification['createdAt']?.toString() ?? '';
-                          final String link = notification['link']?.toString() ?? '';
-                          final bool isRead = notification['isRead'] == true;
+                            final notification = _notifications[i];
+                            final senders =
+                                notification['senders'] as List<dynamic>? ?? [];
+                            final sender = senders.isNotEmpty
+                                ? senders[0]
+                                : null;
+                            final String senderName =
+                                sender?['fullName']?.toString() ?? 'Người dùng';
+                            final String? senderAvatar =
+                                sender?['profilePicture']?.toString();
+                            final String type =
+                                notification['type']?.toString() ?? 'Thông báo';
+                            final String content =
+                                notification['content']?.toString() ?? '';
+                            final String createdAt =
+                                notification['createdAt']?.toString() ?? '';
+                            final String link =
+                                notification['link']?.toString() ?? '';
+                            final bool isRead = notification['isRead'] == true;
 
-                          // Format time
-                          String timeDisplay = 'Vừa xong';
-                          if (createdAt.isNotEmpty) {
-                            try {
-                              final date = DateTime.parse(createdAt);
-                              final now = DateTime.now();
-                              final diff = now.difference(date);
-                              if (diff.inDays > 0) {
-                                timeDisplay = '${diff.inDays}d';
-                              } else if (diff.inHours > 0) {
-                                timeDisplay = '${diff.inHours}h';
-                              } else if (diff.inMinutes > 0) {
-                                timeDisplay = '${diff.inMinutes}m';
-                              } else {
-                                timeDisplay = 'now';
+                            // Format time
+                            String timeDisplay = 'Vừa xong';
+                            if (createdAt.isNotEmpty) {
+                              try {
+                                final date = DateTime.parse(createdAt);
+                                final now = DateTime.now();
+                                final diff = now.difference(date);
+                                if (diff.inDays > 0) {
+                                  timeDisplay = '${diff.inDays}d';
+                                } else if (diff.inHours > 0) {
+                                  timeDisplay = '${diff.inHours}h';
+                                } else if (diff.inMinutes > 0) {
+                                  timeDisplay = '${diff.inMinutes}m';
+                                } else {
+                                  timeDisplay = 'now';
+                                }
+                              } catch (e) {
+                                timeDisplay = createdAt;
                               }
-                            } catch (e) {
-                              timeDisplay = createdAt;
                             }
-                          }
 
-                          // Get type display name
-                          String typeDisplay = '';
-                          if (type.contains('reply')) {
-                            typeDisplay = '📬';
-                          } else if (type.contains('message')) {
-                            typeDisplay = '💬';
-                          } else {
-                            typeDisplay = '📢';
-                          }
+                            // Get type display name
+                            String typeDisplay = '';
+                            if (type.contains('reply')) {
+                              typeDisplay = '📬';
+                            } else if (type.contains('message')) {
+                              typeDisplay = '💬';
+                            } else {
+                              typeDisplay = '📢';
+                            }
 
-                          return Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: GestureDetector(
-                                  onTap: link.isNotEmpty ? () {
-                                    // Mark as read
-                                    setState(() {
-                                      notification['isRead'] = true;
-                                      _notificationCount = _notifications.where((n) => n['isRead'] != true).length;
-                                    });
-                                    Navigator.pop(ctx); // Close bottom sheet
-                                    _navigateFromNotification(notification);
-                                  } : null,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Avatar
-                                        FutureBuilder<Map<String, String>>(
-                                          future: ApiService.getAuthHeaders(),
-                                          builder: (context, headers) {
-                                            return CircleAvatar(
-                                              radius: 20,
-                                              backgroundColor: Colors.blueGrey.shade100,
-                                              backgroundImage: senderAvatar != null
-                                                  ? NetworkImage(
-                                                      ApiService.resolveImageUrl(senderAvatar),
-                                                      headers: headers.data,
-                                                    )
-                                                  : null,
-                                              child: senderAvatar == null
-                                                  ? Text(
-                                                      senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 12,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    )
-                                                  : null,
+                            return Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: link.isNotEmpty
+                                        ? () {
+                                            // Mark as read
+                                            setState(() {
+                                              notification['isRead'] = true;
+                                              _notificationCount =
+                                                  _notifications
+                                                      .where(
+                                                        (n) =>
+                                                            n['isRead'] != true,
+                                                      )
+                                                      .length;
+                                            });
+                                            Navigator.pop(
+                                              ctx,
+                                            ); // Close bottom sheet
+                                            _navigateFromNotification(
+                                              notification,
                                             );
-                                          },
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              // Name and notification type badge
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      senderName,
-                                                      style: const TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: 13,
-                                                        color: Colors.black87,
+                                          }
+                                        : null,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Avatar
+                                          FutureBuilder<Map<String, String>>(
+                                            future: ApiService.getAuthHeaders(),
+                                            builder: (context, headers) {
+                                              return CircleAvatar(
+                                                radius: 20,
+                                                backgroundColor:
+                                                    Colors.blueGrey.shade100,
+                                                backgroundImage:
+                                                    senderAvatar != null
+                                                    ? NetworkImage(
+                                                        ApiService.resolveImageUrl(
+                                                          senderAvatar,
+                                                        ),
+                                                        headers: headers.data,
+                                                      )
+                                                    : null,
+                                                child: senderAvatar == null
+                                                    ? Text(
+                                                        senderName.isNotEmpty
+                                                            ? senderName[0]
+                                                                  .toUpperCase()
+                                                            : 'U',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      )
+                                                    : null,
+                                              );
+                                            },
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // Name and notification type badge
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        senderName,
+                                                        style: const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 13,
+                                                          color: Colors.black87,
+                                                        ),
                                                       ),
                                                     ),
-                                                  ),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: isRead ? Colors.grey.shade200 : const Color(0xFFE3F2FD),
-                                                      borderRadius: BorderRadius.circular(12),
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 6,
+                                                            vertical: 2,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: isRead
+                                                            ? Colors
+                                                                  .grey
+                                                                  .shade200
+                                                            : const Color(
+                                                                0xFFE3F2FD,
+                                                              ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                      ),
+                                                      child: Text(
+                                                        typeDisplay,
+                                                        style: const TextStyle(
+                                                          fontSize: 10,
+                                                        ),
+                                                      ),
                                                     ),
-                                                    child: Text(
-                                                      typeDisplay,
-                                                      style: const TextStyle(fontSize: 10),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                // Content
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 12,
+                                                      ),
+                                                  child: Text(
+                                                    content,
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.black54,
+                                                      fontWeight: isRead
+                                                          ? FontWeight.normal
+                                                          : FontWeight.w500,
                                                     ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 4),
-                                              // Content
-                                              Padding(
-                                                padding: const EdgeInsets.only(right: 12),
-                                                child: Text(
-                                                  content,
-                                                  maxLines: 2,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    color: Colors.black54,
-                                                    fontWeight: isRead ? FontWeight.normal : FontWeight.w500,
                                                   ),
                                                 ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              // Time
-                                              Text(
-                                                timeDisplay,
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: Colors.grey,
+                                                const SizedBox(height: 4),
+                                                // Time
+                                                Text(
+                                                  timeDisplay,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey,
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const Divider(height: 1, indent: 52),
-                            ],
-                          );
-                        },
+                                const Divider(height: 1, indent: 52),
+                              ],
+                            );
+                          },
+                        ),
                       ),
-                    ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showDesktopNotifications() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.01),
+      builder: (ctx) => Stack(
+        children: [
+          Positioned(
+            top: 75,
+            right: 150,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 360,
+                height: 500,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                  border: Border.all(color: Colors.grey.shade100),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        "THÔNG BÁO MỚI",
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: _notifications.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.notifications_none_outlined,
+                                    size: 40,
+                                    color: Colors.grey.shade300,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    "Không có thông báo mới",
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Theme(
+                              data: Theme.of(context).copyWith(
+                                scrollbarTheme: ScrollbarThemeData(
+                                  thumbColor: MaterialStateProperty.all(
+                                    Colors.grey.shade400,
+                                  ),
+                                  thickness: MaterialStateProperty.all(6),
+                                  radius: const Radius.circular(3),
+                                ),
+                              ),
+                              child: Scrollbar(
+                                thumbVisibility: true,
+                                child: ListView.separated(
+                                  padding: EdgeInsets.zero,
+                                  itemCount: _notifications.length,
+                                  separatorBuilder: (context, index) =>
+                                      const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    final notification = _notifications[index];
+                                    final content =
+                                        notification['content']?.toString() ??
+                                        '';
+                                    final senders =
+                                        notification['senders']
+                                            as List<dynamic>? ??
+                                        [];
+                                    final sender = senders.isNotEmpty
+                                        ? senders[0]
+                                        : null;
+
+                                    final senderName =
+                                        sender?['fullName'] ??
+                                        sender?['name'] ??
+                                        'Hệ thống';
+                                    final senderAvatar =
+                                        sender?['profilePicture'] ??
+                                        sender?['avatar'];
+                                    final createdAtRaw =
+                                        notification['createdAt']?.toString() ??
+                                        '';
+
+                                    // Format time
+                                    String timeDisplay = createdAtRaw;
+                                    if (createdAtRaw.isNotEmpty) {
+                                      try {
+                                        final date = DateTime.parse(
+                                          createdAtRaw,
+                                        );
+                                        final now = DateTime.now();
+                                        final diff = now.difference(date);
+                                        if (diff.inDays > 0) {
+                                          timeDisplay =
+                                              '${diff.inDays} ngày trước';
+                                        } else if (diff.inHours > 0) {
+                                          timeDisplay =
+                                              '${diff.inHours} giờ trước';
+                                        } else if (diff.inMinutes > 0) {
+                                          timeDisplay =
+                                              '${diff.inMinutes} phút trước';
+                                        } else {
+                                          timeDisplay = 'Vừa xong';
+                                        }
+                                      } catch (e) {
+                                        timeDisplay = createdAtRaw;
+                                      }
+                                    }
+
+                                    return InkWell(
+                                      onTap: () {
+                                        Navigator.pop(ctx);
+                                        _navigateFromNotification(notification);
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 20,
+                                              backgroundColor:
+                                                  Colors.blueGrey.shade50,
+                                              backgroundImage:
+                                                  senderAvatar != null
+                                                  ? NetworkImage(
+                                                      ApiService.resolveImageUrl(
+                                                        senderAvatar,
+                                                      ),
+                                                    )
+                                                  : null,
+                                              child: senderAvatar == null
+                                                  ? const Icon(
+                                                      Icons.person,
+                                                      size: 20,
+                                                    )
+                                                  : null,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  RichText(
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    text: TextSpan(
+                                                      children: [
+                                                        TextSpan(
+                                                          text: senderName,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w900,
+                                                                color: Color(
+                                                                  0xFF1E293B,
+                                                                ),
+                                                                fontSize: 13,
+                                                              ),
+                                                        ),
+                                                        const TextSpan(
+                                                          text: " ",
+                                                        ),
+                                                        TextSpan(
+                                                          text: content,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                                color: Color(
+                                                                  0xFF64748B,
+                                                                ),
+                                                                fontSize: 13,
+                                                              ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    timeDisplay,
+                                                    style: TextStyle(
+                                                      color:
+                                                          Colors.grey.shade400,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -533,7 +870,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       case 5:
         return const ProfilePage();
       case 6:
-        return const MessagingPage();
+        return MessagingPage(onBack: () => _onItemTapped(0));
       default:
         return const SizedBox.shrink();
     }
@@ -567,7 +904,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     if ((postId == null || postId.isEmpty) && link.isNotEmpty) {
       final uri = Uri.tryParse(link);
       final path = uri?.path ?? link;
-      final segments = path.split('/')..removeWhere((segment) => segment.isEmpty);
+      final segments = path.split('/')
+        ..removeWhere((segment) => segment.isEmpty);
       for (var i = 0; i < segments.length; i++) {
         if (segments[i] == 'post' && i + 1 < segments.length) {
           postId = segments[i + 1];
@@ -616,6 +954,50 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width > 1100;
+
+    if (isDesktop) {
+      final bool isMessaging = _currentIndex == 6;
+      final bool isReels = _currentIndex == 1;
+      final bool isFullScreen = isMessaging || isReels;
+
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: Row(
+          children: [
+            if (!isFullScreen)
+              _DesktopSidebar(
+                currentIndex: _currentIndex,
+                onTap: _onItemTapped,
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  if (!isFullScreen)
+                    _DesktopHeader(
+                      onChatTap: () => _onItemTapped(6),
+                      currentChatActive: _currentIndex == 6,
+                      onSearch: (val) {
+                        if (_currentIndex == 0) {
+                          _homeKey.currentState?.goToPost(val);
+                        }
+                      },
+                    ),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _currentIndex,
+                      children: List.generate(7, (index) => _buildPage(index)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!isFullScreen) const _ContactsSidebar(),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
@@ -631,7 +1013,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
             builder: (context, count, _) {
               return _TopAction(
                 icon: Icons.chat_bubble_outline,
-                badge: count > 0 ? (count > 99 ? "99+" : count.toString()) : null,
+                badge: count > 0
+                    ? (count > 99 ? "99+" : count.toString())
+                    : null,
                 onTap: () => _onItemTapped(6),
                 isActive: _currentIndex == 6,
               );
@@ -639,7 +1023,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           ),
           _TopAction(
             icon: Icons.notifications_none_outlined,
-            badge: _notificationCount > 0 ? _notificationCount.toString() : null,
+            badge: _notificationCount > 0
+                ? _notificationCount.toString()
+                : null,
             onTap: () async {
               // Request permission if not already granted
               await NotificationHelper.requestPermissions();
@@ -823,7 +1209,10 @@ class _TopAction extends StatelessWidget {
                 right: 0,
                 top: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.red,
                     borderRadius: BorderRadius.circular(12),
@@ -1055,6 +1444,369 @@ class _DrawerItem extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DesktopSidebar extends StatelessWidget {
+  final int currentIndex;
+  final Function(int) onTap;
+
+  const _DesktopSidebar({required this.currentIndex, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 240,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(right: BorderSide(color: Colors.grey.shade100)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 32),
+          GestureDetector(
+            onTap: () => onTap(0),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        "W",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    "WORK",
+                    style: TextStyle(
+                      color: Color(0xFF1E293B),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "MENU CHÍNH",
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _DrawerItem(
+            label: "BẢNG TIN",
+            icon: Icons.home_outlined,
+            isActive: currentIndex == 0,
+            onTap: () => onTap(0),
+          ),
+          _DrawerItem(
+            label: "REELS",
+            icon: Icons.play_circle_outline,
+            isActive: currentIndex == 1,
+            onTap: () => onTap(1),
+          ),
+          _DrawerItem(
+            label: "TÀI LIỆU",
+            icon: Icons.folder_open_outlined,
+            isActive: currentIndex == 2,
+            onTap: () => onTap(2),
+          ),
+          _DrawerItem(
+            label: "NHÂN SỰ",
+            icon: Icons.person_add_alt_1_outlined,
+            isActive: currentIndex == 3,
+            onTap: () => onTap(3),
+          ),
+          _DrawerItem(
+            label: "NHÓM",
+            icon: Icons.group_outlined,
+            isActive: currentIndex == 4,
+            onTap: () => onTap(4),
+          ),
+          _DrawerItem(
+            label: "CÁ NHÂN",
+            icon: Icons.person_outline,
+            isActive: currentIndex == 5,
+            onTap: () => onTap(5),
+          ),
+          const Spacer(),
+          const _LogoutButton(),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+class _DesktopHeader extends StatelessWidget {
+  final VoidCallback onChatTap;
+  final bool currentChatActive;
+  final Function(String) onSearch;
+
+  const _DesktopHeader({
+    required this.onChatTap,
+    required this.currentChatActive,
+    required this.onSearch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500),
+                height: 40,
+                child: TextField(
+                  onSubmitted: onSearch,
+                  decoration: InputDecoration(
+                    hintText: "Tìm kiếm đồng nghiệp...",
+                    hintStyle: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 13,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      color: Colors.grey.shade400,
+                      size: 20,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF1F5F9),
+                    contentPadding: EdgeInsets.zero,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              ValueListenableBuilder<int>(
+                valueListenable: ApiService.unreadChatCount,
+                builder: (context, count, _) {
+                  return _TopAction(
+                    icon: Icons.chat_bubble_outline,
+                    badge: count > 0
+                        ? (count > 99 ? "99+" : count.toString())
+                        : null,
+                    onTap: onChatTap,
+                    isActive: currentChatActive,
+                  );
+                },
+              ),
+              const SizedBox(width: 16),
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: AuthService().userProfile,
+                builder: (context, profile, _) {
+                  final String? avatar =
+                      (profile?["profilePicture"] ?? profile?["avatar"])
+                          ?.toString();
+                  return CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.blueGrey.shade100,
+                    backgroundImage: avatar != null
+                        ? NetworkImage(ApiService.resolveImageUrl(avatar))
+                        : null,
+                    child: avatar == null
+                        ? const Icon(Icons.person, size: 20)
+                        : null,
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContactsSidebar extends StatefulWidget {
+  const _ContactsSidebar();
+
+  @override
+  State<_ContactsSidebar> createState() => _ContactsSidebarState();
+}
+
+class _ContactsSidebarState extends State<_ContactsSidebar> {
+  List<dynamic> _users = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUsers();
+  }
+
+  Future<void> _fetchUsers() async {
+    final users = await ApiService.getUsers();
+    if (mounted) {
+      setState(() {
+        _users = users;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 250,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(left: BorderSide(color: Colors.grey.shade100)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "GỢI Ý LIÊN HỆ",
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                Icon(
+                  Icons.more_horiz,
+                  color: Colors.blue.withOpacity(0.5),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: _users.length,
+              itemBuilder: (context, index) {
+                final user = _users[index];
+                final String name =
+                    user["fullName"] ?? user["name"] ?? "Người dùng";
+                final String? avatar =
+                    (user["profilePicture"] ?? user["avatar"])?.toString();
+                final bool isOnline =
+                    user["isOnline"] == true ||
+                    user["status"]?.toString().toLowerCase() == "online";
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Colors.blueGrey.shade50,
+                            backgroundImage: avatar != null
+                                ? NetworkImage(
+                                    ApiService.resolveImageUrl(avatar),
+                                  )
+                                : null,
+                            child: avatar == null
+                                ? Text(name.isNotEmpty ? name[0] : "")
+                                : null,
+                          ),
+                          if (isOnline)
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Colors.black87,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              isOnline ? "ĐANG ONLINE" : "NGOẠI TUYẾN",
+                              style: TextStyle(
+                                color: isOnline
+                                    ? Colors.green
+                                    : Colors.grey.shade400,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

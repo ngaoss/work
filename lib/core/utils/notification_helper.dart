@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_local_notifications_windows/flutter_local_notifications_windows.dart';
 
 class NotificationHelper {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -15,28 +17,59 @@ class NotificationHelper {
 
     const DarwinInitializationSettings initializationSettingsIOS =
         DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
 
     const InitializationSettings mySettings = InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsIOS,
+      macOS: initializationSettingsIOS,
+      linux: LinuxInitializationSettings(defaultActionName: 'Open'),
+      windows: WindowsInitializationSettings(
+        appUserModelId: 'DeepCode.Work.App',
+        guid: '3B82F6A1-9C1A-4A1B-8B9C-AD440487A968',
+        appName: 'DeepCode Work',
+      ),
     );
 
-    await _notificationsPlugin.initialize(
-      settings: mySettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Handle when user taps on the notification
-      },
-    );
+    try {
+      final bool? initialized = await _notificationsPlugin.initialize(
+        settings: mySettings,
+        onDidReceiveNotificationResponse: (NotificationResponse response) {
+          // Handle when user taps on the notification
+        },
+      );
+      _isInitialized = initialized ?? false;
+      // debugPrint("Notifications initialized: $_isInitialized");
+    } catch (e) {
+      _isInitialized = false;
+      // debugPrint("Error initializing notifications: $e");
+    }
   }
 
+  static bool _isInitialized = false;
+
   static Future<void> requestPermissions() async {
-    final status = await Permission.notification.request();
-    if (status.isPermanentlyDenied) {
-      await openAppSettings();
+    if (!_isInitialized) {
+      debugPrint(
+        "Notification plugin not initialized, attempting to initialize...",
+      );
+      await initialize();
+    }
+
+    if (!_isInitialized) return;
+
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        final status = await Permission.notification.request();
+        if (status.isPermanentlyDenied) {
+          await openAppSettings();
+        }
+      }
+    } catch (e) {
+      debugPrint("Error requesting permissions: $e");
     }
   }
 
@@ -76,43 +109,72 @@ class NotificationHelper {
 
     String? largeIconPath;
     if (imageUrl != null && imageUrl.isNotEmpty) {
-      largeIconPath = await _downloadAndSaveFile(imageUrl, 'notification_icon_$id');
+      largeIconPath = await _downloadAndSaveFile(
+        imageUrl,
+        'notification_icon_$id',
+      );
     }
 
-    final BigTextStyleInformation bigTextStyleInformation = BigTextStyleInformation(
-      body ?? '',
-      contentTitle: title,
-      htmlFormatContent: false,
-      htmlFormatContentTitle: false,
-    );
+    final BigTextStyleInformation bigTextStyleInformation =
+        BigTextStyleInformation(
+          body ?? '',
+          contentTitle: title,
+          htmlFormatContent: false,
+          htmlFormatContentTitle: false,
+        );
 
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'chat_messages',
-      'Chat Messages',
-      channelDescription: 'Notifications for new messages',
-      importance: Importance.max,
-      priority: Priority.high,
-      showWhen: true,
-      styleInformation: bigTextStyleInformation,
-      largeIcon: largeIconPath != null ? FilePathAndroidBitmap(largeIconPath) : null,
-    );
+          'chat_messages',
+          'Chat Messages',
+          channelDescription: 'Notifications for new messages',
+          importance: Importance.max,
+          priority: Priority.high,
+          showWhen: true,
+          playSound: true,
+          styleInformation: bigTextStyleInformation,
+          largeIcon: largeIconPath != null
+              ? FilePathAndroidBitmap(largeIconPath)
+              : null,
+        );
 
     final NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
-      iOS: const DarwinNotificationDetails(),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      macOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      linux: const LinuxNotificationDetails(defaultActionName: 'Open'),
+      windows: WindowsNotificationDetails(
+        audio: WindowsNotificationAudio.preset(
+          sound: WindowsNotificationSound.call1,
+        ),
+      ),
     );
 
-    await _notificationsPlugin.show(
-      id: id,
-      title: title,
-      body: body,
-      notificationDetails: platformChannelSpecifics,
-      payload: payload,
-    );
+    try {
+      await _notificationsPlugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: platformChannelSpecifics,
+        payload: payload,
+      );
+    } catch (e) {
+      debugPrint("Error showing notification: $e");
+    }
   }
 
-  static Future<String?> _downloadAndSaveFile(String url, String fileName) async {
+  static Future<String?> _downloadAndSaveFile(
+    String url,
+    String fileName,
+  ) async {
     try {
       final Directory directory = await getTemporaryDirectory();
       final String filePath = '${directory.path}/$fileName';

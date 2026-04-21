@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import '../../../../core/api_service.dart';
@@ -8,6 +9,8 @@ import '../../../../core/security.dart';
 import '../../../../core/widgets/video_preview.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/utils/time_helper.dart';
+import '../../../../core/utils/image_editor_helper.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ReelsPage extends StatefulWidget {
   final bool isActive;
@@ -110,6 +113,8 @@ class _ReelsPageState extends State<ReelsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width > 1100;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -123,9 +128,131 @@ class _ReelsPageState extends State<ReelsPage> {
               )
             : _reels.isEmpty
             ? _buildEmptyState()
-            : _buildReelFeed(),
+            : (isDesktop ? _buildDesktopReelFeed() : _buildReelFeed()),
       ),
     );
+  }
+
+  Widget _buildDesktopReelFeed() {
+    return Row(
+      children: [
+        Expanded(
+          child: Stack(
+            children: [
+              Listener(
+                onPointerSignal: (pointerSignal) {
+                  if (pointerSignal is PointerScrollEvent) {
+                    final scrollEvent = pointerSignal;
+                    if (scrollEvent.scrollDelta.dy > 50) {
+                      _pageController.nextPage(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                      );
+                    } else if (scrollEvent.scrollDelta.dy < -50) {
+                      _pageController.previousPage(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  }
+                },
+                child: PageView.builder(
+                  controller: _pageController,
+                  scrollDirection: Axis.vertical,
+                  itemCount: _reels.length,
+                  onPageChanged: (index) =>
+                      setState(() => _currentPage = index),
+                  physics:
+                      const NeverScrollableScrollPhysics(), // Managed by mouse wheel
+                  itemBuilder: (_, i) => Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 500),
+                      child: _ReelItem(
+                        reel: _reels[i],
+                        isActive: widget.isActive && _currentPage == i,
+                        isMuted: _isMuted,
+                        onLike: () => _handleLike(i),
+                        onComment: (c) => _handleComment(i, c),
+                        showSideActions:
+                            false, // Hide default icons on desktop if we want
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Controls overlay (X, Mute, +)
+              Positioned(
+                top: 24,
+                left: 24,
+                child: Row(
+                  children: [
+                    _IconBtn(
+                      icon: Icons.close,
+                      onTap: () => widget.onClose?.call(),
+                    ),
+                    const SizedBox(width: 12),
+                    _IconBtn(
+                      icon: _isMuted ? Icons.volume_off : Icons.volume_up,
+                      onTap: _toggleMute,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Sidebar
+        if (_reels.isNotEmpty)
+          Container(
+            width: 400,
+            color: Colors.white,
+            child: ReelCommentSidebar(
+              reelId:
+                  (_reels[_currentPage]['_id'] ?? _reels[_currentPage]['id'])
+                      ?.toString() ??
+                  '',
+              onClose: () {}, // Desktop sidebar stays open
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _handleLike(int i) {
+    final reelId = (_reels[i]["_id"] ?? _reels[i]["id"])?.toString();
+    if (reelId != null) {
+      setState(() {
+        final bool wasLiked = _reels[i]["isLiked"] == true;
+        _reels[i]["isLiked"] = !wasLiked;
+        int currentLikes =
+            int.tryParse(_reels[i]["likes"]?.toString() ?? "0") ?? 0;
+        _reels[i]["likes"] = wasLiked
+            ? (currentLikes > 0 ? currentLikes - 1 : 0)
+            : currentLikes + 1;
+      });
+      ApiService.likeReel(reelId);
+    }
+  }
+
+  Future<bool> _handleComment(int i, Map<String, dynamic> comment) async {
+    final reelId = _reels[i]["_id"] ?? _reels[i]["id"];
+    if (reelId == null) return false;
+
+    final userProfile = AuthService().userProfile.value;
+    final String? authorId = (userProfile?['_id'] ?? userProfile?['id'])
+        ?.toString();
+
+    final String commentText = comment["text"]?.toString() ?? "";
+    final bool success = await ApiService.addReelComment(
+      reelId.toString(),
+      commentText,
+      authorId: authorId,
+    );
+
+    if (success) {
+      await _sendMentionNotifications(commentText, reelId.toString(), authorId);
+    }
+    return success;
   }
 
   Future<void> _sendMentionNotifications(
@@ -441,7 +568,10 @@ class _ReelItem extends StatefulWidget {
     required this.isMuted,
     required this.onLike,
     required this.onComment,
+    this.showSideActions = true,
   });
+
+  final bool showSideActions;
 
   @override
   State<_ReelItem> createState() => _ReelItemState();
@@ -580,34 +710,35 @@ class _ReelItemState extends State<_ReelItem> {
             ],
           ),
         ),
-        Positioned(
-          bottom: 40,
-          right: 16,
-          child: Column(
-            children: [
-              _ActionIcon(
-                icon: (widget.reel['isLiked'] ?? false)
-                    ? Icons.favorite
-                    : Icons.favorite_border,
-                label: (widget.reel['likes'] ?? 0).toString(),
-                color: (widget.reel['isLiked'] ?? false)
-                    ? Colors.red
-                    : Colors.white,
-                onTap: widget.onLike,
-              ),
-              _ActionIcon(
-                icon: Icons.chat_bubble_outline,
-                label:
-                    (widget.reel['commentsCount'] ??
-                            widget.reel['comments']?.length ??
-                            0)
-                        .toString(),
-                onTap: () => _showComments(context),
-              ),
-              const _ActionIcon(icon: Icons.share_outlined, label: 'Chia sẻ'),
-            ],
+        if (widget.showSideActions)
+          Positioned(
+            bottom: 40,
+            right: 16,
+            child: Column(
+              children: [
+                _ActionIcon(
+                  icon: (widget.reel['isLiked'] ?? false)
+                      ? Icons.favorite
+                      : Icons.favorite_border,
+                  label: (widget.reel['likes'] ?? 0).toString(),
+                  color: (widget.reel['isLiked'] ?? false)
+                      ? Colors.red
+                      : Colors.white,
+                  onTap: widget.onLike,
+                ),
+                _ActionIcon(
+                  icon: Icons.chat_bubble_outline,
+                  label:
+                      (widget.reel['commentsCount'] ??
+                              widget.reel['comments']?.length ??
+                              0)
+                          .toString(),
+                  onTap: () => _showComments(context),
+                ),
+                const _ActionIcon(icon: Icons.share_outlined, label: 'Chia sẻ'),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -1735,6 +1866,31 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
     }
   }
 
+  Future<void> _editImage() async {
+    if (_mediaPath == null || _mediaType != 'image') return;
+
+    try {
+      final bytes = await _selectedXFile!.readAsBytes();
+      if (!mounted) return;
+      final editedBytes = await ImageEditorHelper.editImage(context, bytes);
+
+      if (editedBytes != null) {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File(
+          '${tempDir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        await tempFile.writeAsBytes(editedBytes);
+
+        setState(() {
+          _mediaPath = tempFile.path;
+          _selectedXFile = XFile(tempFile.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Edit image error: $e');
+    }
+  }
+
   void _publish() async {
     if (_publishing) return;
     setState(() => _publishing = true);
@@ -1913,6 +2069,30 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
               ),
             ),
           ),
+          if (_mediaType == 'image') ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: _editImage,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade700,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'CHỈNH SỬA ẢNH',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2459,6 +2639,341 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                       );
                     },
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IconBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _IconBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: const BoxDecoration(
+          color: Colors.black54,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    );
+  }
+}
+
+class ReelCommentSidebar extends StatefulWidget {
+  final String reelId;
+  final VoidCallback onClose;
+  const ReelCommentSidebar({
+    super.key,
+    required this.reelId,
+    required this.onClose,
+  });
+
+  @override
+  State<ReelCommentSidebar> createState() => _ReelCommentSidebarState();
+}
+
+class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
+  final TextEditingController _ctrl = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  List<dynamic> _comments = [];
+  bool _isLoading = false;
+  String? _replyingToId;
+  String? _replyingToName;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchComments();
+  }
+
+  @override
+  void didUpdateWidget(ReelCommentSidebar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reelId != widget.reelId) {
+      _fetchComments();
+    }
+  }
+
+  Future<void> _fetchComments() async {
+    setState(() => _isLoading = true);
+    try {
+      final comments = await ApiService.getReelComments(widget.reelId);
+      final currentUserId =
+          (AuthService().userProfile.value?['_id'] ??
+                  AuthService().userProfile.value?['id'])
+              ?.toString();
+
+      if (mounted) {
+        setState(() {
+          _comments = comments.map((c) {
+            final Map<String, dynamic> comment = Map<String, dynamic>.from(c);
+            final reactions = comment['reactions'] as List?;
+            comment['isLiked'] =
+                reactions?.any(
+                  (re) =>
+                      (re['user']?.toString() == currentUserId ||
+                      (re['user'] is Map &&
+                          (re['user']['_id']?.toString() == currentUserId ||
+                              re['user']['id']?.toString() == currentUserId))),
+                ) ??
+                false;
+            comment['likes'] = reactions?.length ?? comment['likes'] ?? 0;
+            return comment;
+          }).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _postComment() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) return;
+
+    final userProfile = AuthService().userProfile.value;
+    final authorId = (userProfile?['_id'] ?? userProfile?['id'])?.toString();
+
+    final success = await ApiService.addReelComment(
+      widget.reelId,
+      text,
+      authorId: authorId,
+    );
+
+    if (success) {
+      _ctrl.clear();
+      _focusNode.unfocus();
+      setState(() {
+        _replyingToId = null;
+        _replyingToName = null;
+      });
+      _fetchComments();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.chat_bubble_outline,
+                    size: 20,
+                    color: Color(0xFF3B82F6),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_comments.length} BÌNH LUẬN',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 20),
+                onPressed: widget.onClose,
+              ),
+            ],
+          ),
+        ),
+        // Comments List
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _comments.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _comments.length,
+                  itemBuilder: (context, index) =>
+                      _commentItem(_comments[index]),
+                ),
+        ),
+        // Input
+        if (_replyingToName != null)
+          Container(
+            color: const Color(0xFFEFF6FF),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.reply, size: 14, color: Colors.blue),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Đang phản hồi $_replyingToName',
+                    style: const TextStyle(color: Colors.blue, fontSize: 12),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _replyingToName = null;
+                    _replyingToId = null;
+                  }),
+                  child: const Icon(Icons.close, size: 16, color: Colors.blue),
+                ),
+              ],
+            ),
+          ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: Colors.grey.shade200)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  focusNode: _focusNode,
+                  decoration: const InputDecoration(
+                    hintText: 'Viết cảm nghĩ...',
+                    border: InputBorder.none,
+                    hintStyle: TextStyle(fontSize: 13),
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                  onSubmitted: (_) => _postComment(),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.send,
+                  color: Color(0xFF3B82F6),
+                  size: 20,
+                ),
+                onPressed: _postComment,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.chat_bubble_outline,
+            size: 48,
+            color: Colors.grey.shade300,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Chưa có thảo luận nào',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _commentItem(Map<String, dynamic> comment) {
+    final author = comment['author'];
+    final authorName = (author is Map)
+        ? (author['fullName'] ?? 'Người dùng')
+        : author.toString();
+    final avatarId = (author is Map)
+        ? author['profilePicture']?.toString()
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundImage: avatarId != null
+                ? NetworkImage(ApiService.resolveImageUrl(avatarId))
+                : null,
+            child: avatarId == null
+                ? Text(authorName.isNotEmpty ? authorName[0] : '?')
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        authorName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        comment['text'] ?? '',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const SizedBox(width: 4),
+                    Text(
+                      formatTime(comment['createdAt']),
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                    const SizedBox(width: 16),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _replyingToName = authorName;
+                          _replyingToId = comment['_id'];
+                          _ctrl.text = "@$authorName ";
+                        });
+                        _focusNode.requestFocus();
+                      },
+                      child: const Text(
+                        'Phản hồi',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueGrey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),

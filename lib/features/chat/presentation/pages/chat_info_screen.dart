@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/api_service.dart';
+import '../../../../core/security.dart';
 
 class ChatInfoScreen extends StatefulWidget {
   final String name;
@@ -7,7 +8,10 @@ class ChatInfoScreen extends StatefulWidget {
   final String? conversationId;
   final bool isGroup;
   final bool isMuted;
+  final Color themeColor;
   final Function(bool) onMuteToggle;
+  final Function(Color) onThemeChanged;
+  final List<Map<String, dynamic>>? initialMembers;
 
   const ChatInfoScreen({
     super.key,
@@ -16,7 +20,10 @@ class ChatInfoScreen extends StatefulWidget {
     this.conversationId,
     this.isGroup = false,
     this.isMuted = false,
+    this.themeColor = const Color(0xFF3B82F6),
     required this.onMuteToggle,
+    required this.onThemeChanged,
+    this.initialMembers,
   });
 
   @override
@@ -25,7 +32,8 @@ class ChatInfoScreen extends StatefulWidget {
 
 class _ChatInfoScreenState extends State<ChatInfoScreen> {
   late bool _isMuted;
-  Color _selectedColor = const Color(0xFF3B82F6);
+  late Color _selectedColor;
+  late List<Map<String, dynamic>> _members;
   bool _isMembersExpanded = true;
 
   final List<Color> _themeColors = [
@@ -42,6 +50,8 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
   void initState() {
     super.initState();
     _isMuted = widget.isMuted;
+    _selectedColor = widget.themeColor;
+    _members = List.from(widget.initialMembers ?? []);
   }
 
   @override
@@ -90,9 +100,12 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  image: widget.avatarPath != null && widget.avatarPath!.isNotEmpty
+                  image:
+                      widget.avatarPath != null && widget.avatarPath!.isNotEmpty
                       ? DecorationImage(
-                          image: NetworkImage(ApiService.resolveImageUrl(widget.avatarPath!)),
+                          image: NetworkImage(
+                            ApiService.resolveImageUrl(widget.avatarPath!),
+                          ),
                           fit: BoxFit.cover,
                         )
                       : null,
@@ -101,7 +114,9 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
                 child: widget.avatarPath == null || widget.avatarPath!.isEmpty
                     ? Center(
                         child: Text(
-                          widget.name.isNotEmpty ? widget.name[0].toUpperCase() : "?",
+                          widget.name.isNotEmpty
+                              ? widget.name[0].toUpperCase()
+                              : "?",
                           style: const TextStyle(
                             fontSize: 48,
                             fontWeight: FontWeight.bold,
@@ -125,40 +140,58 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
             const SizedBox(height: 32),
 
             // CHỦ ĐỀ HỘI THOẠI
-            _buildSectionHeader("CHỦ ĐỀ HỘI THOẠI"),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 50,
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                scrollDirection: Axis.horizontal,
-                itemCount: _themeColors.length,
-                itemBuilder: (context, index) {
-                  final color = _themeColors[index];
-                  final isSelected = _selectedColor == color;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedColor = color),
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: color.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+            Center(
+              child: Text(
+                "CHỦ ĐỀ HỘI THOẠI",
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: SizedBox(
+                height: 42,
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _themeColors.length,
+                  itemBuilder: (context, index) {
+                    final color = _themeColors[index];
+                    final isSelected = _selectedColor == color;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedColor = color);
+                        widget.onThemeChanged(color);
+                      },
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        margin: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                        child: isSelected
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 20,
+                              )
+                            : null,
                       ),
-                      child: isSelected
-                          ? const Icon(Icons.check, color: Colors.white, size: 20)
-                          : null,
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 40),
@@ -170,19 +203,24 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    "THÀNH VIÊN (2)",
+                    "THÀNH VIÊN (${_members.length})",
                     style: TextStyle(
                       color: Colors.grey[500],
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
+                      letterSpacing: 0.8,
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => setState(() => _isMembersExpanded = !_isMembersExpanded),
+                    onTap: () => setState(
+                      () => _isMembersExpanded = !_isMembersExpanded,
+                    ),
                     child: Icon(
-                      _isMembersExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                      color: Colors.black54,
+                      _isMembersExpanded
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      color: Colors.black45,
+                      size: 20,
                     ),
                   ),
                 ],
@@ -198,26 +236,42 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: Column(
-                  children: [
-                    _buildMemberItem(
-                      name: widget.name,
-                      avatar: widget.avatarPath,
-                      role: "NHÂN SỰ",
-                    ),
-                    const SizedBox(height: 16),
-                    _buildMemberItem(
-                      name: "Bạn",
-                      avatar: null,
-                      role: "NHÂN SỰ",
-                      isMe: true,
-                    ),
-                  ],
+                  children: _members.isEmpty
+                      ? [
+                          _buildMemberItem(
+                            name: widget.name,
+                            avatar: widget.avatarPath,
+                            role: "NHÂN SỰ",
+                          ),
+                        ]
+                      : _members.map((m) {
+                          final String? mId =
+                              m["_id"]?.toString() ?? m["id"]?.toString();
+                          final String? myId =
+                              (AuthService().userProfile.value?['_id'] ??
+                                      AuthService().userProfile.value?['id'])
+                                  ?.toString();
+                          final bool isMe =
+                              mId != null && myId != null && mId == myId;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: _buildMemberItem(
+                              name: isMe
+                                  ? (m["fullName"] ?? m["name"] ?? "Bạn")
+                                  : (m["fullName"] ?? m["name"] ?? "Vô danh"),
+                              avatar: m["profilePicture"] ?? m["avatar"],
+                              role: m["role"] ?? "NHÂN SỰ",
+                              isMe: isMe,
+                            ),
+                          );
+                        }).toList(),
                 ),
               ),
             ],
-            
+
             const SizedBox(height: 32),
-            
+
             // Thông tin về đoạn chat
             _buildSectionHeader("Thông tin về đoạn chat"),
             _buildMenuItem(
@@ -225,22 +279,30 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
               title: "Xem file phương tiện, file và liên kết",
               onTap: () {},
             ),
-            
+
             const SizedBox(height: 32),
-            
+
             // Hành động
             _buildSectionHeader("Hành động"),
             _buildMenuItem(
-              icon: _isMuted ? Icons.notifications_active_rounded : Icons.notifications_off_rounded,
-              title: _isMuted ? "Bật thông báo về ${widget.name}" : "Tắt thông báo về ${widget.name}",
+              icon: _isMuted
+                  ? Icons.notifications_active_rounded
+                  : Icons.notifications_off_rounded,
+              title: _isMuted
+                  ? "Bật thông báo về ${widget.name}"
+                  : "Tắt thông báo về ${widget.name}",
               onTap: () {
                 setState(() {
                   _isMuted = !_isMuted;
                 });
                 widget.onMuteToggle(_isMuted);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(_isMuted ? "Đã tắt thông báo" : "Đã bật thông báo")),
-                );
+                // ScaffoldMessenger.of(context).showSnackBar(
+                //   SnackBar(
+                //     // content: Text(
+                //     //   _isMuted ? "Đã tắt thông báo" : "Đã bật thông báo",
+                //     // ),
+                //   ),
+                // );
               },
             ),
           ],
@@ -266,7 +328,10 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
           child: (avatar == null || avatar.isEmpty)
               ? Text(
                   name.isNotEmpty ? name[0] : "?",
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 )
               : null,
         ),

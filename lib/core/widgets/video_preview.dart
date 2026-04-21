@@ -16,7 +16,7 @@ class VideoPreview extends StatefulWidget {
     this.videoUrl,
     this.autoPlay = true,
     this.loop = true,
-    this.mute = true,
+    this.mute = false,
     this.httpHeaders,
   });
 
@@ -57,6 +57,9 @@ class _VideoPreviewState extends State<VideoPreview> {
   }
 
   void _initController() {
+    debugPrint(
+      'VideoPreview: initializing for ${widget.videoUrl ?? widget.file?.path}',
+    );
     if (widget.videoUrl != null) {
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.videoUrl!),
@@ -64,13 +67,9 @@ class _VideoPreviewState extends State<VideoPreview> {
             (widget.httpHeaders != null && widget.httpHeaders!.isNotEmpty)
             ? widget.httpHeaders!
             : const {},
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
     } else if (widget.file != null) {
-      _controller = VideoPlayerController.file(
-        widget.file!,
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      );
+      _controller = VideoPlayerController.file(widget.file!);
     } else {
       throw ArgumentError("Either file or videoUrl must be provided");
     }
@@ -80,6 +79,7 @@ class _VideoPreviewState extends State<VideoPreview> {
           .initialize()
           .then((_) {
             if (mounted) {
+              debugPrint('VideoPreview: initialized successfully');
               setState(() {});
               if (widget.autoPlay) {
                 _controller.play().catchError(
@@ -87,7 +87,10 @@ class _VideoPreviewState extends State<VideoPreview> {
                 );
               }
               _controller.setLooping(widget.loop);
-              _controller.setVolume(widget.mute ? 0.0 : 1.0);
+              // Explicitly set volume
+              final targetVolume = widget.mute ? 0.0 : 1.0;
+              _controller.setVolume(targetVolume);
+              debugPrint('VideoPreview: volume set to $targetVolume');
             }
           })
           .catchError((e) {

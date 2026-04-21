@@ -18,13 +18,30 @@ class ApiService {
 
   static final ValueNotifier<int> unreadChatCount = ValueNotifier<int>(0);
 
+  static bool _listenerAdded = false;
   static void initializeSocket() {
+    // Add listener to re-init if token changes (only once)
+    if (!_listenerAdded) {
+      AuthService().authToken.addListener(() {
+        debugPrint('Socket: Token changed, re-initializing...');
+        disposeSocket();
+        initializeSocket();
+      });
+      _listenerAdded = true;
+    }
+
     if (_socket != null) return;
 
     final token = AuthService().authToken.value;
-    final options = IO.OptionBuilder().setTransports([
-      'websocket',
-    ]).enableAutoConnect();
+    final options = IO.OptionBuilder()
+        .setTransports([
+          'websocket',
+        ]) // Stick to websocket as polling might be timing out
+        .setAuth({'token': token})
+        .enableForceNew()
+        .enableAutoConnect()
+        .setReconnectionAttempts(30)
+        .setReconnectionDelay(2000);
 
     if (token != null) {
       options.setAuth({'token': token});
@@ -34,50 +51,106 @@ class ApiService {
     _socket = IO.io(siteUrl, options.build());
 
     _socket!.onConnect((_) {
-      debugPrint('ApiService Socket connected!');
+      debugPrint('ApiService Socket connected! (ID: ${_socket!.id})');
     });
 
     _socket!.onConnectError((err) {
       debugPrint('ApiService Socket ConnectError: $err');
     });
 
+    _socket!.onReconnect((_) {
+      debugPrint('ApiService Socket Reconnected');
+    });
+
+    _socket!.onReconnectAttempt((attempt) {
+      debugPrint('ApiService Socket Reconnect Attempt: $attempt');
+    });
+
+    _socket!.onReconnectError((err) {
+      debugPrint('ApiService Socket ReconnectError: $err');
+    });
+
     _socket!.onAny((event, data) {
       if (data is Map &&
-          (data.containsKey('text') || data.containsKey('content') || data.containsKey('message')) &&
+          (data.containsKey('text') ||
+              data.containsKey('content') ||
+              data.containsKey('message')) &&
           !event.toString().contains('newMessage') &&
-          !event.toString().contains('newConversation')) {
+          !event.toString().contains('new_message') &&
+          !event.toString().contains('newConversation') &&
+          !event.toString().contains('new_conversation')) {
         // Broadcast any event that looks like a message or update
         _chatStreamController.add(Map<String, dynamic>.from(data));
       }
     });
 
+    _socket!.on('new_message', (data) {
+      if (data is Map) {
+        try {
+          _chatStreamController.add(Map<String, dynamic>.from(data));
+        } catch (e) {
+          debugPrint('Socket: Error broadcasting new_message: $e');
+        }
+      }
+    });
+
     _socket!.on('newMessage', (data) {
       if (data is Map) {
-        _chatStreamController.add(Map<String, dynamic>.from(data));
+        try {
+          _chatStreamController.add(Map<String, dynamic>.from(data));
+        } catch (e) {
+          debugPrint('Socket: Error broadcasting newMessage: $e');
+        }
+      }
+    });
+
+    _socket!.on('new_conversation', (data) {
+      if (data is Map) {
+        _chatStreamController.add({
+          ...Map<String, dynamic>.from(data),
+          'isNewConversation': true,
+        });
       }
     });
 
     _socket!.on('newConversation', (data) {
       if (data is Map) {
-        // We can broadcast this with a special mark or just let messaging_page handle it
-        _chatStreamController.add({...Map<String, dynamic>.from(data), 'isNewConversation': true});
+        _chatStreamController.add({
+          ...Map<String, dynamic>.from(data),
+          'isNewConversation': true,
+        });
+      }
+    });
+
+    _socket!.on('update_conversation', (data) {
+      if (data is Map) {
+        _chatStreamController.add({
+          ...Map<String, dynamic>.from(data),
+          'isUpdateConversation': true,
+        });
       }
     });
 
     _socket!.on('updateConversation', (data) {
       if (data is Map) {
-        _chatStreamController.add({...Map<String, dynamic>.from(data), 'isUpdateConversation': true});
+        _chatStreamController.add({
+          ...Map<String, dynamic>.from(data),
+          'isUpdateConversation': true,
+        });
       }
     });
 
     _socket!.on('display_typing', (data) {
       if (data is Map) {
-        _chatStreamController.add({...Map<String, dynamic>.from(data), 'type': 'typing'});
+        _chatStreamController.add({
+          ...Map<String, dynamic>.from(data),
+          'type': 'typing',
+        });
       }
     });
 
-    _socket!.onDisconnect((_) {
-      debugPrint('ApiService Socket disconnected');
+    _socket!.onDisconnect((reason) {
+      debugPrint('ApiService Socket disconnected: $reason');
     });
   }
 
@@ -302,19 +375,21 @@ class ApiService {
     try {
       final url = Uri.parse('$baseUrl/posts/$postId/like');
       var response = await http.post(url, headers: await _getHeaders());
-      
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         debugPrint('DEBUG: togglePostLike SUCCESS (POST)');
         return true;
       }
-      
+
       response = await http.patch(url, headers: await _getHeaders());
       if (response.statusCode >= 200 && response.statusCode < 300) {
         debugPrint('DEBUG: togglePostLike SUCCESS (PATCH)');
         return true;
       }
-      
-      debugPrint('DEBUG: togglePostLike failed for $postId: ${response.statusCode}');
+
+      debugPrint(
+        'DEBUG: togglePostLike failed for $postId: ${response.statusCode}',
+      );
       return false;
     } catch (e) {
       debugPrint('ApiService error (togglePostLike): $e');
@@ -354,15 +429,18 @@ class ApiService {
     }
   }
 
-  static Future<bool> toggleCommentLike(String commentId, {String? postId}) async {
+  static Future<bool> toggleCommentLike(
+    String commentId, {
+    String? postId,
+  }) async {
     try {
       // Based on provided URL: /api/comments/like/:id
       final List<String> urlPatterns = [
-        '$baseUrl/comments/like/$commentId',             // Pattern from user
-        '$baseUrl/comments/$commentId/like',             // Traditional pattern
-        '$baseUrl/comments/$commentId/reactions',        // Reaction pattern
+        '$baseUrl/comments/like/$commentId', // Pattern from user
+        '$baseUrl/comments/$commentId/like', // Traditional pattern
+        '$baseUrl/comments/$commentId/reactions', // Reaction pattern
       ];
-      
+
       if (postId != null && postId.isNotEmpty) {
         urlPatterns.add('$baseUrl/posts/$postId/comments/$commentId/like');
         urlPatterns.add('$baseUrl/comments/$postId/$commentId/like');
@@ -372,7 +450,9 @@ class ApiService {
       for (String urlStr in urlPatterns) {
         final url = Uri.parse(urlStr);
         final headers = await _getHeaders();
-        final body = urlStr.contains('reactions') ? jsonEncode({'type': 'like'}) : null;
+        final body = urlStr.contains('reactions')
+            ? jsonEncode({'type': 'like'})
+            : null;
 
         // Try POST
         var response = await http.post(url, headers: headers, body: body);
@@ -381,7 +461,7 @@ class ApiService {
           success = true;
           break;
         }
-        
+
         // Try PATCH
         response = await http.patch(url, headers: headers, body: body);
         if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -390,7 +470,7 @@ class ApiService {
           break;
         }
       }
-      
+
       return success;
     } catch (e) {
       debugPrint('ApiService error (toggleCommentLike): $e');
@@ -521,15 +601,27 @@ class ApiService {
           contentType: mediaType,
         ),
       );
+
       final response = await request.send();
       final respStr = await response.stream.bytesToString();
+      debugPrint('uploadImage status=${response.statusCode} body=$respStr');
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(respStr);
-        return (data['id'] ??
-                data['_id'] ??
-                data['data']?['id'] ??
-                data['data']?['_id'])
-            ?.toString();
+        // Server trả về: {"image": {"_id": "...", "filename": "..."}}
+        final id =
+            (data['image']?['_id'] ??
+                    data['image']?['id'] ??
+                    data['_id'] ??
+                    data['id'] ??
+                    data['data']?['_id'] ??
+                    data['data']?['id'] ??
+                    data['url'] ??
+                    data['imageUrl'] ??
+                    data['path'])
+                ?.toString();
+        debugPrint('uploadImage parsed id=$id');
+        return id;
       }
     } catch (e) {
       debugPrint('ApiService uploadImage error: $e');
@@ -573,6 +665,23 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>?> getChatDetails(String id) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/chats/$id'),
+        headers: await _getHeaders(),
+      );
+      final res = _processResponse(response, 'getChatDetails');
+      if (res is Map) {
+        return (res.containsKey('data')) ? res['data'] : res;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('ApiService error (getChatDetails): $e');
+      return null;
+    }
+  }
+
   static Future<dynamic> getMessages(
     String conversationId, {
     int page = 1,
@@ -594,7 +703,11 @@ class ApiService {
 
   /// Send message via Socket (matches backend 'send_message' event).
   /// Falls back to REST if socket is unavailable.
-  static Future<bool> sendMessage(String conversationId, String content, {String? replyTo}) async {
+  static Future<bool> sendMessage(
+    String conversationId,
+    String content, {
+    String? replyTo,
+  }) async {
     // Prefer socket if connected
     if (_socket != null && (_socket!.connected)) {
       try {
@@ -615,8 +728,8 @@ class ApiService {
         Uri.parse('$baseUrl/chats/$conversationId/messages'),
         headers: await _getHeaders(),
         body: jsonEncode({
-          'text': content, 
-          'content': content, 
+          'text': content,
+          'content': content,
           'type': 'text',
           if (replyTo != null) 'replyTo': replyTo,
         }),
@@ -628,8 +741,62 @@ class ApiService {
     }
   }
 
+  /// Send a message with image/media attachment.
+  static Future<bool> sendMediaMessage(
+    String conversationId, {
+    required String imageId,
+    required String imageUrl,
+    String type = 'image',
+  }) async {
+    // Prefer socket
+    if (_socket != null && _socket!.connected) {
+      try {
+        _socket!.emit('send_message', {
+          'conversationId': conversationId,
+          'chatId': conversationId,
+          'text': '',
+          'content': '',
+          'type': type,
+          'media': [
+            {'url': imageUrl, 'type': type, '_id': imageId},
+          ],
+          'images': [imageUrl],
+          'imageUrl': imageUrl,
+        });
+        return true;
+      } catch (e) {
+        debugPrint('Socket sendMediaMessage error, falling back to REST: $e');
+      }
+    }
+
+    // Fallback: REST
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/chats/$conversationId/messages'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'text': '',
+          'content': '',
+          'type': type,
+          'media': [
+            {'url': imageUrl, 'type': type, '_id': imageId},
+          ],
+          'images': [imageUrl],
+          'imageUrl': imageUrl,
+        }),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (sendMediaMessage REST): $e');
+      return false;
+    }
+  }
+
   /// Recalls a message (soft delete)
-  static Future<bool> recallMessage(String conversationId, String messageId) async {
+  static Future<bool> recallMessage(
+    String conversationId,
+    String messageId,
+  ) async {
     if (_socket != null && _socket!.connected) {
       try {
         final payload = {
@@ -654,27 +821,43 @@ class ApiService {
     // Fallback: REST
     try {
       // 1. DELETE .../recall
-      final r1 = await http.delete(Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId/recall'), headers: await _getHeaders());
+      final r1 = await http.delete(
+        Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId/recall'),
+        headers: await _getHeaders(),
+      );
       if (r1.statusCode >= 200 && r1.statusCode < 300) return true;
-      
+
       // 2. POST .../recall
-      final r2 = await http.post(Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId/recall'), headers: await _getHeaders());
+      final r2 = await http.post(
+        Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId/recall'),
+        headers: await _getHeaders(),
+      );
       if (r2.statusCode >= 200 && r2.statusCode < 300) return true;
 
       // 3. DELETE generic
-      final r3 = await http.delete(Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId'), headers: await _getHeaders());
+      final r3 = await http.delete(
+        Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId'),
+        headers: await _getHeaders(),
+      );
       if (r3.statusCode >= 200 && r3.statusCode < 300) return true;
 
       // 4. PATCH status
       final r4 = await http.patch(
         Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId'),
         headers: await _getHeaders(),
-        body: jsonEncode({'status': 'recalled', 'isRecalled': true, 'text': 'Tin nhắn đã được thu hồi'}),
+        body: jsonEncode({
+          'status': 'recalled',
+          'isRecalled': true,
+          'text': 'Tin nhắn đã được thu hồi',
+        }),
       );
       if (r4.statusCode >= 200 && r4.statusCode < 300) return true;
 
       // 5. Try without conversationId prefix (global message ID)
-      final r5 = await http.delete(Uri.parse('$baseUrl/messages/$messageId'), headers: await _getHeaders());
+      final r5 = await http.delete(
+        Uri.parse('$baseUrl/messages/$messageId'),
+        headers: await _getHeaders(),
+      );
       if (r5.statusCode >= 200 && r5.statusCode < 300) return true;
 
       return false;
