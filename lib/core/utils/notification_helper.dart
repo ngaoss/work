@@ -28,7 +28,7 @@ class NotificationHelper {
       macOS: initializationSettingsIOS,
       linux: LinuxInitializationSettings(defaultActionName: 'Open'),
       windows: WindowsInitializationSettings(
-        appUserModelId: 'DeepCode.Work.App',
+        appUserModelId: 'com.deepcode.work',
         guid: '3B82F6A1-9C1A-4A1B-8B9C-AD440487A968',
         appName: 'DeepCode Work',
       ),
@@ -38,14 +38,14 @@ class NotificationHelper {
       final bool? initialized = await _notificationsPlugin.initialize(
         settings: mySettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          // Handle when user taps on the notification
+          debugPrint("Notification tapped with payload: ${response.payload}");
         },
       );
       _isInitialized = initialized ?? false;
-      // debugPrint("Notifications initialized: $_isInitialized");
+      debugPrint("Notifications initialized for Windows: $_isInitialized");
     } catch (e) {
       _isInitialized = false;
-      // debugPrint("Error initializing notifications: $e");
+      debugPrint("Error initializing notifications: $e");
     }
   }
 
