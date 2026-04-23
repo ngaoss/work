@@ -53,6 +53,15 @@ void main() async {
   // Initialize notifications (non-blocking)
   NotificationHelper.initialize();
 
+  // Handle notification tap to show window on Desktop
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    NotificationHelper.onNotificationTapped = () async {
+      await windowManager.show();
+      await windowManager.restore();
+      await windowManager.focus();
+    };
+  }
+
   final authService = AuthService();
   await authService.checkSession();
   runApp(const ProviderScope(child: DeepCodeApp()));
@@ -80,10 +89,14 @@ class _DeepCodeAppState extends State<DeepCodeApp> with WindowListener {
   }
 
   Future<void> _initTray() async {
+    // debugPrint('Tray: _initTray called');
     await TrayHelper.initialize(() async {
+      debugPrint('Tray: Show callback triggered');
       await windowManager.show();
+      await windowManager.restore();
       await windowManager.focus();
     });
+    // debugPrint('Tray: _initTray done');
   }
 
   @override

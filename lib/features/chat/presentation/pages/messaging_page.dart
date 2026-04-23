@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_detail_screen.dart';
@@ -54,7 +55,8 @@ class _MessagingPageState extends State<MessagingPage> {
 
     // Handle new or updated conversation events
     if (data['isNewConversation'] == true ||
-        data['isUpdateConversation'] == true) {
+        data['isUpdateConversation'] == true ||
+        data['socketEventType'] == 'chat_updated') {
       _fetchChats();
       return;
     }
@@ -188,6 +190,18 @@ class _MessagingPageState extends State<MessagingPage> {
           final String? avatarPath = _extractAvatarForChat(chat, participants);
           // debugPrint("Extracted Avatar for [${chat['name'] ?? chat['_id']}]: $avatarPath");
 
+          final String colorHex = (chat["themeColor"] ?? "#2563eb")
+              .toString()
+              .replaceFirst('#', '');
+          Color displayColor = const Color(0xFF3B82F6);
+          if (colorHex.length == 6) {
+            try {
+              displayColor = Color(int.parse('FF$colorHex', radix: 16));
+            } catch (e) {
+              debugPrint("Error parsing themeColor: $e");
+            }
+          }
+
           _chats.add({
             "id": chat["_id"]?.toString(),
             "name": name,
@@ -196,7 +210,7 @@ class _MessagingPageState extends State<MessagingPage> {
             "time": _formatTime(chat["lastMessage"]?["createdAt"]),
             "isOnline": online,
             "initials": _getInitials(chat, participants),
-            "color": Colors.blue,
+            "color": displayColor,
             "isGroup": chat["isGroup"] ?? false,
             "hasUnread": (chat["unreadCount"] ?? 0) > 0,
             "unreadCount": chat["unreadCount"] ?? 0,
@@ -204,6 +218,7 @@ class _MessagingPageState extends State<MessagingPage> {
             "participants": participants,
             "avatarPath": avatarPath,
             "themeColor": chat["themeColor"] ?? "#2563eb",
+            "createdBy": chat["createdBy"],
             "isMuted": _mutedChatIds.contains(chat["_id"]?.toString() ?? ""),
           });
         }
@@ -275,7 +290,10 @@ class _MessagingPageState extends State<MessagingPage> {
 
   String _getInitials(Map<String, dynamic> chat, List<dynamic> participants) {
     if (chat["isGroup"] == true) {
-      return chat["name"]?.substring(0, 2).toUpperCase() ?? "GR";
+      final name = (chat["name"] ?? chat["topic"] ?? "Group").toString();
+      return name.length >= 2
+          ? name.substring(0, 2).toUpperCase()
+          : name.toUpperCase();
     }
 
     final otherParticipant =
@@ -391,94 +409,94 @@ class _MessagingPageState extends State<MessagingPage> {
     });
   }
 
-  void _createChat(List<Map<String, dynamic>> selectedUsers) {
+  Future<void> _createChat(List<Map<String, dynamic>> selectedUsers) async {
     if (selectedUsers.isEmpty) return;
 
-    setState(() {
-      if (selectedUsers.length == 1) {
-        final user = selectedUsers.first;
-        final name = user["fullName"] ?? user["name"] ?? "Người dùng";
-        final existingIndex = _chats.indexWhere(
-          (c) =>
-              (c["isGroup"] == false || c["isGroup"] == null) &&
-              c["name"] == name,
-        );
+    // Show loading? or just do it.
+    final myProfile = AuthService().userProfile.value;
+    final List<String> userIds = selectedUsers
+        .map((u) => (u["_id"] ?? u["id"]).toString())
+        .toList();
 
-        if (existingIndex != -1) {
-          _openChatDetailScreen(_chats[existingIndex]);
-          return;
-        }
+    Map<String, dynamic>? result;
+    if (selectedUsers.length == 1) {
+      final user = selectedUsers.first;
+      final name = user["fullName"] ?? user["name"] ?? "Người dùng";
+
+      // Check if already exists in local list
+      final existingIndex = _chats.indexWhere(
+        (c) =>
+            (c["isGroup"] == false || c["isGroup"] == null) &&
+            c["name"] == name,
+      );
+
+      if (existingIndex != -1 &&
+          ApiService.isObjectId(_chats[existingIndex]["id"])) {
+        _openChatDetailScreen(_chats[existingIndex]);
+        return;
+      }
+
+      // Try creating on server
+      result = await ApiService.createChat([userIds.first]);
+    } else {
+      // Group
+      result = await ApiService.createChat(userIds, isGroup: true);
+    }
+
+    if (result != null) {
+      // Backend returned chat object
+      final String realId =
+          (result["_id"] ?? result["id"] ?? result["data"]?["_id"] ?? "")
+              .toString();
+
+      if (ApiService.isObjectId(realId)) {
+        final participants = result["participants"] ?? result["users"] ?? [];
+        final isGroup = result["isGroup"] == true;
+        final chatName = isGroup
+            ? (result["name"] ?? "Nhóm mới")
+            : (selectedUsers.first["fullName"] ??
+                  selectedUsers.first["name"] ??
+                  "Chat");
 
         final newChat = {
-          "id": DateTime.now().millisecondsSinceEpoch,
-          "name": name,
-          "status": user["position"] ?? user["role"] ?? "Nhân viên",
+          "id": realId,
+          "name": chatName,
+          "status": isGroup
+              ? "${(participants as List).length} thành viên"
+              : (selectedUsers.first["position"] ?? "Nhân viên"),
           "lastMsg": "Bắt đầu cuộc trò chuyện",
           "time":
               "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-          "isOnline": true,
-          "initials": name.substring(0, 2).toUpperCase(),
-          "color": Colors.blue,
-          "isGroup": false,
+          "isOnline": !isGroup,
+          "initials": chatName
+              .substring(0, math.min(2, chatName.length))
+              .toUpperCase(),
+          "color": isGroup ? Colors.orange : Colors.blue,
+          "isGroup": isGroup,
           "hasUnread": false,
-          "messages": [],
-          "avatarPath": user["profilePicture"] ?? user["avatar"],
+          "messages": result["messages"] ?? [],
+          "participants": participants,
+          "avatarPath": isGroup
+              ? result["avatar"]
+              : (selectedUsers.first["profilePicture"] ??
+                    selectedUsers.first["avatar"]),
         };
-        _chats.insert(0, newChat);
+
+        setState(() {
+          _chats.insert(0, newChat);
+        });
         _openChatDetailScreen(newChat);
       } else {
-        final myProfile = AuthService().userProfile.value;
-        List<Map<String, String>> initialMembers = selectedUsers
-            .map(
-              (u) => {
-                "_id": (u["_id"] ?? u["id"] ?? "").toString(),
-                "fullName": (u["fullName"] ?? u["name"] ?? "Người dùng")
-                    .toString(),
-                "name": (u["fullName"] ?? u["name"] ?? "Người dùng").toString(),
-                "profilePicture": (u["profilePicture"] ?? u["avatar"] ?? "")
-                    .toString(),
-                "avatar": (u["profilePicture"] ?? u["avatar"] ?? "").toString(),
-                "role": ((u["position"] ?? u["role"] ?? "Nhân viên").toString())
-                    .toUpperCase(),
-                "isOwner": "false",
-              },
-            )
-            .toList();
-
-        initialMembers.insert(0, {
-          "_id": (myProfile?["_id"] ?? myProfile?["id"] ?? "").toString(),
-          "fullName": (myProfile?["fullName"] ?? myProfile?["name"] ?? "Bạn")
-              .toString(),
-          "name": (myProfile?["fullName"] ?? myProfile?["name"] ?? "Bạn")
-              .toString(),
-          "profilePicture":
-              (myProfile?["profilePicture"] ?? myProfile?["avatar"] ?? "")
-                  .toString(),
-          "avatar": (myProfile?["profilePicture"] ?? myProfile?["avatar"] ?? "")
-              .toString(),
-          "role": "CHỦ NHÓM",
-          "isOwner": "true",
-        });
-
-        final newGroup = {
-          "id": DateTime.now().millisecondsSinceEpoch,
-          "name": "Nhóm mới",
-          "status": "${selectedUsers.length + 1} thành viên",
-          "lastMsg": "Bạn đã tạo nhóm mới",
-          "time":
-              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-          "isOnline": false,
-          "initials": "NM",
-          "color": Colors.orange,
-          "isGroup": true,
-          "hasUnread": false,
-          "messages": [],
-          "participants": initialMembers,
-        };
-        _chats.insert(0, newGroup);
-        _openChatDetailScreen(newGroup);
+        debugPrint("Error: Created chat has no valid ObjectId: $result");
+        _showError("Không thể tạo ID hội thoại hợp lệ.");
       }
-    });
+    }
+  }
+
+  void _showError(String msg) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
   }
 
   void _showUserSelectionSheet() {
@@ -1014,6 +1032,9 @@ class _MessagingPageState extends State<MessagingPage> {
               .toList()
               .cast<Map<String, String>>(),
           conversationId: chat["id"]?.toString(),
+          createdBy: chat["createdBy"] is Map
+              ? chat["createdBy"]["_id"]?.toString()
+              : chat["createdBy"]?.toString(),
           isMuted: chat["isMuted"] ?? false,
           onMuteToggle: (muted) async {
             final chatId = chat["id"]?.toString();

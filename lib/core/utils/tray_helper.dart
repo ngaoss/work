@@ -14,10 +14,11 @@ class TrayHelper with TrayListener {
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
 
     _onShowApp = onShowApp;
+    trayManager.removeListener(_instance);
     trayManager.addListener(_instance);
 
     await trayManager.setIcon(
-      Platform.isWindows ? 'assets/work_icon.png' : 'assets/work_icon.png',
+      Platform.isWindows ? 'assets/app_icon.ico' : 'assets/work_icon.png',
     );
 
     List<MenuItem> items = [
@@ -30,12 +31,22 @@ class TrayHelper with TrayListener {
   }
 
   @override
-  void onTrayIconClick() {
+  void onTrayIconMouseDown() {
     _onShowApp?.call();
   }
 
   @override
-  void onTrayIconRightClick() {
+  void onTrayIconMouseUp() {
+    _onShowApp?.call();
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    trayManager.popUpContextMenu();
+  }
+
+  @override
+  void onTrayIconRightMouseUp() {
     trayManager.popUpContextMenu();
   }
 

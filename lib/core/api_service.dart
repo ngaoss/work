@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -10,11 +11,27 @@ class ApiService {
   static const String siteUrl = 'https://work.deepcode.vn';
   static const String baseUrl = '$siteUrl/api';
 
+  static String _normalizePath(String path) {
+    String p = path.replaceAll('/var/www/deepcode-work-assets/', '');
+    if (p.startsWith('/')) p = p.substring(1);
+    return p;
+  }
+
+  static bool isObjectId(String? id) {
+    if (id == null) return false;
+    return RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(id);
+  }
+
   static IO.Socket? _socket;
   static final StreamController<Map<String, dynamic>> _chatStreamController =
       StreamController<Map<String, dynamic>>.broadcast();
   static Stream<Map<String, dynamic>> get newChatStream =>
       _chatStreamController.stream;
+
+  static final StreamController<Map<String, dynamic>> _userStatusController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static Stream<Map<String, dynamic>> get userStatusStream =>
+      _userStatusController.stream;
 
   static final ValueNotifier<int> unreadChatCount = ValueNotifier<int>(0);
 
@@ -149,6 +166,74 @@ class ApiService {
       }
     });
 
+    _socket!.on('user_online', (data) {
+      if (data is Map) {
+        _userStatusController.add({
+          ...Map<String, dynamic>.from(data),
+          'status': 'online',
+          'isOnline': true,
+        });
+      }
+    });
+
+    _socket!.on('user_offline', (data) {
+      if (data is Map) {
+        _userStatusController.add({
+          ...Map<String, dynamic>.from(data),
+          'status': 'offline',
+          'isOnline': false,
+        });
+      }
+    });
+
+    _socket!.on('survey_updated', (data) {
+      if (data is Map) {
+        try {
+          _chatStreamController.add({
+            ...Map<String, dynamic>.from(data),
+            'socketEventType': 'survey_updated',
+          });
+        } catch (e) {
+          debugPrint('Socket: Error broadcasting survey_updated: $e');
+        }
+      }
+    });
+
+    _socket!.on('message_reaction_updated', (data) {
+      if (data is Map) {
+        try {
+          _chatStreamController.add({
+            ...Map<String, dynamic>.from(data),
+            'socketEventType': 'message_reaction_updated',
+          });
+        } catch (e) {
+          debugPrint('Socket: Error broadcasting message_reaction_updated: $e');
+        }
+      }
+    });
+
+    _socket!.on('chat_updated', (data) {
+      if (data is Map) {
+        _chatStreamController.add({
+          ...Map<String, dynamic>.from(data),
+          'socketEventType': 'chat_updated',
+        });
+      }
+    });
+
+    _socket!.on('messages_read_updated', (data) {
+      if (data is Map) {
+        try {
+          _chatStreamController.add({
+            ...Map<String, dynamic>.from(data),
+            'socketEventType': 'messages_read_updated',
+          });
+        } catch (e) {
+          debugPrint('Socket: Error broadcasting messages_read_updated: $e');
+        }
+      }
+    });
+
     _socket!.onDisconnect((reason) {
       debugPrint('ApiService Socket disconnected: $reason');
     });
@@ -165,8 +250,7 @@ class ApiService {
     final String s = path.toString().trim();
     if (s.isEmpty) return '';
     if (s.startsWith('http')) return Uri.encodeFull(s);
-    final String cleanPath = s.startsWith('/') ? s.substring(1) : s;
-    return Uri.encodeFull('$siteUrl/$cleanPath');
+    return Uri.encodeFull('$siteUrl/${_normalizePath(s)}');
   }
 
   static String resolveImageUrl(dynamic path) {
@@ -177,8 +261,43 @@ class ApiService {
     if (RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(s)) {
       return '$baseUrl/images/$s';
     }
-    final String cleanPath = s.startsWith('/') ? s.substring(1) : s;
-    return Uri.encodeFull('$siteUrl/$cleanPath');
+    return Uri.encodeFull('$siteUrl/${_normalizePath(s)}');
+  }
+
+  static String resolveFileUrl(dynamic path, {String? fileName}) {
+    if (path == null) return '';
+    final String s = path.toString().trim();
+    if (s.isEmpty) return '';
+    if (s.startsWith('http')) return Uri.encodeFull(s);
+
+    final token = AuthService().authToken.value;
+    String finalUrl = "";
+    if (RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(s)) {
+      final ext = (fileName ?? s).split('.').last.toLowerCase();
+      final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(ext);
+      if (isImage) {
+        finalUrl = '$baseUrl/images/$s';
+      } else {
+        finalUrl = '$baseUrl/documents/download/$s';
+      }
+    } else {
+      finalUrl = '$siteUrl/${_normalizePath(s)}';
+    }
+
+    if (token != null && token.isNotEmpty) {
+      final lowerUrl = finalUrl.toLowerCase();
+      final isImg =
+          lowerUrl.contains('/images/') ||
+          lowerUrl.endsWith('.jpg') ||
+          lowerUrl.endsWith('.jpeg') ||
+          lowerUrl.endsWith('.png') ||
+          lowerUrl.endsWith('.gif');
+      if (!isImg) {
+        final sep = finalUrl.contains('?') ? '&' : '?';
+        return Uri.encodeFull('$finalUrl${sep}token=$token');
+      }
+    }
+    return Uri.encodeFull(finalUrl);
   }
 
   static Future<Map<String, String>> getAssetHeaders() async {
@@ -196,7 +315,7 @@ class ApiService {
 
   static Future<Map<String, String>> getAuthHeaders() => getAssetHeaders();
 
-  static List<dynamic> _extractList(dynamic data) {
+  static List<dynamic> extractList(dynamic data) {
     if (data is List) return data;
     if (data is Map) {
       if (data.containsKey('data') && data['data'] is List) return data['data'];
@@ -277,7 +396,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final data = _processResponse(response, 'getUsers');
-      return _extractList(data);
+      return extractList(data);
     } catch (e) {
       debugPrint('ApiService error (getUsers): $e');
       return [];
@@ -295,7 +414,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final data = _processResponse(response, 'searchUsers');
-      return _extractList(data);
+      return extractList(data);
     } catch (e) {
       debugPrint('ApiService error (searchUsers): $e');
       return [];
@@ -314,7 +433,7 @@ class ApiService {
       );
       final res = _processResponse(response, 'getPosts');
       if (res is Map<String, dynamic>) return res;
-      return {'posts': _extractList(res), 'totalPages': 1};
+      return {'posts': extractList(res), 'totalPages': 1};
     } catch (e) {
       debugPrint('ApiService error (getPosts): $e');
       return {'posts': [], 'totalPages': 0};
@@ -405,7 +524,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getComments');
-      return _extractList(res);
+      return extractList(res);
     } catch (e) {
       debugPrint('ApiService error (getComments): $e');
       return [];
@@ -494,7 +613,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getReels');
-      return _extractList(res);
+      return extractList(res);
     } catch (e) {
       debugPrint('ApiService error (getReels): $e');
       return [];
@@ -508,7 +627,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getReelComments');
-      return _extractList(res);
+      return extractList(res);
     } catch (e) {
       debugPrint('ApiService error (getReelComments): $e');
       return [];
@@ -570,7 +689,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getMusicList');
-      return _extractList(res);
+      return extractList(res);
     } catch (e) {
       debugPrint('ApiService error (getMusicList): $e');
       return [];
@@ -643,7 +762,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getNotifications');
-      return _extractList(res);
+      return extractList(res);
     } catch (e) {
       debugPrint('ApiService error (getNotifications): $e');
       return [];
@@ -658,7 +777,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getChats');
-      return _extractList(res);
+      return extractList(res);
     } catch (e) {
       debugPrint('ApiService error (getChats): $e');
       return [];
@@ -667,17 +786,15 @@ class ApiService {
 
   static Future<Map<String, dynamic>?> getChatDetails(String id) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/chats/$id'),
-        headers: await _getHeaders(),
-      );
-      final res = _processResponse(response, 'getChatDetails');
-      if (res is Map) {
-        return (res.containsKey('data')) ? res['data'] : res;
+      final chats = await getChats();
+      for (var chat in chats) {
+        if (chat['_id']?.toString() == id || chat['id']?.toString() == id) {
+          return chat as Map<String, dynamic>;
+        }
       }
       return null;
     } catch (e) {
-      debugPrint('ApiService error (getChatDetails): $e');
+      debugPrint('ApiService error (getChatDetails workaround): $e');
       return null;
     }
   }
@@ -707,15 +824,25 @@ class ApiService {
     String conversationId,
     String content, {
     String? replyTo,
+    List<Map<String, dynamic>>? media,
+    Map<String, dynamic>? survey,
+    String type = 'text',
   }) async {
     // Prefer socket if connected
     if (_socket != null && (_socket!.connected)) {
       try {
-        _socket!.emit('send_message', {
+        final payload = {
           'conversationId': conversationId,
           'text': content,
+          'type': type,
           if (replyTo != null) 'replyTo': replyTo,
-        });
+          if (media != null) 'media': media,
+          if (survey != null) 'survey': survey,
+        };
+        // debugPrint(
+        //   'DEBUG [Socket SendMessage]: Emit send_message with payload: $payload',
+        // );
+        _socket!.emit('send_message', payload);
         return true;
       } catch (e) {
         debugPrint('Socket sendMessage error, falling back to REST: $e');
@@ -730,8 +857,9 @@ class ApiService {
         body: jsonEncode({
           'text': content,
           'content': content,
-          'type': 'text',
+          'type': type,
           if (replyTo != null) 'replyTo': replyTo,
+          if (media != null) 'media': media,
         }),
       );
       return response.statusCode >= 200 && response.statusCode < 300;
@@ -792,34 +920,36 @@ class ApiService {
     }
   }
 
+  /// Vote in a survey
+  static Future<bool> voteSurvey(String messageId, int optionIndex) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/chats/messages/$messageId/vote'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'optionIndex': optionIndex}),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (voteSurvey): $e');
+      return false;
+    }
+  }
+
   /// Recalls a message (soft delete)
   static Future<bool> recallMessage(
     String conversationId,
     String messageId,
   ) async {
-    if (_socket != null && _socket!.connected) {
-      try {
-        final payload = {
-          'conversationId': conversationId,
-          'messageId': messageId,
-          'message_id': messageId,
-          'id': messageId,
-          '_id': messageId,
-          'status': 'recalled',
-          'isRecalled': true,
-        };
-        _socket!.emit('recall_message', payload);
-        _socket!.emit('delete_message', payload);
-        _socket!.emit('update_message', payload);
-        _socket!.emit('edit_message', payload);
-        return true;
-      } catch (e) {
-        debugPrint('Socket recallMessage error: $e');
-      }
-    }
-
-    // Fallback: REST
+    // Luôn ưu tiên gọi REST API (vì React dùng REST để xóa trên DB),
+    // không return sớm ở đây chỉ với socket emit.
     try {
+      // 0. The EXACT endpoint from React frontend
+      final reactRes = await http.put(
+        Uri.parse('$baseUrl/chats/messages/$messageId/recall'),
+        headers: await _getHeaders(),
+      );
+      if (reactRes.statusCode >= 200 && reactRes.statusCode < 300) return true;
+
       // 1. DELETE .../recall
       final r1 = await http.delete(
         Uri.parse('$baseUrl/chats/$conversationId/messages/$messageId/recall'),
@@ -863,6 +993,42 @@ class ApiService {
       return false;
     } catch (e) {
       debugPrint('ApiService error (recallMessage): $e');
+      return false;
+    }
+  }
+
+  static Future<bool> reactToMessage(String messageId, String emoji) async {
+    // Safety check for temporary IDs
+    if (messageId.length > 25) {
+      debugPrint('ApiService: Skipping reaction for temporary ID: $messageId');
+      return false;
+    }
+
+    try {
+      final List<String> endpoints = [
+        '$baseUrl/chats/messages/$messageId/react',
+        '$baseUrl/messages/$messageId/react',
+        '$baseUrl/chats/$messageId/react',
+      ];
+
+      for (String urlStr in endpoints) {
+        final res = await http.put(
+          Uri.parse(urlStr),
+          headers: await _getHeaders(),
+          body: jsonEncode({'emoji': emoji}),
+        );
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          // debugPrint('ApiService: reactToMessage SUCCESS at $urlStr');
+          return true;
+        }
+        debugPrint(
+          'ApiService: reactToMessage FAILED at $urlStr (${res.statusCode}): ${res.body}',
+        );
+      }
+      return false;
+    } catch (e) {
+      debugPrint('ApiService error (reactToMessage): $e');
       return false;
     }
   }
@@ -911,6 +1077,158 @@ class ApiService {
     } catch (e) {
       debugPrint('ApiService error (markChatAsRead): $e');
       return false;
+    }
+  }
+
+  /// Update Group Settings (Theme Color, Name, etc.)
+  static Future<bool> updateGroupInfo(
+    String conversationId,
+    Map<String, dynamic> updates,
+  ) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/chats/$conversationId'),
+        headers: await _getHeaders(),
+        body: jsonEncode(updates),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (updateGroupInfo): $e');
+      return false;
+    }
+  }
+
+  /// Add members to a group
+  static Future<bool> addMembers(
+    String conversationId,
+    List<String> userIds,
+  ) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/chats/$conversationId/add-members'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'newUserIds': userIds}),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (addMembers): $e');
+      return false;
+    }
+  }
+
+  /// Remove a member from a group
+  static Future<bool> removeMember(
+    String conversationId,
+    String memberId,
+  ) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/chats/$conversationId/remove-member'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'memberId': memberId}),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (removeMember): $e');
+      return false;
+    }
+  }
+
+  /// Delete a Group
+  static Future<bool> deleteGroup(String conversationId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/chats/$conversationId'),
+        headers: await _getHeaders(),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (deleteGroup): $e');
+      return false;
+    }
+  }
+
+  /// Create a New Chat / Group
+  static Future<Map<String, dynamic>?> createChat(
+    List<String> userIds, {
+    bool isGroup = false,
+    String groupName = "Nhóm mới",
+  }) async {
+    try {
+      final payload = isGroup
+          ? {
+              'isGroup': true,
+              'name': groupName,
+              'users': jsonEncode(userIds),
+            } // Often backend expects 'users' as stringified array or 'participants'
+          : {'userId': userIds.first};
+
+      // Typically the creation endpoint is POST /api/chats
+      final response = await http.post(
+        Uri.parse('$baseUrl/chats'),
+        headers: await _getHeaders(),
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body);
+      } else {
+        // Fallback for group creation structure
+        if (isGroup) {
+          final response2 = await http.post(
+            Uri.parse('$baseUrl/chats/group'),
+            headers: await _getHeaders(),
+            body: jsonEncode({'name': groupName, 'users': userIds}),
+          );
+          if (response2.statusCode >= 200 && response2.statusCode < 300) {
+            return jsonDecode(response2.body);
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('ApiService error (createChat): $e');
+      return null;
+    }
+  }
+
+  /// Uploads a document/file to the server.
+  static Future<Map<String, dynamic>?> uploadDocument(
+    File file, {
+    String? conversationId,
+  }) async {
+    try {
+      final url = Uri.parse('$baseUrl/documents/upload');
+      final request = http.MultipartRequest('POST', url);
+      request.headers.addAll(await _getHeaders());
+
+      request.files.add(
+        await http.MultipartFile.fromPath('documents', file.path),
+      );
+      if (conversationId != null) {
+        request.fields['conversationId'] = conversationId;
+      }
+
+      final responseStream = await request.send();
+      final responseBody = await responseStream.stream.bytesToString();
+
+      if (responseStream.statusCode >= 200 && responseStream.statusCode < 300) {
+        final decoded = jsonDecode(responseBody);
+        if (decoded is List) {
+          return decoded.isNotEmpty
+              ? decoded[0] as Map<String, dynamic>
+              : {'success': false, 'message': 'Empty list from server'};
+        }
+        return decoded as Map<String, dynamic>;
+      } else {
+        debugPrint(
+          'ApiService error (uploadDocument): ${responseStream.statusCode} $responseBody',
+        );
+      }
+      return null;
+    } catch (e) {
+      debugPrint('ApiService error (uploadDocument): $e');
+      return null;
     }
   }
 }

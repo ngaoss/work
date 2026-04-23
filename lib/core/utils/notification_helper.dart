@@ -6,10 +6,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications_windows/flutter_local_notifications_windows.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class NotificationHelper {
+  static final AudioPlayer _audioPlayer = AudioPlayer();
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  static VoidCallback? _onNotificationTapped;
+  static set onNotificationTapped(VoidCallback callback) =>
+      _onNotificationTapped = callback;
 
   static Future<void> initialize() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -39,10 +45,11 @@ class NotificationHelper {
         settings: mySettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint("Notification tapped with payload: ${response.payload}");
+          _onNotificationTapped?.call();
         },
       );
       _isInitialized = initialized ?? false;
-      debugPrint("Notifications initialized for Windows: $_isInitialized");
+      // debugPrint("Notifications initialized for Windows: $_isInitialized");
     } catch (e) {
       _isInitialized = false;
       debugPrint("Error initializing notifications: $e");
@@ -107,6 +114,15 @@ class NotificationHelper {
       if (await isMuted(payload)) return;
     }
 
+    if (Platform.isWindows) {
+      try {
+        await _audioPlayer.setVolume(1.0); // Set max volume
+        await _audioPlayer.play(AssetSource('notification_sound.mp3'));
+      } catch (e) {
+        debugPrint("Error playing notification sound on Windows: $e");
+      }
+    }
+
     String? largeIconPath;
     if (imageUrl != null && imageUrl.isNotEmpty) {
       largeIconPath = await _downloadAndSaveFile(
@@ -152,9 +168,7 @@ class NotificationHelper {
       ),
       linux: const LinuxNotificationDetails(defaultActionName: 'Open'),
       windows: WindowsNotificationDetails(
-        audio: WindowsNotificationAudio.preset(
-          sound: WindowsNotificationSound.call1,
-        ),
+        audio: WindowsNotificationAudio.silent(),
       ),
     );
 

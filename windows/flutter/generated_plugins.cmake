@@ -3,12 +3,14 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  audioplayers_windows
   file_selector_windows
   firebase_core
   pdfx
   permission_handler_windows
   screen_retriever_windows
   tray_manager
+  url_launcher_windows
   video_player_win
   window_manager
 )

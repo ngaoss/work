@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -44,20 +45,11 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _fetchGlobalReels();
     _fetchNotifications();
-    ApiService.getMe(); // Lấy thông tin cá nhân mới nhất ngầm
-
+    ApiService.getMe();
     ApiService.notificationRefresh.addListener(_handleNotificationRefresh);
-
-    // Auto-refresh notifications every 3 seconds
     Future.delayed(Duration(seconds: 3), _autoRefreshNotifications);
-
-    // Initialize Socket Connection for real-time messaging
     ApiService.initializeSocket();
-
-    // Start listening to messages immediately
     _listenToMessagesForNotifications();
-
-    // Initialize Local Notifications
     _initNotifications();
   }
 
@@ -105,8 +97,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   }
 
   void _listenToMessagesForNotifications() {
-    ApiService.newChatStream.listen((data) {
+    ApiService.newChatStream.listen((data) async {
+      // debugPrint('DEBUG: Notification Data: $data');
       final messageData = data["message"] is Map ? data["message"] : data;
+      // debugPrint('DEBUG: Notification MessageData: $messageData');
 
       // Determine sender
       final senderObj = messageData["sender"] ?? messageData["senderId"];
@@ -142,38 +136,6 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           messageData["content"]?.toString() ??
           "Đã gửi một tập tin";
 
-      // Detect if it's a group message
-      final String? groupName =
-          data["groupName"]?.toString() ??
-          messageData["groupName"]?.toString() ??
-          (data["chat"] is Map ? data["chat"]["name"]?.toString() : null) ??
-          (messageData["chat"] is Map
-              ? messageData["chat"]["name"]?.toString()
-              : null);
-
-      final bool isGroup = groupName != null && groupName.isNotEmpty;
-
-      final String displayTitle = isGroup ? groupName : senderName;
-      final String displayBody = isGroup
-          ? "$senderName: $messageText"
-          : messageText;
-
-      // Pass localized imageUrl
-      final String? senderAvatar = senderObj is Map
-          ? (senderObj["profilePicture"] ?? senderObj["avatar"])?.toString()
-          : messageData["senderAvatar"];
-
-      final String? groupAvatar =
-          data["groupAvatar"]?.toString() ??
-          messageData["groupAvatar"]?.toString() ??
-          (data["chat"] is Map ? data["chat"]["avatar"]?.toString() : null);
-      final String? rawIconPath = isGroup
-          ? (groupAvatar ?? senderAvatar)
-          : senderAvatar;
-      final String? resolvedIconUrl = rawIconPath != null
-          ? ApiService.resolveImageUrl(rawIconPath)
-          : null;
-
       // Find the conversation ID
       final dynamic rawChatId =
           data["chatId"] ??
@@ -186,6 +148,54 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
               : messageData["chat"]);
 
       final String? chatId = rawChatId?.toString();
+      Map<String, dynamic>? chatDetails;
+      if (chatId != null) {
+        chatDetails = await ApiService.getChatDetails(chatId);
+      }
+
+      // Detect if it's a group message
+      final chatObj =
+          (data["chat"] is Map ? data["chat"] : messageData["chat"]) ??
+          chatDetails;
+      final String? groupName =
+          data["groupName"]?.toString() ??
+          messageData["groupName"]?.toString() ??
+          (chatObj is Map ? chatObj["name"]?.toString() : null) ??
+          (chatObj is Map ? chatObj["fullName"]?.toString() : null);
+
+      final bool isGroup =
+          (data["isGroup"] == true) ||
+          (messageData["isGroup"] == true) ||
+          (chatObj is Map &&
+              (chatObj["isGroup"] == true || chatObj["type"] == "group")) ||
+          (groupName != null && groupName.isNotEmpty);
+
+      final String displayTitle = isGroup ? "Nhóm : $groupName" : senderName;
+      final String displayBody = isGroup
+          ? "$senderName : $messageText"
+          : messageText;
+
+      // debugPrint('DEBUG: isGroup: $isGroup, groupName: $groupName');
+      // debugPrint(
+      //   'DEBUG: displayTitle: $displayTitle, displayBody: $displayBody',
+      // );
+
+      // Pass localized imageUrl
+      final String? senderAvatar = senderObj is Map
+          ? (senderObj["profilePicture"] ?? senderObj["avatar"])?.toString()
+          : messageData["senderAvatar"];
+
+      final String? groupAvatar =
+          chatDetails?['avatar']?.toString() ??
+          data["groupAvatar"]?.toString() ??
+          messageData["groupAvatar"]?.toString() ??
+          (data["chat"] is Map ? data["chat"]["avatar"]?.toString() : null);
+      final String? rawIconPath = isGroup
+          ? (groupAvatar ?? senderAvatar)
+          : senderAvatar;
+      final String? resolvedIconUrl = rawIconPath != null
+          ? ApiService.resolveImageUrl(rawIconPath)
+          : null;
 
       // Use a safe notification ID (32-bit int)
       final int notificationId = chatId != null
@@ -770,7 +780,11 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                     text: TextSpan(
                                                       children: [
                                                         TextSpan(
-                                                          text: senderName,
+                                                          text:
+                                                              notification['groupName'] !=
+                                                                  null
+                                                              ? "$senderName : "
+                                                              : "$senderName ",
                                                           style:
                                                               const TextStyle(
                                                                 fontWeight:
@@ -781,9 +795,6 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                                 ),
                                                                 fontSize: 13,
                                                               ),
-                                                        ),
-                                                        const TextSpan(
-                                                          text: " ",
                                                         ),
                                                         TextSpan(
                                                           text: content,
@@ -1466,6 +1477,7 @@ class _DesktopSidebar extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 32),
+          // Logo Section
           GestureDetector(
             onTap: () => onTap(0),
             behavior: HitTestBehavior.opaque,
@@ -1485,8 +1497,8 @@ class _DesktopSidebar extends StatelessWidget {
                         "W",
                         style: TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w900,
                           fontSize: 18,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
@@ -1496,7 +1508,7 @@ class _DesktopSidebar extends StatelessWidget {
                     "WORK",
                     style: TextStyle(
                       color: Color(0xFF1E293B),
-                      fontSize: 20,
+                      fontSize: 18,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.5,
                     ),
@@ -1505,60 +1517,70 @@ class _DesktopSidebar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 40),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                "MENU CHÍNH",
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.0,
-                ),
+          const SizedBox(height: 32),
+          // Scrollable Menu Section
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      "MENU CHÍNH",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _DrawerItem(
+                    label: "BẢNG TIN",
+                    icon: Icons.home_outlined,
+                    isActive: currentIndex == 0,
+                    onTap: () => onTap(0),
+                  ),
+                  _DrawerItem(
+                    label: "REELS",
+                    icon: Icons.play_circle_outline,
+                    isActive: currentIndex == 1,
+                    onTap: () => onTap(1),
+                  ),
+                  _DrawerItem(
+                    label: "TÀI LIỆU",
+                    icon: Icons.folder_open_outlined,
+                    isActive: currentIndex == 2,
+                    onTap: () => onTap(2),
+                  ),
+                  _DrawerItem(
+                    label: "NHÂN SỰ",
+                    icon: Icons.person_add_alt_1_outlined,
+                    isActive: currentIndex == 3,
+                    onTap: () => onTap(3),
+                  ),
+                  _DrawerItem(
+                    label: "NHÓM",
+                    icon: Icons.group_outlined,
+                    isActive: currentIndex == 4,
+                    onTap: () => onTap(4),
+                  ),
+                  _DrawerItem(
+                    label: "CÁ NHÂN",
+                    icon: Icons.person_outline,
+                    isActive: currentIndex == 5,
+                    onTap: () => onTap(5),
+                  ),
+                ],
               ),
             ),
           ),
+          // Footer Section
+          const Divider(height: 1, indent: 20, endIndent: 20),
           const SizedBox(height: 16),
-          _DrawerItem(
-            label: "BẢNG TIN",
-            icon: Icons.home_outlined,
-            isActive: currentIndex == 0,
-            onTap: () => onTap(0),
-          ),
-          _DrawerItem(
-            label: "REELS",
-            icon: Icons.play_circle_outline,
-            isActive: currentIndex == 1,
-            onTap: () => onTap(1),
-          ),
-          _DrawerItem(
-            label: "TÀI LIỆU",
-            icon: Icons.folder_open_outlined,
-            isActive: currentIndex == 2,
-            onTap: () => onTap(2),
-          ),
-          _DrawerItem(
-            label: "NHÂN SỰ",
-            icon: Icons.person_add_alt_1_outlined,
-            isActive: currentIndex == 3,
-            onTap: () => onTap(3),
-          ),
-          _DrawerItem(
-            label: "NHÓM",
-            icon: Icons.group_outlined,
-            isActive: currentIndex == 4,
-            onTap: () => onTap(4),
-          ),
-          _DrawerItem(
-            label: "CÁ NHÂN",
-            icon: Icons.person_outline,
-            isActive: currentIndex == 5,
-            onTap: () => onTap(5),
-          ),
-          const Spacer(),
           const _LogoutButton(),
           const SizedBox(height: 24),
         ],
@@ -1670,11 +1692,42 @@ class _ContactsSidebar extends StatefulWidget {
 
 class _ContactsSidebarState extends State<_ContactsSidebar> {
   List<dynamic> _users = [];
+  StreamSubscription? _statusSubscription;
 
   @override
   void initState() {
     super.initState();
     _fetchUsers();
+    _statusSubscription = ApiService.userStatusStream.listen((data) {
+      if (!mounted) return;
+      final userId = (data["_id"] ?? data["id"] ?? data["userId"])?.toString();
+      if (userId == null) return;
+
+      setState(() {
+        final index = _users.indexWhere((u) {
+          final uId = (u["_id"] ?? u["id"])?.toString();
+          return uId == userId;
+        });
+
+        if (index != -1) {
+          // Clone user map and update status
+          final updatedUser = Map<String, dynamic>.from(_users[index]);
+          if (data.containsKey('isOnline')) {
+            updatedUser['isOnline'] = data['isOnline'];
+          }
+          if (data.containsKey('status')) {
+            updatedUser['status'] = data['status'];
+          }
+          _users[index] = updatedUser;
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchUsers() async {

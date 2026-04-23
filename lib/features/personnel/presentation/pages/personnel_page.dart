@@ -20,6 +20,23 @@ class _PersonnelPageState extends State<PersonnelPage> {
     _fetchUsers();
   }
 
+  static Color getAvatarColor(String name) {
+    if (name.isEmpty) return const Color(0xFF3B82F6);
+    int hash = 0;
+    for (var i = 0; i < name.length; i++) {
+      hash = name.codeUnitAt(i) + ((hash << 5) - hash);
+    }
+    const colors = [
+      Color(0xFF3B82F6),
+      Color(0xFF10B981),
+      Color(0xFFF59E0B),
+      Color(0xFFEF4444),
+      Color(0xFF8B5CF6),
+      Color(0xFFEC4899),
+    ];
+    return colors[hash.abs() % colors.length];
+  }
+
   Future<void> _fetchUsers() async {
     setState(() => _isLoading = true);
     final users = await ApiService.getUsers();
@@ -186,7 +203,7 @@ class _PersonnelPageState extends State<PersonnelPage> {
                                 crossAxisCount: 4,
                                 mainAxisSpacing: 24,
                                 crossAxisSpacing: 24,
-                                childAspectRatio: 0.72,
+                                childAspectRatio: 0.52,
                               ),
                           delegate: SliverChildBuilderDelegate(
                             (context, index) => _UserCard(user: _users[index]),
@@ -313,7 +330,7 @@ class _UserCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   position,
                   style: const TextStyle(
@@ -321,13 +338,15 @@ class _UserCard extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     fontSize: 10,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 // Badge
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 10,
+                    vertical: 4,
                   ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
@@ -341,23 +360,21 @@ class _UserCard extends StatelessWidget {
                         size: 10,
                         color: Colors.grey,
                       ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          department,
-                          style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      const SizedBox(width: 4),
+                      Text(
+                        department,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 Text(
                   email,
                   style: const TextStyle(
@@ -366,11 +383,12 @@ class _UserCard extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                   maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 8),
           // Buttons
           Padding(
             padding: const EdgeInsets.all(12),
@@ -419,14 +437,16 @@ class _UserCard extends StatelessWidget {
   }
 
   Widget _buildPlaceholder(String name) {
+    final color = _PersonnelPageState.getAvatarColor(name);
     return Container(
-      color: const Color(0xFFEB5E28),
+      color: color.withOpacity(0.1),
       child: Center(
         child: Text(
           name.isNotEmpty ? name.substring(0, 1) : "?",
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: color,
             fontWeight: FontWeight.bold,
+            fontSize: 32,
           ),
         ),
       ),
@@ -630,6 +650,8 @@ class _UserListTile extends StatelessWidget {
               fontSize: 11,
               letterSpacing: 0.8,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 28),
           // Detail rows (Department & Email)
@@ -774,13 +796,14 @@ class _UserListTile extends StatelessWidget {
   }
 
   Widget _buildPlaceholder(String name) {
+    final color = _PersonnelPageState.getAvatarColor(name);
     return Container(
-      color: const Color(0xFFEB5E28), // Orange background as per mockup
+      color: color.withOpacity(0.1),
       child: Center(
         child: Text(
           name.isNotEmpty ? name.substring(0, 1) : "?",
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: color,
             fontSize: 40,
             fontWeight: FontWeight.w900,
           ),
