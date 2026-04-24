@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
 import '../widgets/profile_settings_sheet.dart';
+import '../../../../core/utils/notification_helper.dart';
+import 'package:file_picker/file_picker.dart';
 
 class ProfilePage extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -22,6 +24,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String _email = "...";
   String? _avatarUrl;
   bool _isLoading = false;
+  String _activeSoundName = "Mặc định";
 
   @override
   void initState() {
@@ -32,6 +35,14 @@ class _ProfilePageState extends State<ProfilePage> {
       _fetchProfile();
     } else {
       _fetchProfile();
+    }
+    _loadActiveSound();
+  }
+
+  Future<void> _loadActiveSound() async {
+    final sound = await NotificationHelper.getActiveSound();
+    if (mounted) {
+      setState(() => _activeSoundName = sound['name'] ?? "Mặc định");
     }
   }
 
@@ -90,6 +101,112 @@ class _ProfilePageState extends State<ProfilePage> {
     } else if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _pickNotificationSound() async {
+    final List<Map<String, String>> sounds =
+        await NotificationHelper.getAvailableSounds();
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "ÂM THANH THÔNG BÁO",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.blueGrey,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () async {
+                            FilePickerResult? result = await FilePicker.platform
+                                .pickFiles(
+                                  type: FileType.custom,
+                                  allowedExtensions: ['mp3', 'wav', 'ogg'],
+                                );
+                            if (result != null &&
+                                result.files.single.path != null) {
+                              String path = result.files.single.path!;
+                              String name = result.files.single.name;
+                              await NotificationHelper.addSound(name, path);
+                              final updatedSounds =
+                                  await NotificationHelper.getAvailableSounds();
+                              setModalState(() {
+                                sounds.clear();
+                                sounds.addAll(updatedSounds);
+                              });
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.add_circle,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: sounds.length,
+                      itemBuilder: (context, index) {
+                        final sound = sounds[index];
+                        final bool isActive = _activeSoundName == sound['name'];
+                        return ListTile(
+                          leading: Icon(
+                            isActive
+                                ? Icons.check_circle
+                                : Icons.music_note_outlined,
+                            color: isActive ? Colors.blue : Colors.blueGrey,
+                          ),
+                          title: Text(
+                            sound['name']!,
+                            style: TextStyle(
+                              fontWeight: isActive
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isActive ? Colors.blue : Colors.black87,
+                            ),
+                          ),
+                          onTap: () async {
+                            await NotificationHelper.setActiveSound(
+                              sound['name']!,
+                              sound['path']!,
+                            );
+                            await _loadActiveSound();
+                            if (context.mounted) Navigator.pop(context);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showSettings() {
@@ -301,6 +418,13 @@ class _ProfilePageState extends State<ProfilePage> {
                             icon: Icons.language_outlined,
                             label: "NGÔN NGỮ",
                             value: "Tiếng Việt",
+                          ),
+                          const SizedBox(height: 12),
+                          _SettingsItem(
+                            icon: Icons.music_note_outlined,
+                            label: "ÂM THANH THÔNG BÁO",
+                            value: _activeSoundName,
+                            onTap: _pickNotificationSound,
                           ),
                         ],
                       ),
@@ -531,6 +655,12 @@ class _ProfilePageState extends State<ProfilePage> {
                               label: "NGÔN NGỮ",
                               value: "Tiếng Việt",
                             ),
+                            _SettingsItem(
+                              icon: Icons.music_note_outlined,
+                              label: "ÂM THANH THÔNG BÁO",
+                              value: _activeSoundName,
+                              onTap: _pickNotificationSound,
+                            ),
                           ],
                         ),
                       ),
@@ -655,6 +785,71 @@ class _InfoField extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SettingsItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? value;
+  final VoidCallback onTap;
+
+  const _SettingsItem({
+    required this.icon,
+    required this.label,
+    this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF3B82F6).withOpacity(0.05),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: const Color(0xFF3B82F6)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 11,
+                      color: Colors.blueGrey,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  if (value != null)
+                    Text(
+                      value!,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Color(0xFF1E293B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 18, color: Colors.blueGrey),
+          ],
+        ),
       ),
     );
   }

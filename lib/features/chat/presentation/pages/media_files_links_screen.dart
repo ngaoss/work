@@ -103,6 +103,19 @@ class _MediaFilesLinksScreenState extends State<MediaFilesLinksScreen> {
         _linkMessages.add(msg);
       }
     }
+
+    // Sort all by newest first (Top-to-bottom)
+    int _comparator(Map<String, dynamic> a, Map<String, dynamic> b) {
+      final tA =
+          DateTime.tryParse(a["createdAt"]?.toString() ?? "") ?? DateTime(1970);
+      final tB =
+          DateTime.tryParse(b["createdAt"]?.toString() ?? "") ?? DateTime(1970);
+      return tB.compareTo(tA);
+    }
+
+    _mediaMessages.sort(_comparator);
+    _fileMessages.sort(_comparator);
+    _linkMessages.sort(_comparator);
   }
 
   bool _isVisualUrl(String url) {
@@ -251,11 +264,11 @@ class _MediaFilesLinksScreenState extends State<MediaFilesLinksScreen> {
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(4),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
+        crossAxisCount: 5, // Increased from 3 to shrink images
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 4,
       ),
       itemCount: _mediaMessages.length,
       itemBuilder: (context, index) {

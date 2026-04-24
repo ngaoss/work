@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -102,6 +103,40 @@ class NotificationHelper {
     }
   }
 
+  // Multi-sound management
+  static Future<List<Map<String, String>>> getAvailableSounds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? soundsJson = prefs.getString('notification_sounds_list');
+    if (soundsJson == null) {
+      return [
+        {'name': 'Mặc định', 'path': 'default'},
+      ];
+    }
+    final List<dynamic> decoded = json.decode(soundsJson);
+    return decoded.map((e) => Map<String, String>.from(e as Map)).toList();
+  }
+
+  static Future<void> addSound(String name, String path) async {
+    final List<Map<String, String>> sounds = await getAvailableSounds();
+    sounds.add({'name': name, 'path': path});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('notification_sounds_list', json.encode(sounds));
+  }
+
+  static Future<void> setActiveSound(String name, String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('active_notification_sound_name', name);
+    await prefs.setString('active_notification_sound_path', path);
+  }
+
+  static Future<Map<String, String>> getActiveSound() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'name': prefs.getString('active_notification_sound_name') ?? 'Mặc định',
+      'path': prefs.getString('active_notification_sound_path') ?? 'default',
+    };
+  }
+
   static Future<void> showNotification({
     int id = 0,
     String? title,
@@ -116,8 +151,20 @@ class NotificationHelper {
 
     if (Platform.isWindows) {
       try {
+        final activeSound = await getActiveSound();
+        final String? customSoundPath = activeSound['path'];
+
         await _audioPlayer.setVolume(1.0); // Set max volume
-        await _audioPlayer.play(AssetSource('notification_sound.mp3'));
+
+        if (customSoundPath != null &&
+            customSoundPath != 'default' &&
+            File(customSoundPath).existsSync()) {
+          // Play custom sound from local file
+          await _audioPlayer.play(DeviceFileSource(customSoundPath));
+        } else {
+          // Fallback to default asset sound
+          await _audioPlayer.play(AssetSource('notification_sound.mp3'));
+        }
       } catch (e) {
         debugPrint("Error playing notification sound on Windows: $e");
       }

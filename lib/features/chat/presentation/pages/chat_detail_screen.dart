@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import './chat_info_screen.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
+import 'package:flutter/gestures.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -2057,7 +2058,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(
+          child: SelectableText(
             message,
             style: TextStyle(
               fontSize: 11,
@@ -2207,15 +2208,17 @@ class _ChatBubbleState extends State<_ChatBubble> {
               children: [
                 if (replyTo != null && !isRecalled)
                   _buildReplyPreview(replyTo!, isSender, true),
-                HighlightView(
-                  message,
-                  language: _detectLanguage(message),
-                  theme: atomOneDarkTheme,
-                  padding: EdgeInsets.zero,
-                  textStyle: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    height: 1.4,
+                SelectionArea(
+                  child: HighlightView(
+                    message,
+                    language: _detectLanguage(message),
+                    theme: atomOneDarkTheme,
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
@@ -2253,18 +2256,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
               children: [
                 if (replyTo != null && !isRecalled)
                   _buildReplyPreview(replyTo!, isSender, false),
-                Text(
-                  message,
-                  style: TextStyle(
-                    color: isRecalled
-                        ? Colors.grey.shade500
-                        : (isSender ? Colors.white : Colors.black87),
-                    fontSize: 14,
-                    fontWeight: isRecalled ? FontWeight.w400 : FontWeight.w500,
-                    fontStyle: isRecalled ? FontStyle.italic : FontStyle.normal,
-                    fontFamily: 'sans-serif',
-                    height: 1.5,
-                  ),
+                _LinkifiedSelectableText(
+                  text: message,
+                  isSender: isSender,
+                  isRecalled: isRecalled,
+                  bubbleColor: bubbleColor,
                 ),
               ],
             ),
@@ -2489,6 +2485,80 @@ class _ChatBubbleState extends State<_ChatBubble> {
       }
     }
     return null;
+  }
+}
+
+class _LinkifiedSelectableText extends StatelessWidget {
+  final String text;
+  final bool isSender;
+  final bool isRecalled;
+  final Color bubbleColor;
+
+  const _LinkifiedSelectableText({
+    required this.text,
+    required this.isSender,
+    required this.isRecalled,
+    required this.bubbleColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      color: isRecalled
+          ? Colors.grey.shade500
+          : (isSender ? Colors.white : Colors.black87),
+      fontSize: 14,
+      fontWeight: isRecalled ? FontWeight.w400 : FontWeight.w500,
+      fontStyle: isRecalled ? FontStyle.italic : FontStyle.normal,
+      fontFamily: 'sans-serif',
+      height: 1.5,
+    );
+
+    if (isRecalled) {
+      return SelectableText(text, style: style);
+    }
+
+    // URL regex
+    final urlRegex = RegExp(
+      r'((https?:\/\/|www\.)[^\s\/$.?#].[^\s]*)',
+      caseSensitive: false,
+    );
+
+    final List<TextSpan> spans = [];
+    int start = 0;
+
+    for (final match in urlRegex.allMatches(text)) {
+      if (match.start > start) {
+        spans.add(TextSpan(text: text.substring(start, match.start)));
+      }
+
+      final url = match.group(0)!;
+      spans.add(
+        TextSpan(
+          text: url,
+          style: style.copyWith(
+            color: isSender ? Colors.white : Colors.blue,
+            decoration: TextDecoration.underline,
+            decorationColor: isSender ? Colors.white70 : Colors.blue,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () async {
+              final uriStr = url.startsWith('http') ? url : 'https://$url';
+              final uri = Uri.tryParse(uriStr);
+              if (uri != null) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+        ),
+      );
+      start = match.end;
+    }
+
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start)));
+    }
+
+    return SelectableText.rich(TextSpan(children: spans), style: style);
   }
 }
 
