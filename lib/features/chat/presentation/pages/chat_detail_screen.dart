@@ -13,6 +13,8 @@ import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
 import 'package:url_launcher/url_launcher.dart';
 import './chat_info_screen.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:flutter_highlight/themes/atom-one-dark.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -101,6 +103,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
     _activeConversationId = widget.conversationId;
     if (_activeConversationId != null) {
+      ApiService.activeChatId = _activeConversationId;
       _loadMessages();
       ApiService.markChatAsRead(_activeConversationId!);
     }
@@ -664,6 +667,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   void dispose() {
+    if (_activeConversationId != null &&
+        ApiService.activeChatId == _activeConversationId) {
+      ApiService.activeChatId = null;
+    }
     _chatSubscription?.cancel();
     _pollingTimer?.cancel();
     _typingDebounce?.cancel();
@@ -1945,6 +1952,99 @@ class _ChatBubbleState extends State<_ChatBubble> {
     );
   }
 
+  bool _isCode(String text) {
+    return RegExp(
+      r'const |let |var |function |def |import |public |class |#include|print\(|=>|\{.*\}|\[.*\]|;\s*$',
+      multiLine: true,
+    ).hasMatch(text);
+  }
+
+  String _detectLanguage(String text) {
+    if (text.contains('class ') || text.contains('void main()')) return 'dart';
+    if (text.contains('def ') || text.contains('import ')) {
+      if (text.contains('import React') || text.contains('from "react"'))
+        return 'javascript';
+      return 'python';
+    }
+    if (text.contains('function ') ||
+        text.contains('const ') ||
+        text.contains('let ') ||
+        text.contains('=>')) {
+      return 'javascript';
+    }
+    if (text.contains('#include')) return 'cpp';
+    return 'javascript';
+  }
+
+  bool _isVisualUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.mp4') ||
+        lower.endsWith('.mov');
+  }
+
+  bool _isNetworkUrl(String path) {
+    return path.startsWith('http://') || path.startsWith('https://');
+  }
+
+  Widget _buildReplyPreview(
+    Map<String, dynamic> replyTo,
+    bool isSender,
+    bool isCodeBubble,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isCodeBubble
+            ? Colors.white.withOpacity(0.05)
+            : (isSender ? Colors.white.withOpacity(0.2) : Colors.grey.shade100),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(
+          left: BorderSide(
+            color: isCodeBubble
+                ? Colors.blue.shade400
+                : (isSender ? Colors.white.withOpacity(0.7) : bubbleColor),
+            width: 3,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            replyTo["senderName"] ?? "",
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: isCodeBubble
+                  ? Colors.blue.shade300
+                  : (isSender ? Colors.white.withOpacity(0.9) : bubbleColor),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            replyTo["text"] ?? "",
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: isCodeBubble
+                  ? Colors.grey.shade400
+                  : (isSender
+                        ? Colors.white.withOpacity(0.75)
+                        : Colors.grey.shade600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width > 600;
@@ -2091,6 +2191,36 @@ class _ChatBubbleState extends State<_ChatBubble> {
               ),
             ),
           )
+        else if (_isCode(message))
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.72,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E), // Dark background for code
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (replyTo != null && !isRecalled)
+                  _buildReplyPreview(replyTo!, isSender, true),
+                HighlightView(
+                  message,
+                  language: _detectLanguage(message),
+                  theme: atomOneDarkTheme,
+                  padding: EdgeInsets.zero,
+                  textStyle: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          )
         else
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -2122,54 +2252,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (replyTo != null && !isRecalled)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSender
-                          ? Colors.white.withOpacity(0.2)
-                          : Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border(
-                        left: BorderSide(
-                          color: isSender
-                              ? Colors.white.withOpacity(0.7)
-                              : bubbleColor,
-                          width: 3,
-                        ),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          replyTo!["senderName"] ?? "",
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: isSender
-                                ? Colors.white.withOpacity(0.9)
-                                : bubbleColor,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          replyTo!["text"] ?? "",
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isSender
-                                ? Colors.white.withOpacity(0.75)
-                                : Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildReplyPreview(replyTo!, isSender, false),
                 Text(
                   message,
                   style: TextStyle(
@@ -2393,10 +2476,6 @@ class _ChatBubbleState extends State<_ChatBubble> {
       default:
         return Icons.insert_drive_file;
     }
-  }
-
-  bool _isNetworkUrl(String url) {
-    return url.startsWith('http://') || url.startsWith('https://');
   }
 
   ImageProvider? _getAvatarImageProvider(String? avatarPath) {

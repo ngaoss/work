@@ -72,6 +72,24 @@ class _MessagingPageState extends State<MessagingPage> {
     setState(() {
       final index = _chats.indexWhere((c) => c["id"]?.toString() == chatId);
       if (index != -1) {
+        // Prepend sender name
+        final dynamic senderObj = data["sender"] ?? data["message"]?["sender"];
+        final senderId =
+            (senderObj is Map
+                ? (senderObj["_id"] ?? senderObj["id"])
+                : senderObj) ??
+            data["senderId"] ??
+            data["message"]?["senderId"];
+
+        final myId =
+            (AuthService().userProfile.value?["_id"] ??
+                    AuthService().userProfile.value?["id"])
+                ?.toString();
+
+        final String? senderName = senderObj is Map
+            ? (senderObj["fullName"] ?? senderObj["name"])?.toString()
+            : null;
+
         // Update existing chat with smart preview
         final String text =
             data["text"]?.toString() ??
@@ -94,22 +112,16 @@ class _MessagingPageState extends State<MessagingPage> {
         } else {
           preview = '📎 Đã gửi 1 tệp đính kèm';
         }
+
+        if (senderId?.toString() == myId) {
+          preview = "Bạn: $preview";
+        } else if (senderName != null && _chats[index]["isGroup"] == true) {
+          preview = "$senderName: $preview";
+        }
+
         _chats[index]["lastMsg"] = preview;
         _chats[index]["time"] = "Vừa xong";
 
-        // Mark as unread if not sent by us
-        final dynamic senderObj = data["sender"] ?? data["message"]?["sender"];
-        final senderId =
-            (senderObj is Map
-                ? (senderObj["_id"] ?? senderObj["id"])
-                : senderObj) ??
-            data["senderId"] ??
-            data["message"]?["senderId"];
-
-        final myId =
-            (AuthService().userProfile.value?["_id"] ??
-                    AuthService().userProfile.value?["id"])
-                ?.toString();
         if (senderId?.toString() != myId) {
           _chats[index]["hasUnread"] = true;
           _chats[index]["unreadCount"] =
@@ -206,7 +218,10 @@ class _MessagingPageState extends State<MessagingPage> {
             "id": chat["_id"]?.toString(),
             "name": name,
             "status": statusText,
-            "lastMsg": _resolveLastMsgPreview(chat["lastMessage"]),
+            "lastMsg": _resolveLastMsgPreview(
+              chat["lastMessage"],
+              isGroup: chat["isGroup"] == true,
+            ),
             "time": _formatTime(chat["lastMessage"]?["createdAt"]),
             "isOnline": online,
             "initials": _getInitials(chat, participants),
@@ -233,27 +248,46 @@ class _MessagingPageState extends State<MessagingPage> {
   }
 
   /// Returns a human-friendly preview string for the last message in a chat.
-  String _resolveLastMsgPreview(dynamic lastMessage) {
+  String _resolveLastMsgPreview(dynamic lastMessage, {bool isGroup = false}) {
     if (lastMessage == null) return 'Bắt đầu trò chuyện...';
 
+    String previewText = "";
     final String text = lastMessage['text']?.toString() ?? '';
-    if (text.isNotEmpty) return text;
-
-    // No text – check for media
     final media = lastMessage['media'];
-    if (media is List && media.isNotEmpty) {
-      final type = (media[0]['type'] ?? 'image').toString().toLowerCase();
-      if (type == 'video') return ' Đã gửi 1 video';
-      return 'Đã gửi 1 ảnh';
-    }
-
-    // No text & no media - check attachments
     final attachments = lastMessage['attachments'];
-    if (attachments is List && attachments.isNotEmpty) {
-      return '📎 Đã gửi 1 tệp đính kèm';
+
+    if (text.isNotEmpty) {
+      previewText = text;
+    } else if (media is List && media.isNotEmpty) {
+      final type = (media[0]['type'] ?? 'image').toString().toLowerCase();
+      previewText = type == 'video' ? '📹 Đã gửi 1 video' : '📸 Đã gửi 1 ảnh';
+    } else if (attachments is List && attachments.isNotEmpty) {
+      previewText = '📎 Đã gửi 1 tệp đính kèm';
+    } else {
+      return 'Bắt đầu trò chuyện...';
     }
 
-    return 'Bắt đầu trò chuyện...';
+    // Prepend sender name or "Bạn: "
+    final myId =
+        (AuthService().userProfile.value?["_id"] ??
+                AuthService().userProfile.value?["id"])
+            ?.toString();
+    final sender = lastMessage['sender'];
+    final senderId = (sender is Map ? (sender["_id"] ?? sender["id"]) : sender)
+        ?.toString();
+
+    if (senderId == myId && myId != null) {
+      return "Bạn: $previewText";
+    }
+
+    if (isGroup && sender is Map) {
+      final senderName = (sender["fullName"] ?? sender["name"])?.toString();
+      if (senderName != null) {
+        return "$senderName: $previewText";
+      }
+    }
+
+    return previewText;
   }
 
   Map<String, dynamic>? _findOtherParticipant(List<dynamic> participants) {

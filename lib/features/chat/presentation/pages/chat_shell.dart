@@ -100,43 +100,51 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     ApiService.newChatStream.listen((data) async {
       // debugPrint('DEBUG: Notification Data: $data');
       final messageData = data["message"] is Map ? data["message"] : data;
-      // debugPrint('DEBUG: Notification MessageData: $messageData');
 
-      // Determine sender
-      final senderObj = messageData["sender"] ?? messageData["senderId"];
+      // Robustly extract sender ID from both message object and top-level data
+      final dynamic senderObj =
+          messageData["sender"] ??
+          messageData["senderId"] ??
+          data["senderId"] ??
+          data["sender"];
+
       final String senderId =
           (senderObj is Map ? (senderObj["_id"] ?? senderObj["id"]) : senderObj)
               ?.toString() ??
           "";
-      final myId =
+
+      var myId =
           (AuthService().userProfile.value?["_id"] ??
                   AuthService().userProfile.value?["id"])
               ?.toString();
 
-      // Don't notify for our own messages
-      if (senderId == myId && senderId.isNotEmpty) return;
+      // If profile is missing, try to fetch it once (defensive)
+      if (myId == null) {
+        ApiService.getMe();
+        return; // Skip this one, profile is being loaded
+      }
 
-      // Don't notify for typing indicators or internal metadata updates
+      // 1. Don't notify for our own messages (Strict check)
+      if (senderId.isNotEmpty && senderId == myId) {
+        return;
+      }
+
+      // 2. Don't notify for typing indicators or internal metadata updates
       if (data['type'] == 'typing' ||
           data['isNewConversation'] == true ||
           data['isUpdateConversation'] == true) {
         return;
       }
 
-      // Extract details for the notification
-      final String senderName =
-          (senderObj is Map
-              ? (senderObj["fullName"] ?? senderObj["name"])
-              : null) ??
-          messageData["senderName"] ??
-          "Tin nhắn mới";
+      // 3. Only notify for actual new message events
+      final socketEvent = data['_socketEvent'];
+      if (socketEvent != null &&
+          socketEvent != 'new_message' &&
+          socketEvent != 'newMessage') {
+        return;
+      }
 
-      final String messageText =
-          messageData["text"]?.toString() ??
-          messageData["content"]?.toString() ??
-          "Đã gửi một tập tin";
-
-      // Find the conversation ID
+      // 4. Find the conversation ID before showing notification
       final dynamic rawChatId =
           data["chatId"] ??
           data["conversationId"] ??
@@ -148,10 +156,53 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
               : messageData["chat"]);
 
       final String? chatId = rawChatId?.toString();
+
+      // 5. IMPORTANT: Don't notify if this is the chat user is currently looking at
+      // debugPrint('Active chat check: $chatId vs ${ApiService.activeChatId}');
+      if (chatId != null && chatId == ApiService.activeChatId) {
+        return;
+      }
+
       Map<String, dynamic>? chatDetails;
       if (chatId != null) {
         chatDetails = await ApiService.getChatDetails(chatId);
       }
+
+      // Ensure it's a real message or has media attached
+      final bool hasMedia =
+          messageData["image"] != null ||
+          messageData["video"] != null ||
+          messageData["file"] != null ||
+          (messageData["images"] != null && messageData["images"].isNotEmpty) ||
+          messageData["audio"] != null ||
+          data["image"] != null ||
+          data["file"] != null;
+
+      final bool hasText =
+          messageData["text"] != null ||
+          messageData["content"] != null ||
+          data["text"] != null ||
+          data["content"] != null;
+
+      if (!hasText && !hasMedia) {
+        return;
+      }
+
+      // Extract details for the notification with fallbacks
+      final String senderName =
+          (senderObj is Map
+              ? (senderObj["fullName"] ?? senderObj["name"])
+              : null) ??
+          messageData["senderName"] ??
+          data["senderName"] ??
+          "Tin nhắn mới";
+
+      final String messageText =
+          messageData["text"]?.toString() ??
+          messageData["content"]?.toString() ??
+          data["text"]?.toString() ??
+          data["content"]?.toString() ??
+          "Đã gửi một tập tin";
 
       // Detect if it's a group message
       final chatObj =
@@ -175,21 +226,17 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           ? "$senderName : $messageText"
           : messageText;
 
-      // debugPrint('DEBUG: isGroup: $isGroup, groupName: $groupName');
-      // debugPrint(
-      //   'DEBUG: displayTitle: $displayTitle, displayBody: $displayBody',
-      // );
-
-      // Pass localized imageUrl
+      // Icons
       final String? senderAvatar = senderObj is Map
           ? (senderObj["profilePicture"] ?? senderObj["avatar"])?.toString()
-          : messageData["senderAvatar"];
+          : (messageData["senderAvatar"] ?? data["senderAvatar"]);
 
       final String? groupAvatar =
           chatDetails?['avatar']?.toString() ??
           data["groupAvatar"]?.toString() ??
           messageData["groupAvatar"]?.toString() ??
           (data["chat"] is Map ? data["chat"]["avatar"]?.toString() : null);
+
       final String? rawIconPath = isGroup
           ? (groupAvatar ?? senderAvatar)
           : senderAvatar;
@@ -197,7 +244,6 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           ? ApiService.resolveImageUrl(rawIconPath)
           : null;
 
-      // Use a safe notification ID (32-bit int)
       final int notificationId = chatId != null
           ? (chatId.hashCode.abs() % 1000000)
           : (DateTime.now().millisecondsSinceEpoch % 1000000);

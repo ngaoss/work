@@ -1,0 +1,9 @@
+app_id: "D89B6A1A-98C0-4966-9E2F-A0C3C91E6BF6"
+display_name: DeepCode Work
+publisher_name: DeepCode
+publisher_url: https://deepcode.com/
+setup_icon_file: assets/work_icon.ico
+launch_at_startup: true
+locales:
+  - vi
+  - en

@@ -35,7 +35,10 @@ class ApiService {
 
   static final ValueNotifier<int> unreadChatCount = ValueNotifier<int>(0);
 
+  static String? activeChatId = null;
+
   static bool _listenerAdded = false;
+
   static void initializeSocket() {
     // Add listener to re-init if token changes (only once)
     if (!_listenerAdded) {
@@ -97,14 +100,18 @@ class ApiService {
           !event.toString().contains('newConversation') &&
           !event.toString().contains('new_conversation')) {
         // Broadcast any event that looks like a message or update
-        _chatStreamController.add(Map<String, dynamic>.from(data));
+        final mapData = Map<String, dynamic>.from(data);
+        mapData['_socketEvent'] = event.toString();
+        _chatStreamController.add(mapData);
       }
     });
 
     _socket!.on('new_message', (data) {
       if (data is Map) {
         try {
-          _chatStreamController.add(Map<String, dynamic>.from(data));
+          final mapData = Map<String, dynamic>.from(data);
+          mapData['_socketEvent'] = 'new_message';
+          _chatStreamController.add(mapData);
         } catch (e) {
           debugPrint('Socket: Error broadcasting new_message: $e');
         }
@@ -114,7 +121,9 @@ class ApiService {
     _socket!.on('newMessage', (data) {
       if (data is Map) {
         try {
-          _chatStreamController.add(Map<String, dynamic>.from(data));
+          final mapData = Map<String, dynamic>.from(data);
+          mapData['_socketEvent'] = 'newMessage';
+          _chatStreamController.add(mapData);
         } catch (e) {
           debugPrint('Socket: Error broadcasting newMessage: $e');
         }

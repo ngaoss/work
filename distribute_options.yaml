@@ -1,0 +1,14 @@
+output: dist/
+releases:
+  - name: release
+    jobs:
+      - name: windows-exe
+        package:
+          platform: windows
+          target: exe
+        builders:
+          innosetup:
+            display_name: DeepCode Work
+            publisher_name: DeepCode
+            app_id: "D89B6A1A-98C0-4966-9E2F-A0C3C91E6BF6"
+            setup_icon_file: assets/app_icon.ico
