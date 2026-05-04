@@ -1840,12 +1840,24 @@ class _ChatBubbleState extends State<_ChatBubble> {
   }
 
   Widget _buildReadBy() {
+    final myProfile = AuthService().userProfile.value;
+    final String? myId = (myProfile?['_id'] ?? myProfile?['id'])?.toString();
+
     final List<dynamic> readers = (widget.readBy ?? []).where((u) {
-      final id = (u is Map ? (u["_id"] ?? u["id"]) : u)?.toString();
-      return id !=
-          (AuthService().userProfile.value?['_id'] ??
-                  AuthService().userProfile.value?['id'])
-              ?.toString();
+      if (u == null) return false;
+      String? readerId;
+      if (u is Map) {
+        // Handle both direct ID and nested user object
+        readerId = (u["_id"] ?? u["id"] ?? u["userId"])?.toString();
+        if (readerId == null && u["user"] != null && u["user"] is Map) {
+          readerId = (u["user"]["_id"] ?? u["user"]["id"])?.toString();
+        }
+      } else {
+        readerId = u.toString();
+      }
+
+      if (readerId == null || myId == null) return true;
+      return readerId != myId;
     }).toList();
 
     if (readers.isEmpty) return const SizedBox.shrink();
