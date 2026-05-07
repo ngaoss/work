@@ -11,6 +11,9 @@ Compression=lzma
 SolidCompression=yes
 SetupIconFile=assets\app_icon.ico
 DisableProgramGroupPage=yes
+AppMutex=DeepCodeWorkMutex
+CloseApplications=yes
+RestartApplications=yes
 
 [Files]
 Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
