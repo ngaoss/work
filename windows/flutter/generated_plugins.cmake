@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
   file_selector_windows
+  just_audio_windows
   pdfx
   permission_handler_windows
   screen_retriever_windows

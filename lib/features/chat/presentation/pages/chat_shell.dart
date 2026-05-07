@@ -1647,11 +1647,8 @@ class _DesktopHeaderState extends State<_DesktopHeader>
         children: [
           Expanded(
             child: Row(
-              mainAxisAlignment: _hasUpdate
-                  ? MainAxisAlignment.start
-                  : MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (_hasUpdate) const SizedBox(width: 40),
                 Flexible(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 500),
