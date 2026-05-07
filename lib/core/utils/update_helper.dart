@@ -27,6 +27,34 @@ class UpdateHelper {
     return null;
   }
 
+  static Future<bool> isUpdateAvailable() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    final currentVersion = packageInfo.version;
+    final data = await _fetchUpdateData();
+    if (data == null) return false;
+    final latestVersion = data['version']?.toString();
+    if (latestVersion == null) return false;
+
+    // Simple semantic version comparison logic (can be improved)
+    try {
+      final cleanCurrent = currentVersion.split('+')[0];
+      final cleanLatest = latestVersion.split('+')[0];
+
+      final currentParts = cleanCurrent.split('.').map(int.parse).toList();
+      final latestParts = cleanLatest.split('.').map(int.parse).toList();
+
+      for (int i = 0; i < 3; i++) {
+        final c = i < currentParts.length ? currentParts[i] : 0;
+        final l = i < latestParts.length ? latestParts[i] : 0;
+        if (l > c) return true;
+        if (l < c) return false;
+      }
+    } catch (e) {
+      return latestVersion != currentVersion;
+    }
+    return false;
+  }
+
   static void checkUpdate(BuildContext context) async {
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -11,6 +11,7 @@ import 'messaging_page.dart';
 import '../../../../core/security.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/utils/notification_helper.dart';
+import '../../../../core/utils/update_helper.dart';
 
 class ChatShell extends StatefulWidget {
   const ChatShell({super.key});
@@ -1590,7 +1591,7 @@ class _DesktopSidebar extends StatelessWidget {
   }
 }
 
-class _DesktopHeader extends StatelessWidget {
+class _DesktopHeader extends StatefulWidget {
   final VoidCallback onChatTap;
   final bool currentChatActive;
   final Function(String) onSearch;
@@ -1600,6 +1601,38 @@ class _DesktopHeader extends StatelessWidget {
     required this.currentChatActive,
     required this.onSearch,
   });
+
+  @override
+  State<_DesktopHeader> createState() => _DesktopHeaderState();
+}
+
+class _DesktopHeaderState extends State<_DesktopHeader>
+    with SingleTickerProviderStateMixin {
+  bool _hasUpdate = false;
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _checkForUpdate();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkForUpdate() async {
+    final hasUpdate = await UpdateHelper.isUpdateAvailable();
+    if (mounted) {
+      setState(() => _hasUpdate = hasUpdate);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1613,33 +1646,75 @@ class _DesktopHeader extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 500),
-                height: 40,
-                child: TextField(
-                  onSubmitted: onSearch,
-                  decoration: InputDecoration(
-                    hintText: "Tìm kiếm đồng nghiệp...",
-                    hintStyle: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 13,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      color: Colors.grey.shade400,
-                      size: 20,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF1F5F9),
-                    contentPadding: EdgeInsets.zero,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide.none,
+            child: Row(
+              mainAxisAlignment: _hasUpdate
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.center,
+              children: [
+                if (_hasUpdate) const SizedBox(width: 40),
+                Flexible(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 500),
+                    height: 40,
+                    child: TextField(
+                      onSubmitted: widget.onSearch,
+                      decoration: InputDecoration(
+                        hintText: "Tìm kiếm đồng nghiệp...",
+                        hintStyle: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 13,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: Colors.grey.shade400,
+                          size: 20,
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFFF1F5F9),
+                        contentPadding: EdgeInsets.zero,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+                if (_hasUpdate) ...[
+                  const SizedBox(width: 16),
+                  ScaleTransition(
+                    scale: Tween<double>(begin: 0.9, end: 1.1).animate(
+                      CurvedAnimation(
+                        parent: _pulseController,
+                        curve: Curves.easeInOut,
+                      ),
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: () => UpdateHelper.checkUpdate(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3B82F6),
+                        foregroundColor: Colors.white,
+                        elevation: 4,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      icon: const Icon(Icons.rocket_launch, size: 16),
+                      label: const Text(
+                        "CẬP NHẬT NGAY",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           Row(
@@ -1652,8 +1727,8 @@ class _DesktopHeader extends StatelessWidget {
                     badge: count > 0
                         ? (count > 99 ? "99+" : count.toString())
                         : null,
-                    onTap: onChatTap,
-                    isActive: currentChatActive,
+                    onTap: widget.onChatTap,
+                    isActive: widget.currentChatActive,
                   );
                 },
               ),

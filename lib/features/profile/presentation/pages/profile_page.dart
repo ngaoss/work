@@ -4,6 +4,7 @@ import '../../../../core/security.dart';
 import '../widgets/profile_settings_sheet.dart';
 import '../../../../core/utils/notification_helper.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../core/utils/update_helper.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -26,6 +27,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _avatarUrl;
   bool _isLoading = false;
   String _activeSoundName = "Mặc định";
+  String _appVersion = "1.0.0";
 
   @override
   void initState() {
@@ -38,6 +40,14 @@ class _ProfilePageState extends State<ProfilePage> {
       _fetchProfile();
     }
     _loadActiveSound();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _appVersion = info.version);
+    }
   }
 
   Future<void> _loadActiveSound() async {
@@ -427,11 +437,20 @@ class _ProfilePageState extends State<ProfilePage> {
                             value: _activeSoundName,
                             onTap: _pickNotificationSound,
                           ),
-                          _SettingsItem(
-                            icon: Icons.system_update_outlined,
-                            label: "CẬP NHẬT ỨNG DỤNG",
-                            value: "Kiểm tra phiên bản mới",
-                            onTap: () => UpdateHelper.checkUpdate(context),
+                          const SizedBox(height: 32),
+                          Center(
+                            child: GestureDetector(
+                              onDoubleTap: () =>
+                                  UpdateHelper.checkUpdate(context),
+                              child: Text(
+                                "Phiên bản : $_appVersion",
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -668,13 +687,21 @@ class _ProfilePageState extends State<ProfilePage> {
                               value: _activeSoundName,
                               onTap: _pickNotificationSound,
                             ),
-                            _SettingsItem(
-                              icon: Icons.system_update_outlined,
-                              label: "CẬP NHẬT ỨNG DỤNG",
-                              value: "Kiểm tra phiên bản mới",
-                              onTap: () => UpdateHelper.checkUpdate(context),
-                            ),
                           ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Center(
+                        child: GestureDetector(
+                          onDoubleTap: () => UpdateHelper.checkUpdate(context),
+                          child: Text(
+                            "Version : $_appVersion",
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 100),
