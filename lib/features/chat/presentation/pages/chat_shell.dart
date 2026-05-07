@@ -1690,7 +1690,7 @@ class _DesktopHeaderState extends State<_DesktopHeader>
                       ),
                     ),
                     child: ElevatedButton.icon(
-                      onPressed: () => UpdateHelper.checkUpdate(context),
+                      onPressed: () => UpdateHelper.openDownloadLink(context),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF3B82F6),
                         foregroundColor: Colors.white,

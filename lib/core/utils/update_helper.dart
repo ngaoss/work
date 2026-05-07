@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 
 class UpdateHelper {
   static const String versionUrl =
@@ -53,6 +54,23 @@ class UpdateHelper {
       return latestVersion != currentVersion;
     }
     return false;
+  }
+
+  static Future<void> openDownloadLink(BuildContext context) async {
+    final data = await _fetchUpdateData();
+    final url = data?['downloadUrl']?.toString();
+    if (url != null && url.isNotEmpty) {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Không thể mở liên kết tải về')),
+          );
+        }
+      }
+    }
   }
 
   static void checkUpdate(BuildContext context) async {
