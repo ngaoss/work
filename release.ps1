@@ -55,3 +55,4 @@ git commit -m "Release version $NewVersion"
 git push
 
 Write-Host "SUCCESS: Version $NewVersion release completed." -ForegroundColor Green
+
