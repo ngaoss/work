@@ -7,7 +7,7 @@ import 'dart:convert';
 
 class UpdateHelper {
   static const String versionUrl =
-      "https://work.deepcode.vn/updates/version.json";
+      "https://raw.githubusercontent.com/ngaoss/work/main/version.json";
 
   static void checkUpdate(BuildContext context) async {
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
@@ -49,7 +49,9 @@ class UpdateHelper {
                   getLatestVersion: () async {
                     try {
                       final response = await http.get(Uri.parse(versionUrl));
-                      if (response.statusCode == 200) {
+                      if (response.statusCode == 200 &&
+                          (response.headers['content-type']?.contains('json') ??
+                              false)) {
                         final data = json.decode(response.body);
                         return data['version'];
                       }
@@ -61,7 +63,9 @@ class UpdateHelper {
                   getBinaryUrl: (latestVersion) async {
                     try {
                       final response = await http.get(Uri.parse(versionUrl));
-                      if (response.statusCode == 200) {
+                      if (response.statusCode == 200 &&
+                          (response.headers['content-type']?.contains('json') ??
+                              false)) {
                         final data = json.decode(response.body);
                         return data['downloadUrl'];
                       }

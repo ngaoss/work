@@ -1,9 +1,11 @@
+#define MyAppVersion "1.0.1"
+
 [Setup]
 AppName=DeepCode Work
-AppVersion=1.0.0
+AppVersion={#MyAppVersion}
 DefaultDirName={autopf}\DeepCodeWork
 DefaultGroupName=DeepCode
-OutputDir=dist
+OutputDir=dist\{#MyAppVersion}
 OutputBaseFilename=DeepCodeWork_Setup
 Compression=lzma
 SolidCompression=yes
