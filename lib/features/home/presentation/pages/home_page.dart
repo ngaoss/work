@@ -90,14 +90,13 @@ class WorkHomePageState extends State<WorkHomePage> {
     final int targetPage = refresh ? 1 : _currentPage + 1;
     final result = await ApiService.getPosts(page: targetPage, limit: 10);
 
-    debugPrint('DEBUG: _fetchPosts result - keys: ${result.keys}');
     final List<dynamic> newPosts = result['posts'] ?? [];
     int total = result['totalPages'] ?? 1;
 
     // Fallback: If we got a full page, allow at least one more page
     if (total <= targetPage && newPosts.length >= 10) {
       total = targetPage + 1;
-      debugPrint('DEBUG: Full page received, bumping totalPages to $total');
+      // debugPrint('DEBUG: Full page received, bumping totalPages to $total');
     }
 
     final currentUserId =

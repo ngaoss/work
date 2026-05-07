@@ -9,6 +9,24 @@ class UpdateHelper {
   static const String versionUrl =
       "https://raw.githubusercontent.com/ngaoss/work/main/version.json";
 
+  // Cache response to avoid multiple requests
+  static Map<String, dynamic>? _cachedUpdateData;
+
+  static Future<Map<String, dynamic>?> _fetchUpdateData() async {
+    if (_cachedUpdateData != null) return _cachedUpdateData;
+    try {
+      final response = await http.get(Uri.parse(versionUrl));
+      if (response.statusCode == 200) {
+        if (response.body.contains("<!DOCTYPE html>")) return null;
+        _cachedUpdateData = json.decode(response.body);
+        return _cachedUpdateData;
+      }
+    } catch (e) {
+      debugPrint("UpdateHelper error: $e");
+    }
+    return null;
+  }
+
   static void checkUpdate(BuildContext context) async {
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -19,6 +37,7 @@ class UpdateHelper {
       return;
     }
 
+    _cachedUpdateData = null; // Reset cache on manual check
     final packageInfo = await PackageInfo.fromPlatform();
     final currentVersion = packageInfo.version;
 
@@ -29,54 +48,39 @@ class UpdateHelper {
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
-          width: 450,
-          height: 350,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text(
-                  "Kiểm tra cập nhật",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          width: 480,
+          height: 380,
+          padding: const EdgeInsets.all(24),
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              children: [
+                const Text(
+                  "KIỂM TRA CẬP NHẬT",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    color: Colors.blueGrey,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: UpdatWidget(
-                  currentVersion: currentVersion,
-                  appName: 'DeepCode Work',
-                  getLatestVersion: () async {
-                    try {
-                      final response = await http.get(Uri.parse(versionUrl));
-                      if (response.statusCode == 200 &&
-                          (response.headers['content-type']?.contains('json') ??
-                              false)) {
-                        final data = json.decode(response.body);
-                        return data['version'];
-                      }
-                    } catch (e) {
-                      debugPrint("Error fetching version: $e");
-                    }
-                    return currentVersion;
-                  },
-                  getBinaryUrl: (latestVersion) async {
-                    try {
-                      final response = await http.get(Uri.parse(versionUrl));
-                      if (response.statusCode == 200 &&
-                          (response.headers['content-type']?.contains('json') ??
-                              false)) {
-                        final data = json.decode(response.body);
-                        return data['downloadUrl'];
-                      }
-                    } catch (e) {
-                      debugPrint("Error fetching binary URL: $e");
-                    }
-                    return '';
-                  },
+                const SizedBox(height: 20),
+                Expanded(
+                  child: UpdatWidget(
+                    currentVersion: currentVersion,
+                    appName: 'DeepCode Work',
+                    getLatestVersion: () async {
+                      final data = await _fetchUpdateData();
+                      return data?['version']?.toString() ?? currentVersion;
+                    },
+                    getBinaryUrl: (latestVersion) async {
+                      final data = await _fetchUpdateData();
+                      return data?['downloadUrl']?.toString() ?? '';
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
