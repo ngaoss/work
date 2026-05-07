@@ -58,10 +58,14 @@ class WorkHomePageState extends State<WorkHomePage> {
     _scrollController.addListener(() {
       final pos = _scrollController.position.pixels;
       final max = _scrollController.position.maxScrollExtent;
+      // debugPrint(
+      //   'DEBUG: Scroll - pos: ${pos.toStringAsFixed(1)}, max: ${max.toStringAsFixed(1)}, moreLoading: $_isMoreLoading, postsLoading: $_isPostsLoading, page: $_currentPage/$_totalPages',
+      // );
       if (pos >= max - 500 &&
           !_isMoreLoading &&
           !_isPostsLoading &&
           _currentPage < _totalPages) {
+        // debugPrint('DEBUG: Triggering next page load...');
         _fetchPosts(refresh: false);
       }
     });
@@ -83,13 +87,18 @@ class WorkHomePageState extends State<WorkHomePage> {
       setState(() => _isMoreLoading = true);
     }
 
-    final result = await ApiService.getPosts(
-      page: refresh ? 1 : _currentPage + 1,
-      limit: 10,
-    );
+    final int targetPage = refresh ? 1 : _currentPage + 1;
+    final result = await ApiService.getPosts(page: targetPage, limit: 10);
 
+    debugPrint('DEBUG: _fetchPosts result - keys: ${result.keys}');
     final List<dynamic> newPosts = result['posts'] ?? [];
-    final int total = result['totalPages'] ?? 1;
+    int total = result['totalPages'] ?? 1;
+
+    // Fallback: If we got a full page, allow at least one more page
+    if (total <= targetPage && newPosts.length >= 10) {
+      total = targetPage + 1;
+      debugPrint('DEBUG: Full page received, bumping totalPages to $total');
+    }
 
     final currentUserId =
         (AuthService().userProfile.value?['_id'] ??

@@ -4,6 +4,7 @@ import '../../../../core/security.dart';
 import '../widgets/profile_settings_sheet.dart';
 import '../../../../core/utils/notification_helper.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../../core/utils/update_helper.dart';
 
 class ProfilePage extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -426,6 +427,12 @@ class _ProfilePageState extends State<ProfilePage> {
                             value: _activeSoundName,
                             onTap: _pickNotificationSound,
                           ),
+                          _SettingsItem(
+                            icon: Icons.system_update_outlined,
+                            label: "CẬP NHẬT ỨNG DỤNG",
+                            value: "Kiểm tra phiên bản mới",
+                            onTap: () => UpdateHelper.checkUpdate(context),
+                          ),
                         ],
                       ),
                     ),
@@ -660,6 +667,12 @@ class _ProfilePageState extends State<ProfilePage> {
                               label: "ÂM THANH THÔNG BÁO",
                               value: _activeSoundName,
                               onTap: _pickNotificationSound,
+                            ),
+                            _SettingsItem(
+                              icon: Icons.system_update_outlined,
+                              label: "CẬP NHẬT ỨNG DỤNG",
+                              value: "Kiểm tra phiên bản mới",
+                              onTap: () => UpdateHelper.checkUpdate(context),
                             ),
                           ],
                         ),

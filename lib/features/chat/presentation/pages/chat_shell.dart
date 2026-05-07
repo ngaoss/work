@@ -1,7 +1,5 @@
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../../../home/presentation/pages/home_page.dart';
 import '../../../personnel/presentation/pages/personnel_page.dart';
@@ -13,13 +11,6 @@ import 'messaging_page.dart';
 import '../../../../core/security.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/utils/notification_helper.dart';
-
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // If you're going to use other Firebase services in the background, such as Firestore,
-  // make sure you call `Firebase.initializeApp()` before using other Firebase services.
-  debugPrint("Handling a background message: ${message.messageId}");
-}
 
 class ChatShell extends StatefulWidget {
   const ChatShell({super.key});
@@ -57,43 +48,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     await NotificationHelper.initialize();
     await NotificationHelper.requestPermissions();
 
-    // FCM Configuration - Skip or handle gracefully on Desktop
-    try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        FirebaseMessaging messaging = FirebaseMessaging.instance;
-
-        // Request permission for iOS/Android 13+
-        await messaging.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
-
-        // Get FCM Token
-        String? token = await messaging.getToken();
-        debugPrint("FCM Token: $token");
-
-        // Set background handler
-        FirebaseMessaging.onBackgroundMessage(
-          _firebaseMessagingBackgroundHandler,
-        );
-
-        // Handle foreground messages
-        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-          if (message.notification != null) {
-            NotificationHelper.showNotification(
-              id: message.hashCode,
-              title: message.notification!.title,
-              body: message.notification!.body,
-              payload: message.data['chatId'],
-              imageUrl: message.data['avatar'] ?? message.data['image'],
-            );
-          }
-        });
-      }
-    } catch (e) {
-      // Firebase not available on this platform
-    }
+    // FCM Configuration removed.
   }
 
   void _listenToMessagesForNotifications() {

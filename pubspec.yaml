@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.7.0 <4.0.0"
+  sdk: ^3.11.3
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -52,8 +52,6 @@ dependencies:
   socket_io_client: ^3.1.4
   flutter_local_notifications: ^21.0.0
   flutter_local_notifications_windows: ^3.0.0
-  firebase_core: ^4.7.0
-  firebase_messaging: ^16.2.0
   path_provider: ^2.1.5
   pro_image_editor: ^12.4.3
   google_mlkit_text_recognition: ^0.15.1
@@ -67,6 +65,7 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_highlight: ^0.7.0
   highlight: ^0.7.0
+  updat: ^1.4.0
 
 dev_dependencies:
   flutter_test:
@@ -132,7 +131,7 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-msix_config:
+msix_fconfig:
   display_name: DeepCode Work
   publisher_display_name: DeepCode
   publisher: CN=DeepCode

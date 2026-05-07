@@ -441,7 +441,16 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getPosts');
-      if (res is Map<String, dynamic>) return res;
+      if (res is Map<String, dynamic>) {
+        return {
+          'posts': extractList(res),
+          'totalPages':
+              int.tryParse(res['totalPages']?.toString() ?? '') ??
+              int.tryParse(res['pages']?.toString() ?? '') ??
+              int.tryParse(res['total_pages']?.toString() ?? '') ??
+              1,
+        };
+      }
       return {'posts': extractList(res), 'totalPages': 1};
     } catch (e) {
       debugPrint('ApiService error (getPosts): $e');
