@@ -100,45 +100,111 @@ class UpdateHelper {
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20),
         child: Container(
-          width: 480,
-          height: 380,
-          padding: const EdgeInsets.all(24),
-          child: Material(
-            color: Colors.transparent,
+          width: 420,
+          height: 400,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
             child: Column(
               children: [
-                const Text(
-                  "KIỂM TRA CẬP NHẬT",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                    color: Colors.blueGrey,
-                    letterSpacing: 1.2,
+                // Header với Gradient
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 30),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.system_update_alt_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "PHIÊN BẢN MỚI",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          letterSpacing: 2.0,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 20),
+
+                // Body
                 Expanded(
-                  child: UpdatWidget(
-                    currentVersion: currentVersion,
-                    appName: 'DeepCode Work',
-                    getLatestVersion: () async {
-                      final data = await _fetchUpdateData();
-                      return data?['version']?.toString() ?? currentVersion;
-                    },
-                    getBinaryUrl: (latestVersion) async {
-                      final data = await _fetchUpdateData();
-                      if (Platform.isAndroid) {
-                        return (data?['androidUrl'] ?? data?['downloadUrl'])
-                                ?.toString() ??
-                            '';
-                      }
-                      return (data?['windowsUrl'] ?? data?['downloadUrl'])
-                              ?.toString() ??
-                          '';
-                    },
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: UpdatWidget(
+                        currentVersion: currentVersion,
+                        appName: 'DeepCode Work',
+                        getLatestVersion: () async {
+                          final data = await _fetchUpdateData();
+                          return data?['version']?.toString() ?? currentVersion;
+                        },
+                        getBinaryUrl: (latestVersion) async {
+                          final data = await _fetchUpdateData();
+                          if (Platform.isAndroid) {
+                            return (data?['androidUrl'] ?? data?['downloadUrl'])
+                                    ?.toString() ??
+                                '';
+                          }
+                          return (data?['windowsUrl'] ?? data?['downloadUrl'])
+                                  ?.toString() ??
+                              '';
+                        },
+                        // Custom style cho UpdatWidget nếu thư viện hỗ trợ
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Footer
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(
+                      "ĐÓNG",
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
                 ),
               ],

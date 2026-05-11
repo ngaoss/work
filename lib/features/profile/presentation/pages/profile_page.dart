@@ -439,17 +439,37 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           const SizedBox(height: 32),
                           Center(
-                            child: GestureDetector(
-                              onDoubleTap: () =>
-                                  UpdateHelper.checkUpdate(context),
-                              child: Text(
-                                "Phiên bản : $_appVersion",
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                            child: Column(
+                              children: [
+                                Text(
+                                  "Phiên bản : $_appVersion",
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 8),
+                                TextButton.icon(
+                                  onPressed: () =>
+                                      UpdateHelper.checkUpdate(context),
+                                  icon: const Icon(
+                                    Icons.system_update_alt_rounded,
+                                    size: 14,
+                                  ),
+                                  label: const Text(
+                                    "Kiểm tra cập nhật",
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.blue,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -692,16 +712,37 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 32),
                       Center(
-                        child: GestureDetector(
-                          onDoubleTap: () => UpdateHelper.checkUpdate(context),
-                          child: Text(
-                            "Version : $_appVersion",
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                        child: Column(
+                          children: [
+                            Text(
+                              "Version : $_appVersion",
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  UpdateHelper.checkUpdate(context),
+                              icon: const Icon(
+                                Icons.system_update_alt_rounded,
+                                size: 14,
+                              ),
+                              label: const Text(
+                                "Kiểm tra cập nhật",
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.blue,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 100),
