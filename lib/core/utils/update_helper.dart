@@ -93,6 +93,41 @@ class UpdateHelper {
     }
 
     _cachedUpdateData = null; // Reset cache on manual check
+
+    // Hiện loading nhẹ trong khi check
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đang kiểm tra bản cập nhật...'),
+          duration: Duration(milliseconds: 800),
+        ),
+      );
+    }
+
+    final hasUpdate = await isUpdateAvailable();
+    if (!hasUpdate && context.mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text(
+            "Thông báo",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text("Bạn đang sử dụng phiên bản mới nhất."),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     final packageInfo = await PackageInfo.fromPlatform();
     final currentVersion = packageInfo.version;
 

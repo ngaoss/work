@@ -31,7 +31,7 @@ if (Test-Path $jsonPath) {
     $jsonRaw = Get-Content $jsonPath -Raw | ConvertFrom-Json
     $jsonRaw.version = $NewVersion
     $jsonRaw.windowsUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork_Setup.exe"
-    $jsonRaw.androidUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/app-release.apk"
+    $jsonRaw.androidUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/Work.apk"
     $jsonRaw.downloadUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork_Setup.exe"
     $jsonRaw | ConvertTo-Json | Set-Content $jsonPath
 }
@@ -39,17 +39,21 @@ if (Test-Path $jsonPath) {
 # 4. Build Flutter Windows
 Write-Host "Building Flutter Windows (Release)..."
 flutter build windows --release
+if ($LASTEXITCODE -ne 0) { throw "Build Windows failed!" }
 
 # 5. Build Flutter Android APK
 Write-Host "Building Flutter Android APK (Release)..."
 flutter build apk --release
+if ($LASTEXITCODE -ne 0) { throw "Build APK failed!" }
 
 # 6. Run Inno Setup Compiler (ISCC)
 Write-Host "Packaging with Inno Setup (Windows)..."
 if (Get-Command "iscc" -ErrorAction SilentlyContinue) {
     & "iscc" installer.iss
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed!" }
 } elseif (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") {
     & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed!" }
 } else {
     Write-Warning "ISCC.exe not found. Please add Inno Setup to your PATH or install it to the default location."
 }
@@ -61,11 +65,11 @@ if (!(Test-Path $targetDist)) {
     New-Item -ItemType Directory -Path $targetDist
 }
 
-# Copy Android APK to dist folder (ISCC already handled Windows exe)
+# Copy Android APK to dist folder (Renaming it to Work.apk)
 $apkPath = "build/app/outputs/flutter-apk/app-release.apk"
 if (Test-Path $apkPath) {
-    Copy-Item $apkPath "$targetDist/app-release.apk"
-    Write-Host "APK copied to $targetDist"
+    Copy-Item $apkPath "$targetDist/Work.apk"
+    Write-Host "APK renamed and copied to $targetDist/Work.apk"
 }
 
 # 8. Git Push
