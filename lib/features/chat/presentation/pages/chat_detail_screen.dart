@@ -578,10 +578,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             lowerUrl.endsWith('.mp4') ||
             lowerUrl.endsWith('.mov');
 
-        if (type == "file") {
-          // Even if type is "file", if the URL has an image extension, treat it as visual
+        if (type == "image" || type == "video") {
+          return ApiService.resolveImageUrl(url);
+        } else if (type == "file") {
           if (!isVisualExt) return null;
-        } else if (type != "image" && type != "video") {
+        } else {
           if (!isVisualExt) return null;
         }
       }
@@ -1991,13 +1992,20 @@ class _ChatBubbleState extends State<_ChatBubble> {
 
   bool _isVisualUrl(String url) {
     final lower = url.toLowerCase();
-    return lower.endsWith('.jpg') ||
+    if (lower.endsWith('.jpg') ||
         lower.endsWith('.jpeg') ||
         lower.endsWith('.png') ||
         lower.endsWith('.gif') ||
         lower.endsWith('.webp') ||
         lower.endsWith('.mp4') ||
-        lower.endsWith('.mov');
+        lower.endsWith('.mov')) {
+      return true;
+    }
+    // Chấp nhận các URL từ server dùng ID MongoDB
+    if (lower.contains('/images/') || lower.contains('/image/') || lower.contains('/video/') || lower.contains('/file/')) {
+      return true;
+    }
+    return false;
   }
 
   bool _isNetworkUrl(String path) {
@@ -2070,7 +2078,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: SelectableText(
+          child: Text(
             message,
             style: TextStyle(
               fontSize: 11,
@@ -2117,7 +2125,29 @@ class _ChatBubbleState extends State<_ChatBubble> {
                       ? (imagePath!.toLowerCase().endsWith('.mp4') ||
                                 imagePath!.toLowerCase().endsWith('.mov')
                             ? VideoPreview(videoUrl: imagePath!)
-                            : Image.network(imagePath!, fit: BoxFit.cover))
+                            : CachedNetworkImage(
+                                imageUrl: imagePath!,
+                                fit: BoxFit.cover,
+                                httpHeaders: AuthService().authToken.value != null
+                                    ? {'Authorization': 'Bearer ${AuthService().authToken.value}'}
+                                    : {},
+                                placeholder: (context, url) => Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: Colors.grey.shade200,
+                                  child: const Center(
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: Colors.grey.shade200,
+                                  child: const Center(
+                                    child: Icon(Icons.broken_image, color: Colors.grey, size: 40),
+                                  ),
+                                ),
+                              ))
                       : (imagePath!.toLowerCase().endsWith('.mp4') ||
                                 imagePath!.toLowerCase().endsWith('.mov')
                             ? VideoPreview(file: File(imagePath!))
@@ -2527,7 +2557,7 @@ class _LinkifiedSelectableText extends StatelessWidget {
     );
 
     if (isRecalled) {
-      return SelectableText(text, style: style);
+      return Text(text, style: style);
     }
 
     // URL regex
@@ -2570,7 +2600,7 @@ class _LinkifiedSelectableText extends StatelessWidget {
       spans.add(TextSpan(text: text.substring(start)));
     }
 
-    return SelectableText.rich(TextSpan(children: spans), style: style);
+    return Text.rich(TextSpan(children: spans), style: style);
   }
 }
 

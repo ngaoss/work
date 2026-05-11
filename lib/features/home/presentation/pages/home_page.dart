@@ -1701,7 +1701,6 @@ class _PostCardState extends State<_PostCard> {
                         text: displayContent,
                         style: const TextStyle(
                           fontSize: 15,
-                          height: 1.4,
                           color: Colors.black87,
                         ),
                         fontFamilyFallback: const [

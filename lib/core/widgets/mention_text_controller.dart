@@ -195,20 +195,32 @@ class MentionText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveStyle = (style ?? DefaultTextStyle.of(context).style).copyWith(
+    final effectiveStyle = DefaultTextStyle.of(context).style.merge(style).copyWith(
       fontFamilyFallback: fontFamilyFallback,
       color: style?.color ?? Colors.black87,
     );
 
-    return RichText(
+    final spans = MentionTextEditingController.buildSpans(
+      text,
+      style: effectiveStyle,
+    );
+
+    if (spans.length == 1 && spans[0] is TextSpan) {
+      final textSpan = spans[0] as TextSpan;
+      return Text(
+        textSpan.text ?? "",
+        style: effectiveStyle.copyWith(letterSpacing: 0),
+        maxLines: maxLines,
+        overflow: overflow ?? TextOverflow.clip,
+        textAlign: TextAlign.start,
+      );
+    }
+
+    return Text.rich(
+      TextSpan(children: spans),
       maxLines: maxLines,
       overflow: overflow ?? TextOverflow.clip,
-      text: TextSpan(
-        children: MentionTextEditingController.buildSpans(
-          text,
-          style: effectiveStyle,
-        ),
-      ),
+      textAlign: TextAlign.start,
     );
   }
 }
