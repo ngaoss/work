@@ -58,7 +58,13 @@ class UpdateHelper {
 
   static Future<void> openDownloadLink(BuildContext context) async {
     final data = await _fetchUpdateData();
-    final url = data?['downloadUrl']?.toString();
+    String? url;
+    if (Platform.isAndroid) {
+      url = (data?['androidUrl'] ?? data?['downloadUrl'])?.toString();
+    } else {
+      url = (data?['windowsUrl'] ?? data?['downloadUrl'])?.toString();
+    }
+
     if (url != null && url.isNotEmpty) {
       final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
@@ -74,7 +80,10 @@ class UpdateHelper {
   }
 
   static void checkUpdate(BuildContext context) async {
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+    if (!Platform.isWindows &&
+        !Platform.isLinux &&
+        !Platform.isMacOS &&
+        !Platform.isAndroid) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Tính năng cập nhật chưa hỗ trợ nền tảng này'),
@@ -121,7 +130,14 @@ class UpdateHelper {
                     },
                     getBinaryUrl: (latestVersion) async {
                       final data = await _fetchUpdateData();
-                      return data?['downloadUrl']?.toString() ?? '';
+                      if (Platform.isAndroid) {
+                        return (data?['androidUrl'] ?? data?['downloadUrl'])
+                                ?.toString() ??
+                            '';
+                      }
+                      return (data?['windowsUrl'] ?? data?['downloadUrl'])
+                              ?.toString() ??
+                          '';
                     },
                   ),
                 ),

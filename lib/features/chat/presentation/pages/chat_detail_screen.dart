@@ -59,6 +59,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _showEmoji = false;
   late List<Map<String, dynamic>> _messages;
   late List<Map<String, String>> _members;
+  final List<String> _reactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
   late String _currentName;
   late String? _currentInitials;
@@ -1109,6 +1110,29 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ),
       builder: (context) => Wrap(
         children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: _reactionEmojis.map((emoji) {
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context);
+                    _reactToMessage(msg["id"].toString(), emoji);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(emoji, style: const TextStyle(fontSize: 26)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.reply_outlined, color: Colors.blueGrey),
             title: const Text("Phản hồi"),
@@ -1372,9 +1396,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           };
                         }
                         return GestureDetector(
-                          onLongPress: MediaQuery.of(context).size.width <= 600
-                              ? () => _showOptions(context, msg)
-                              : null,
+                          onLongPress: () => _showOptions(context, msg),
                           child: _ChatBubble(
                             message: msg["isRecalled"] == true
                                 ? "Tin nhắn đã được thu hồi"
@@ -2105,6 +2127,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 ),
               );
             },
+            onLongPress: widget.onMore,
             child: Container(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.65,
@@ -2138,6 +2161,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               }
             },
+            onLongPress: widget.onMore,
             borderRadius: BorderRadius.circular(12),
             child: Container(
               padding: const EdgeInsets.all(10),
@@ -2151,7 +2175,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.04),
-                    blurRadius: 4,
+                    blurRadius: 10,
                     offset: const Offset(0, 2),
                   ),
                 ],
@@ -2160,16 +2184,16 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       _getFileIcon(fileName!),
-                      color: Colors.blue.shade600,
-                      size: 24,
+                      color: Colors.blue,
+                      size: 20,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -2183,20 +2207,22 @@ class _ChatBubbleState extends State<_ChatBubble> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontWeight: FontWeight.w600,
                             fontSize: 13,
-                            color: Color(0xFF1E293B),
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          "${fileName!.split('.').last.toUpperCase()} • ${fileSize ?? '...'}",
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade500,
-                            fontWeight: FontWeight.w500,
+                        if (fileSize != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            fileSize!,
+                            style: TextStyle(
+                              color: Colors.blueGrey.withOpacity(0.6),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -2205,76 +2231,82 @@ class _ChatBubbleState extends State<_ChatBubble> {
             ),
           )
         else if (_isCode(message))
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.72,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E), // Dark background for code
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (replyTo != null && !isRecalled)
-                  _buildReplyPreview(replyTo!, isSender, true),
-                SelectionArea(
-                  child: HighlightView(
-                    message,
-                    language: _detectLanguage(message),
-                    theme: atomOneDarkTheme,
-                    padding: EdgeInsets.zero,
-                    textStyle: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      height: 1.4,
+          GestureDetector(
+            onLongPress: widget.onMore,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.72,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E), // Dark background for code
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (replyTo != null && !isRecalled)
+                    _buildReplyPreview(replyTo!, isSender, true),
+                  SelectionArea(
+                    child: HighlightView(
+                      message,
+                      language: _detectLanguage(message),
+                      theme: atomOneDarkTheme,
+                      padding: EdgeInsets.zero,
+                      textStyle: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           )
         else
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.72,
-            ),
-            decoration: BoxDecoration(
-              color: isRecalled
-                  ? Colors.grey.shade100
-                  : (isSender ? bubbleColor : Colors.white),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isRecalled
-                    ? Colors.grey.shade300
-                    : (isSender ? Colors.transparent : Colors.grey.shade200),
+          GestureDetector(
+            onLongPress: widget.onMore,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.72,
               ),
-              boxShadow: (isSender || isRecalled)
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 14,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (replyTo != null && !isRecalled)
-                  _buildReplyPreview(replyTo!, isSender, false),
-                _LinkifiedSelectableText(
-                  text: message,
-                  isSender: isSender,
-                  isRecalled: isRecalled,
-                  bubbleColor: bubbleColor,
+              decoration: BoxDecoration(
+                color: isRecalled
+                    ? Colors.grey.shade100
+                    : (isSender ? bubbleColor : Colors.white),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isRecalled
+                      ? Colors.grey.shade300
+                      : (isSender ? Colors.transparent : Colors.grey.shade200),
                 ),
-              ],
+                boxShadow: (isSender || isRecalled)
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 14,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (replyTo != null && !isRecalled)
+                    _buildReplyPreview(replyTo!, isSender, false),
+                  _LinkifiedSelectableText(
+                    text: message,
+                    isSender: isSender,
+                    isRecalled: isRecalled,
+                    bubbleColor: bubbleColor,
+                  ),
+                ],
+              ),
             ),
           ),
       ],
