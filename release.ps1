@@ -31,7 +31,7 @@ if (Test-Path $jsonPath) {
     $jsonRaw = Get-Content $jsonPath -Raw | ConvertFrom-Json
     $jsonRaw.version = $NewVersion
     $jsonRaw.windowsUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork_Setup.exe"
-    $jsonRaw.androidUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/Work.apk"
+    $jsonRaw.androidUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork.apk"
     $jsonRaw.downloadUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork_Setup.exe"
     $jsonRaw | ConvertTo-Json | Set-Content $jsonPath
 }
@@ -65,11 +65,11 @@ if (!(Test-Path $targetDist)) {
     New-Item -ItemType Directory -Path $targetDist
 }
 
-# Copy Android APK to dist folder (Renaming it to Work.apk)
+# Copy Android APK to dist folder (Renaming it to DeepCodeWork.apk)
 $apkPath = "build/app/outputs/flutter-apk/app-release.apk"
 if (Test-Path $apkPath) {
-    Copy-Item $apkPath "$targetDist/Work.apk"
-    Write-Host "APK renamed and copied to $targetDist/Work.apk"
+    Copy-Item $apkPath "$targetDist/DeepCodeWork.apk"
+    Write-Host "APK renamed and copied to $targetDist/DeepCodeWork.apk"
 }
 
 # 8. Git Push
