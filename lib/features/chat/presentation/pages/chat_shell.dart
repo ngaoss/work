@@ -1973,7 +1973,10 @@ class _BlinkingUpdateButtonState extends State<_BlinkingUpdateButton>
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.2, end: 1.0).animate(_controller);
+    _animation = Tween<double>(
+      begin: 0.95,
+      end: 1.1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -1984,21 +1987,22 @@ class _BlinkingUpdateButtonState extends State<_BlinkingUpdateButton>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _animation,
+    return ScaleTransition(
+      scale: _animation,
       child: Center(
         child: Container(
           margin: const EdgeInsets.only(right: 8),
           child: TextButton(
             onPressed: widget.onTap,
             style: TextButton.styleFrom(
-              backgroundColor: Colors.red.withOpacity(0.9),
+              backgroundColor: const Color(0xFF3B82F6), // Blue
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
+              elevation: 2,
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
