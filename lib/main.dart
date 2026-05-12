@@ -34,14 +34,18 @@ void main() async {
 
   // Configure Startup for Desktop
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    PackageInfo packageInfo = await PackageInfo.fromPlatform();
-    launchAtStartup.setup(
-      appName: packageInfo.appName.isNotEmpty
-          ? packageInfo.appName
-          : "DeepCode Work",
-      appPath: Platform.resolvedExecutable,
-    );
-    await launchAtStartup.enable();
+    try {
+      PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      launchAtStartup.setup(
+        appName: packageInfo.appName.isNotEmpty
+            ? packageInfo.appName
+            : "DeepCode Work",
+        appPath: Platform.resolvedExecutable,
+      );
+      await launchAtStartup.enable();
+    } catch (e) {
+      debugPrint('Error initializing launch_at_startup: $e');
+    }
   }
 
   // Initialize notifications (non-blocking)

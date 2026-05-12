@@ -166,11 +166,11 @@ class MentionTextEditingController extends TextEditingController {
 
     // Remaining text after last mention
     if (lastIndex < fullText.length) {
-      spans.add(TextSpan(text: fullText.substring(lastIndex), style: style));
+      spans.add(TextSpan(text: fullText.substring(lastIndex), style: effectiveStyle));
     }
 
     if (spans.isEmpty) {
-      spans.add(TextSpan(text: fullText, style: style));
+      spans.add(TextSpan(text: fullText, style: effectiveStyle));
     }
 
     return spans;
@@ -183,6 +183,7 @@ class MentionText extends StatelessWidget {
   final int? maxLines;
   final TextOverflow? overflow;
   final List<String>? fontFamilyFallback;
+  final TextAlign textAlign;
 
   const MentionText({
     super.key,
@@ -191,6 +192,7 @@ class MentionText extends StatelessWidget {
     this.maxLines,
     this.overflow,
     this.fontFamilyFallback,
+    this.textAlign = TextAlign.start,
   });
 
   @override
@@ -200,15 +202,17 @@ class MentionText extends StatelessWidget {
       color: style?.color ?? Colors.black87,
     );
 
-    return RichText(
-      maxLines: maxLines,
-      overflow: overflow ?? TextOverflow.clip,
-      text: TextSpan(
+    return Text.rich(
+      TextSpan(
         children: MentionTextEditingController.buildSpans(
           text,
           style: effectiveStyle,
         ),
       ),
+      textAlign: textAlign,
+      maxLines: maxLines,
+      overflow: overflow,
+      softWrap: true,
     );
   }
 }

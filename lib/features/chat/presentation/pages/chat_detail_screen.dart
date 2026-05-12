@@ -2077,8 +2077,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
       },
       onLongPress: widget.onMore,
       child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.65,
+        constraints: const BoxConstraints(
+          maxWidth: 300,
+          maxHeight: 250,
         ),
         child: Hero(
           tag: path,
@@ -2090,7 +2091,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                       ? VideoPreview(videoUrl: path)
                       : CachedNetworkImage(
                           imageUrl: path,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           placeholder: (context, url) => Container(
                             height: 200,
                             color: Colors.grey.shade100,
@@ -2104,7 +2105,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 : (path.toLowerCase().endsWith('.mp4') ||
                           path.toLowerCase().endsWith('.mov')
                       ? VideoPreview(file: File(path))
-                      : Image.file(File(path), fit: BoxFit.cover)),
+                      : Image.file(File(path), fit: BoxFit.contain)),
           ),
         ),
       ),
@@ -2117,8 +2118,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
 
     // Use a simpler grid for 2 or more images
     return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.7,
+      constraints: const BoxConstraints(
+        maxWidth: 300,
+        maxHeight: 300,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),

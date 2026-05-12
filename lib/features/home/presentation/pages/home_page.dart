@@ -1640,9 +1640,9 @@ class _PostCardState extends State<_PostCard> {
             .toString();
     final bool hasMedia = mediaItems.isNotEmpty;
     final bool isLongText = content.length > 220;
-    final String displayContent = (isLongText && !_isExpanded)
+    final String displayContent = ((isLongText && !_isExpanded)
         ? "${content.substring(0, 200)}..."
-        : content;
+        : content).replaceAll(RegExp(r' +'), ' ');
     final bool hasBg =
         widget.post["bgColor"] != null ||
         (widget.post["background"] != null &&
@@ -1697,19 +1697,14 @@ class _PostCardState extends State<_PostCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      MentionText(
-                        text: displayContent,
+                      Text(
+                        displayContent,
+                        textAlign: TextAlign.left,
                         style: const TextStyle(
                           fontSize: 15,
                           height: 1.4,
                           color: Colors.black87,
                         ),
-                        fontFamilyFallback: const [
-                          "Apple Color Emoji",
-                          "Segoe UI Emoji",
-                          "Segoe UI Symbol",
-                          "Noto Color Emoji",
-                        ],
                       ),
                       if (isLongText && !_isExpanded)
                         GestureDetector(
@@ -2363,18 +2358,13 @@ class _CommentBubble extends StatelessWidget {
               if (comment["text"]?.toString().isNotEmpty == true)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: MentionText(
-                    text: comment["text"]?.toString() ?? "",
+                  child: Text(
+                    (comment["text"]?.toString() ?? "").replaceAll(RegExp(r' +'), ' '),
+                    textAlign: TextAlign.left,
                     style: TextStyle(
                       fontSize: small ? 12 : 13,
                       color: Colors.black87,
                     ),
-                    fontFamilyFallback: const [
-                      "Apple Color Emoji",
-                      "Segoe UI Emoji",
-                      "Segoe UI Symbol",
-                      "Noto Color Emoji",
-                    ],
                   ),
                 ),
             ],
