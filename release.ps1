@@ -41,9 +41,9 @@ Write-Host "Building Flutter Windows (Release)..."
 flutter build windows --release
 if ($LASTEXITCODE -ne 0) { throw "Build Windows failed!" }
 
-# 5. Build Flutter Android APK
-Write-Host "Building Flutter Android APK (Release)..."
-flutter build apk --release
+# 5. Build Flutter Android APK (Split per ABI for smaller size)
+Write-Host "Building Flutter Android APK (Release - Split per ABI)..."
+flutter build apk --release --split-per-abi
 if ($LASTEXITCODE -ne 0) { throw "Build APK failed!" }
 
 # 6. Run Inno Setup Compiler (ISCC)
@@ -65,11 +65,16 @@ if (!(Test-Path $targetDist)) {
     New-Item -ItemType Directory -Path $targetDist
 }
 
-# Copy Android APK to dist folder (Renaming it to DeepCodeWork.apk)
-$apkPath = "build/app/outputs/flutter-apk/app-release.apk"
+# Copy the arm64-v8a APK to dist folder (usually the smallest and most common)
+$apkPath = "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+if (!(Test-Path $apkPath)) {
+    # Fallback to standard name if not split
+    $apkPath = "build/app/outputs/flutter-apk/app-release.apk"
+}
+
 if (Test-Path $apkPath) {
     Copy-Item $apkPath "$targetDist/DeepCodeWork.apk"
-    Write-Host "APK renamed and copied to $targetDist/DeepCodeWork.apk"
+    Write-Host "Optimized APK (arm64) renamed and copied to $targetDist/DeepCodeWork.apk"
 }
 
 # 8. Git Push
