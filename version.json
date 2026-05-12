@@ -1,7 +1,6 @@
 {
-    "version":  "1.0.5",
-    "windowsUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.5/DeepCodeWork_Setup.exe",
-    "androidUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.5/Work.apk",
-    "downloadUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.5/DeepCodeWork_Setup.exe",
-    "changelog":  "Cập nhật tính năng nhấn giữ chat trên mobile và hỗ trợ tự động cập nhật Android."
+    "version":  "1.0.4",
+    "windowsUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.4/DeepCodeWork_Setup.exe",
+    "androidUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.4/Work.apk",
+    "downloadUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.4/DeepCodeWork_Setup.exe"
 }

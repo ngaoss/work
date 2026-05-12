@@ -30,6 +30,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   final GlobalKey<WorkHomePageState> _homeKey = GlobalKey<WorkHomePageState>();
   int _notificationCount = 0;
   List<dynamic> _notifications = [];
+  bool _hasUpdate = false;
 
   @override
   void initState() {
@@ -43,6 +44,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     ApiService.initializeSocket();
     _listenToMessagesForNotifications();
     _initNotifications();
+    _checkForUpdates();
+  }
+
+  Future<void> _checkForUpdates() async {
+    final result = await UpdateHelper.isUpdateAvailable();
+    if (mounted) {
+      setState(() {
+        _hasUpdate = result;
+      });
+    }
   }
 
   Future<void> _initNotifications() async {
@@ -1020,6 +1031,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
         ),
         title: _buildAppLogo(),
         actions: [
+          if (_hasUpdate)
+            _BlinkingUpdateButton(
+              onTap: () => UpdateHelper.checkUpdate(context),
+            ),
           _TopActionStatus(),
           ValueListenableBuilder<int>(
             valueListenable: ApiService.unreadChatCount,
@@ -1933,6 +1948,79 @@ class _ContactsSidebarState extends State<_ContactsSidebar> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BlinkingUpdateButton extends StatefulWidget {
+  final VoidCallback onTap;
+  const _BlinkingUpdateButton({required this.onTap});
+
+  @override
+  State<_BlinkingUpdateButton> createState() => _BlinkingUpdateButtonState();
+}
+
+class _BlinkingUpdateButtonState extends State<_BlinkingUpdateButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.2, end: 1.0).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _animation,
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.only(right: 8),
+          child: TextButton(
+            onPressed: widget.onTap,
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.red.withOpacity(0.9),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.system_update_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+                SizedBox(width: 4),
+                Text(
+                  "Cập nhật ngay",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
