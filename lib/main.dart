@@ -49,7 +49,7 @@ void main() async {
 
   // Handle notification tap to show window on Desktop
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    NotificationHelper.onNotificationTapped = () async {
+    NotificationHelper.onNotificationTapped = (payload) async {
       await windowManager.show();
       await windowManager.restore();
       await windowManager.focus();

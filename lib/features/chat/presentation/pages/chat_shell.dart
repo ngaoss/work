@@ -31,6 +31,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   int _notificationCount = 0;
   List<dynamic> _notifications = [];
   bool _hasUpdate = false;
+  String? _pendingChatId;
 
   @override
   void initState() {
@@ -60,7 +61,12 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     await NotificationHelper.initialize();
     await NotificationHelper.requestPermissions();
 
-    // FCM Configuration removed.
+    NotificationHelper.onNotificationTapped = (payload) {
+      if (payload != null && payload.isNotEmpty) {
+        // If the payload is a chatId, navigate to it
+        _navigateFromNotification({'link': '/chat/$payload'});
+      }
+    };
   }
 
   void _listenToMessagesForNotifications() {
@@ -894,7 +900,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       case 5:
         return const ProfilePage();
       case 6:
-        return MessagingPage(onBack: () => _onItemTapped(0));
+        return MessagingPage(
+          onBack: () => _onItemTapped(0),
+          initialChatId: _pendingChatId,
+        );
       default:
         return const SizedBox.shrink();
     }
@@ -953,7 +962,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     }
 
     if (link.contains('/chat/')) {
+      final chatId = link.split('/chat/').last;
+      setState(() {
+        _pendingChatId = chatId;
+      });
       _onItemTapped(6);
+
+      // Clear pending ID after a short delay so it doesn't re-open every time we switch tabs
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _pendingChatId = null);
+      });
       return;
     }
   }

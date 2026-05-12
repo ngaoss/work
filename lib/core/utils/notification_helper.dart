@@ -14,8 +14,8 @@ class NotificationHelper {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static VoidCallback? _onNotificationTapped;
-  static set onNotificationTapped(VoidCallback callback) =>
+  static Function(String?)? _onNotificationTapped;
+  static set onNotificationTapped(Function(String?) callback) =>
       _onNotificationTapped = callback;
 
   static Future<void> initialize() async {
@@ -46,7 +46,7 @@ class NotificationHelper {
         settings: mySettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint("Notification tapped with payload: ${response.payload}");
-          _onNotificationTapped?.call();
+          _onNotificationTapped?.call(response.payload);
         },
       );
       _isInitialized = initialized ?? false;

@@ -9,7 +9,8 @@ import '../../../../core/utils/notification_helper.dart';
 
 class MessagingPage extends StatefulWidget {
   final VoidCallback? onBack;
-  const MessagingPage({super.key, this.onBack});
+  final String? initialChatId;
+  const MessagingPage({super.key, this.onBack, this.initialChatId});
 
   @override
   State<MessagingPage> createState() => _MessagingPageState();
@@ -26,8 +27,22 @@ class _MessagingPageState extends State<MessagingPage> {
   @override
   void initState() {
     super.initState();
-    _initializeData();
+    _initializeData().then((_) {
+      if (widget.initialChatId != null) {
+        _openChatById(widget.initialChatId!);
+      }
+    });
     _chatSubscription = ApiService.newChatStream.listen(_handleNewMessage);
+  }
+
+  void _openChatById(String id) {
+    final chat = _chats.firstWhere(
+      (c) => c["id"]?.toString() == id,
+      orElse: () => {},
+    );
+    if (chat.isNotEmpty) {
+      _openChatDetailScreen(chat);
+    }
   }
 
   Future<void> _initializeData() async {
