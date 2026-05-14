@@ -61,6 +61,8 @@ class UpdateHelper {
     String? url;
     if (Platform.isAndroid) {
       url = (data?['androidUrl'] ?? data?['downloadUrl'])?.toString();
+    } else if (Platform.isMacOS) {
+      url = (data?['macosUrl'] ?? data?['downloadUrl'])?.toString();
     } else {
       url = (data?['windowsUrl'] ?? data?['downloadUrl'])?.toString();
     }
@@ -213,6 +215,10 @@ class UpdateHelper {
                           final data = await _fetchUpdateData();
                           if (Platform.isAndroid) {
                             return (data?['androidUrl'] ?? data?['downloadUrl'])
+                                    ?.toString() ??
+                                '';
+                          } else if (Platform.isMacOS) {
+                            return (data?['macosUrl'] ?? data?['downloadUrl'])
                                     ?.toString() ??
                                 '';
                           }

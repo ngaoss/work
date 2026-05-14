@@ -31,6 +31,7 @@ if (Test-Path $jsonPath) {
     $jsonRaw = Get-Content $jsonPath -Raw | ConvertFrom-Json
     $jsonRaw.version = $NewVersion
     $jsonRaw.windowsUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork_Setup.exe"
+    $jsonRaw.macosUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork.dmg"
     $jsonRaw.androidUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork.apk"
     $jsonRaw.downloadUrl = "https://github.com/ngaoss/work/raw/main/dist/$NewVersion/DeepCodeWork_Setup.exe"
     $jsonRaw | ConvertTo-Json | Set-Content $jsonPath
