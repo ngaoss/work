@@ -8,17 +8,15 @@ class MentionTextEditingController extends TextEditingController {
 
   MentionTextEditingController({
     String? text,
-    this.mentionColor = const Color(0xFF2563EB),
-    this.mentionFontWeight = FontWeight.w600,
-    this.mentionBackgroundColor = const Color(0xFFDBEAFE),
+    this.mentionColor = const Color(0xFF0EA5E9),
+    this.mentionFontWeight = FontWeight.w700,
+    this.mentionBackgroundColor = const Color(0xFFEBEFFF),
   }) : super(text: text);
 
-  // Regex to find @mention tokens including fullname words.
-  // - initial @handle can be any non-space string
-  // - additional words are included only when they begin with an uppercase letter
-  //   so comment text after the fullname is not accidentally consumed.
-  static final RegExp _mentionRegex = RegExp(
-    r'@\S+(?:\s+(?![a-z])[^ \s@:;!?,]+)*',
+  // Regex to find URLs and @mentions including fullname words.
+  static final RegExp _combinedRegex = RegExp(
+    r'(([hH][tT][tT][pP][sS]?:\/\/|[wW][wW][wW]\.)[^\s\/$.?#].[^\s]*)|' // URL
+    r'(@\S+(?:\s+[^ \s@:;!?,]+)*\u200B|@\S+(?:\s+[A-ZÀ-Ỹ][^ \s@:;!?,]*)*)', // Mentions
   );
 
   @override
@@ -35,22 +33,25 @@ class MentionTextEditingController extends TextEditingController {
       final String oldText = value.text;
 
       // Find matches in the OLD text
-      final matches = _mentionRegex.allMatches(oldText);
+      final matches = _combinedRegex.allMatches(oldText);
       for (final match in matches) {
         // If the cursor is now within what was a mention, or exactly at the end of what was deleted
         // basically if any character of the mention was in the deleted range
         if (selectionStart >= match.start && selectionStart < match.end) {
-          // Atomic deletion: remove the whole mention
-          final String newText = oldText.replaceRange(
-            match.start,
-            match.end,
-            '',
-          );
-          super.value = TextEditingValue(
-            text: newText,
-            selection: TextSelection.collapsed(offset: match.start),
-          );
-          return;
+          final matchText = match.group(0) ?? '';
+          // Only delete atomically if it's a "full" mention (has \u200B)
+          if (matchText.contains('\u200B')) {
+            final String newText = oldText.replaceRange(
+              match.start,
+              match.end,
+              '',
+            );
+            super.value = TextEditingValue(
+              text: newText,
+              selection: TextSelection.collapsed(offset: match.start),
+            );
+            return;
+          }
         }
       }
     }
@@ -63,16 +64,16 @@ class MentionTextEditingController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
-    final TextStyle effectiveStyle = (style ?? const TextStyle(color: Colors.black87)).copyWith(
-      color: style?.color ?? Colors.black87,
-    );
+    final TextStyle effectiveStyle =
+        (style ?? const TextStyle(color: Colors.black87)).copyWith(
+          color: style?.color ?? Colors.black87,
+        );
     final String fullText = value.text;
     final List<InlineSpan> spans = [];
 
     int lastIndex = 0;
 
-    for (final match in _mentionRegex.allMatches(fullText)) {
-      // Text before the mention
+    for (final match in _combinedRegex.allMatches(fullText)) {
       if (match.start > lastIndex) {
         spans.add(
           TextSpan(
@@ -81,58 +82,63 @@ class MentionTextEditingController extends TextEditingController {
           ),
         );
       }
-      // The @mention in blue with background
-      spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            decoration: BoxDecoration(
-              color: mentionBackgroundColor,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              match.group(0)!,
-              style: effectiveStyle.copyWith(
-                color: mentionColor,
-                fontWeight: mentionFontWeight,
-              ),
+
+      final matchText = match.group(0)!;
+      if (matchText.startsWith('@')) {
+        // Mentions Style - In editor, keep the \u200b to avoid character length mismatch
+        // which causes duplication bugs on some platforms (Windows/Web).
+        spans.add(
+          TextSpan(
+            text: matchText,
+            style: effectiveStyle.copyWith(
+              color: mentionColor,
+              fontWeight: mentionFontWeight,
+              backgroundColor: mentionBackgroundColor.withOpacity(0.3),
             ),
           ),
-        ),
-      );
+        );
+      } else {
+        // URL Style
+        spans.add(
+          TextSpan(
+            text: matchText,
+            style: effectiveStyle.copyWith(
+              color: Colors.blue,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        );
+      }
       lastIndex = match.end;
     }
 
-    // Remaining text after last mention
     if (lastIndex < fullText.length) {
-      spans.add(TextSpan(text: fullText.substring(lastIndex), style: effectiveStyle));
+      spans.add(
+        TextSpan(text: fullText.substring(lastIndex), style: effectiveStyle),
+      );
     }
 
     if (spans.isEmpty) {
       return TextSpan(text: fullText, style: effectiveStyle);
     }
-
     return TextSpan(children: spans);
   }
 
-  /// Helper static method to parse text and return a [List<InlineSpan>] for rendering.
   static List<InlineSpan> buildSpans(
     String fullText, {
     TextStyle? style,
-    Color mentionColor = const Color(0xFF2563EB),
-    FontWeight mentionFontWeight = FontWeight.w600,
-    Color mentionBackgroundColor = const Color(0xFFDBEAFE),
+    Color mentionColor = const Color(0xFF0EA5E9),
+    FontWeight mentionFontWeight = FontWeight.w700,
+    Color mentionBackgroundColor = const Color(0xFFEBEFFF),
   }) {
-    final TextStyle effectiveStyle = (style ?? const TextStyle(color: Colors.black87)).copyWith(
-      color: style?.color ?? Colors.black87,
-    );
+    final TextStyle effectiveStyle =
+        (style ?? const TextStyle(color: Colors.black87)).copyWith(
+          color: style?.color ?? Colors.black87,
+        );
     final List<InlineSpan> spans = [];
-
     int lastIndex = 0;
 
-    for (final match in _mentionRegex.allMatches(fullText)) {
-      // Text before the mention
+    for (final match in _combinedRegex.allMatches(fullText)) {
       if (match.start > lastIndex) {
         spans.add(
           TextSpan(
@@ -141,32 +147,38 @@ class MentionTextEditingController extends TextEditingController {
           ),
         );
       }
-      // The @mention in blue with background
-      spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            decoration: BoxDecoration(
-              color: mentionBackgroundColor,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              match.group(0)!,
-              style: effectiveStyle.copyWith(
-                color: mentionColor,
-                fontWeight: mentionFontWeight,
-              ),
+
+      final matchText = match.group(0)!;
+      if (matchText.startsWith('@')) {
+        // Mentions Style - Plain blue bold text, no background chip
+        spans.add(
+          TextSpan(
+            text: matchText.replaceAll('\u200b', ''),
+            style: effectiveStyle.copyWith(
+              color: mentionColor,
+              fontWeight: mentionFontWeight,
             ),
           ),
-        ),
-      );
+        );
+      } else {
+        // URL Style
+        spans.add(
+          TextSpan(
+            text: matchText,
+            style: effectiveStyle.copyWith(
+              color: Colors.blue,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        );
+      }
       lastIndex = match.end;
     }
 
-    // Remaining text after last mention
     if (lastIndex < fullText.length) {
-      spans.add(TextSpan(text: fullText.substring(lastIndex), style: effectiveStyle));
+      spans.add(
+        TextSpan(text: fullText.substring(lastIndex), style: effectiveStyle),
+      );
     }
 
     if (spans.isEmpty) {
@@ -197,10 +209,11 @@ class MentionText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveStyle = (style ?? DefaultTextStyle.of(context).style).copyWith(
-      fontFamilyFallback: fontFamilyFallback,
-      color: style?.color ?? Colors.black87,
-    );
+    final effectiveStyle = (style ?? DefaultTextStyle.of(context).style)
+        .copyWith(
+          fontFamilyFallback: fontFamilyFallback,
+          color: style?.color ?? Colors.black87,
+        );
 
     return Text.rich(
       TextSpan(

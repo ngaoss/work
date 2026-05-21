@@ -430,10 +430,18 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
               children: _themeColors.map((color) {
                 final isSelected = _selectedColor == color;
                 return GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     if (widget.conversationId != null) {
-                      setState(() => _selectedColor = color);
-                      widget.onThemeChanged(color);
+                      final Color newColor = isSelected ? Colors.white : color;
+                      setState(() => _selectedColor = newColor);
+                      widget.onThemeChanged(newColor);
+
+                      // Persist to server
+                      final hexColor =
+                          '#${newColor.value.toRadixString(16).substring(2).toUpperCase()}';
+                      await ApiService.updateGroupInfo(widget.conversationId!, {
+                        'themeColor': hexColor,
+                      });
                     }
                   },
                   child: Container(

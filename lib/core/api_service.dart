@@ -787,6 +787,19 @@ class ApiService {
     }
   }
 
+  static Future<bool> markNotificationsAsRead() async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/notifications/read-all'),
+        headers: await _getHeaders(),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (markNotificationsAsRead): $e');
+      return false;
+    }
+  }
+
   // --- Chats ---
   static Future<List<dynamic>> getChats() async {
     try {

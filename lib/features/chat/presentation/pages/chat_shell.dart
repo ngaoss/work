@@ -323,6 +323,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       }
     });
 
+    // Notify the server that notifications are read
+    ApiService.markNotificationsAsRead();
     if (MediaQuery.of(context).size.width > 1100) {
       _showDesktopNotifications();
       return;
@@ -689,123 +691,133 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                 ],
                               ),
                             )
-                          : Theme(
-                              data: Theme.of(context).copyWith(
-                                scrollbarTheme: ScrollbarThemeData(
-                                  thumbColor: MaterialStateProperty.all(
-                                    Colors.grey.shade400,
+                          : StatefulBuilder(
+                              builder: (context, setState) {
+                                final scrollController = ScrollController();
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    scrollbarTheme: ScrollbarThemeData(
+                                      thumbColor: MaterialStateProperty.all(
+                                        Colors.grey.shade400,
+                                      ),
+                                      thickness: MaterialStateProperty.all(6),
+                                      radius: const Radius.circular(3),
+                                    ),
                                   ),
-                                  thickness: MaterialStateProperty.all(6),
-                                  radius: const Radius.circular(3),
-                                ),
-                              ),
-                              child: Scrollbar(
-                                thumbVisibility: true,
-                                child: ListView.separated(
-                                  padding: EdgeInsets.zero,
-                                  itemCount: _notifications.length,
-                                  separatorBuilder: (context, index) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (context, index) {
-                                    final notification = _notifications[index];
-                                    final content =
-                                        notification['content']?.toString() ??
-                                        '';
-                                    final senders =
-                                        notification['senders']
-                                            as List<dynamic>? ??
-                                        [];
-                                    final sender = senders.isNotEmpty
-                                        ? senders[0]
-                                        : null;
+                                  child: Scrollbar(
+                                    controller: scrollController,
+                                    thumbVisibility: true,
+                                    child: ListView.separated(
+                                      controller: scrollController,
+                                      padding: EdgeInsets.zero,
+                                      itemCount: _notifications.length,
+                                      separatorBuilder: (context, index) =>
+                                          const Divider(height: 1),
+                                      itemBuilder: (context, index) {
+                                        final notification =
+                                            _notifications[index];
+                                        final content =
+                                            notification['content']
+                                                ?.toString() ??
+                                            '';
+                                        final senders =
+                                            notification['senders']
+                                                as List<dynamic>? ??
+                                            [];
+                                        final sender = senders.isNotEmpty
+                                            ? senders[0]
+                                            : null;
 
-                                    final senderName =
-                                        sender?['fullName'] ??
-                                        sender?['name'] ??
-                                        'Hệ thống';
-                                    final senderAvatar =
-                                        sender?['profilePicture'] ??
-                                        sender?['avatar'];
-                                    final createdAtRaw =
-                                        notification['createdAt']?.toString() ??
-                                        '';
+                                        final senderName =
+                                            sender?['fullName'] ??
+                                            sender?['name'] ??
+                                            'Hệ thống';
+                                        final senderAvatar =
+                                            sender?['profilePicture'] ??
+                                            sender?['avatar'];
+                                        final createdAtRaw =
+                                            notification['createdAt']
+                                                ?.toString() ??
+                                            '';
 
-                                    // Format time
-                                    String timeDisplay = createdAtRaw;
-                                    if (createdAtRaw.isNotEmpty) {
-                                      try {
-                                        final date = DateTime.parse(
-                                          createdAtRaw,
-                                        );
-                                        final now = DateTime.now();
-                                        final diff = now.difference(date);
-                                        if (diff.inDays > 0) {
-                                          timeDisplay =
-                                              '${diff.inDays} ngày trước';
-                                        } else if (diff.inHours > 0) {
-                                          timeDisplay =
-                                              '${diff.inHours} giờ trước';
-                                        } else if (diff.inMinutes > 0) {
-                                          timeDisplay =
-                                              '${diff.inMinutes} phút trước';
-                                        } else {
-                                          timeDisplay = 'Vừa xong';
+                                        // Format time
+                                        String timeDisplay = createdAtRaw;
+                                        if (createdAtRaw.isNotEmpty) {
+                                          try {
+                                            final date = DateTime.parse(
+                                              createdAtRaw,
+                                            );
+                                            final now = DateTime.now();
+                                            final diff = now.difference(date);
+                                            if (diff.inDays > 0) {
+                                              timeDisplay =
+                                                  '${diff.inDays} ngày trước';
+                                            } else if (diff.inHours > 0) {
+                                              timeDisplay =
+                                                  '${diff.inHours} giờ trước';
+                                            } else if (diff.inMinutes > 0) {
+                                              timeDisplay =
+                                                  '${diff.inMinutes} phút trước';
+                                            } else {
+                                              timeDisplay = 'Vừa xong';
+                                            }
+                                          } catch (e) {
+                                            timeDisplay = createdAtRaw;
+                                          }
                                         }
-                                      } catch (e) {
-                                        timeDisplay = createdAtRaw;
-                                      }
-                                    }
 
-                                    return InkWell(
-                                      onTap: () {
-                                        Navigator.pop(ctx);
-                                        _navigateFromNotification(notification);
-                                      },
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            CircleAvatar(
-                                              radius: 20,
-                                              backgroundColor:
-                                                  Colors.blueGrey.shade50,
-                                              backgroundImage:
-                                                  senderAvatar != null
-                                                  ? NetworkImage(
-                                                      ApiService.resolveImageUrl(
-                                                        senderAvatar,
-                                                      ),
-                                                    )
-                                                  : null,
-                                              child: senderAvatar == null
-                                                  ? const Icon(
-                                                      Icons.person,
-                                                      size: 20,
-                                                    )
-                                                  : null,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  RichText(
-                                                    maxLines: 2,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    text: TextSpan(
-                                                      children: [
-                                                        TextSpan(
-                                                          text:
-                                                              notification['groupName'] !=
-                                                                  null
-                                                              ? "$senderName : "
-                                                              : "$senderName ",
-                                                          style:
-                                                              const TextStyle(
+                                        return InkWell(
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            _navigateFromNotification(
+                                              notification,
+                                            );
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(16),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 20,
+                                                  backgroundColor:
+                                                      Colors.blueGrey.shade50,
+                                                  backgroundImage:
+                                                      senderAvatar != null
+                                                      ? NetworkImage(
+                                                          ApiService.resolveImageUrl(
+                                                            senderAvatar,
+                                                          ),
+                                                        )
+                                                      : null,
+                                                  child: senderAvatar == null
+                                                      ? const Icon(
+                                                          Icons.person,
+                                                          size: 20,
+                                                        )
+                                                      : null,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      RichText(
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        text: TextSpan(
+                                                          children: [
+                                                            TextSpan(
+                                                              text:
+                                                                  notification['groupName'] !=
+                                                                      null
+                                                                  ? "$senderName : "
+                                                                  : "$senderName ",
+                                                              style: const TextStyle(
                                                                 fontWeight:
                                                                     FontWeight
                                                                         .w900,
@@ -814,11 +826,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                                 ),
                                                                 fontSize: 13,
                                                               ),
-                                                        ),
-                                                        TextSpan(
-                                                          text: content,
-                                                          style:
-                                                              const TextStyle(
+                                                            ),
+                                                            TextSpan(
+                                                              text: content,
+                                                              style: const TextStyle(
                                                                 fontWeight:
                                                                     FontWeight
                                                                         .w500,
@@ -827,31 +838,34 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                                 ),
                                                                 fontSize: 13,
                                                               ),
+                                                            ),
+                                                          ],
                                                         ),
-                                                      ],
-                                                    ),
+                                                      ),
+                                                      const SizedBox(height: 6),
+                                                      Text(
+                                                        timeDisplay,
+                                                        style: TextStyle(
+                                                          color: Colors
+                                                              .grey
+                                                              .shade400,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
-                                                  const SizedBox(height: 6),
-                                                  Text(
-                                                    timeDisplay,
-                                                    style: TextStyle(
-                                                      color:
-                                                          Colors.grey.shade400,
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                                ),
+                                              ],
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                     ),
                   ],
@@ -1019,6 +1033,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                     _DesktopHeader(
                       onChatTap: () => _onItemTapped(6),
                       currentChatActive: _currentIndex == 6,
+                      notificationCount: _notificationCount,
+                      onNotificationTap: _showNotifications,
                       onSearch: (val) {
                         if (_currentIndex == 0) {
                           _homeKey.currentState?.goToPost(val);
@@ -1212,7 +1228,7 @@ class _TopActionStatus extends StatelessWidget {
   }
 }
 
-class _TopAction extends StatelessWidget {
+class _TopAction extends StatefulWidget {
   final IconData icon;
   final String? badge;
   final VoidCallback? onTap;
@@ -1226,61 +1242,132 @@ class _TopAction extends StatelessWidget {
   });
 
   @override
+  State<_TopAction> createState() => _TopActionState();
+}
+
+class _TopActionState extends State<_TopAction>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _bounceController;
+  late Animation<double> _bounceAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _bounceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+
+    _bounceAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.0,
+          end: -5.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: -5.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.bounceOut)),
+        weight: 65,
+      ),
+    ]).animate(_bounceController);
+
+    if (widget.badge != null) {
+      _startBounce();
+    }
+  }
+
+  void _startBounce() {
+    _bounceController.repeat(period: const Duration(milliseconds: 2500));
+  }
+
+  @override
+  void didUpdateWidget(_TopAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.badge != null && oldWidget.badge == null) {
+      _startBounce();
+    } else if (widget.badge == null && oldWidget.badge != null) {
+      _bounceController.stop();
+      _bounceController.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: widget.onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         margin: const EdgeInsets.only(left: 8),
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-          color: isActive
+          color: widget.isActive
               ? const Color(0xFF3B82F6).withOpacity(0.1)
               : const Color(0xFFF1F5F9),
           shape: BoxShape.circle,
         ),
         child: Stack(
+          clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
             Icon(
-              icon,
+              widget.icon,
               size: 20,
-              color: isActive
+              color: widget.isActive
                   ? const Color(0xFF3B82F6)
                   : const Color(0xFF475569),
             ),
-            if (badge != null)
+            if (widget.badge != null)
               Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
+                right: -2,
+                top: -2,
+                child: AnimatedBuilder(
+                  animation: _bounceAnim,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(0, _bounceAnim.value),
+                      child: child,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.red.withOpacity(0.35),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      widget.badge!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
                       ),
-                    ],
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 20,
-                    minHeight: 20,
-                  ),
-                  child: Text(
-                    badge!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
@@ -1627,11 +1714,15 @@ class _DesktopSidebar extends StatelessWidget {
 class _DesktopHeader extends StatefulWidget {
   final VoidCallback onChatTap;
   final bool currentChatActive;
+  final int notificationCount;
+  final VoidCallback onNotificationTap;
   final Function(String) onSearch;
 
   const _DesktopHeader({
     required this.onChatTap,
     required this.currentChatActive,
+    required this.notificationCount,
+    required this.onNotificationTap,
     required this.onSearch,
   });
 
@@ -1761,6 +1852,14 @@ class _DesktopHeaderState extends State<_DesktopHeader>
                     isActive: widget.currentChatActive,
                   );
                 },
+              ),
+              const SizedBox(width: 16),
+              _TopAction(
+                icon: Icons.notifications_none_outlined,
+                badge: widget.notificationCount > 0
+                    ? widget.notificationCount.toString()
+                    : null,
+                onTap: widget.onNotificationTap,
               ),
               const SizedBox(width: 16),
               ValueListenableBuilder<Map<String, dynamic>?>(

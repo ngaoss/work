@@ -123,9 +123,15 @@ class _MessagingPageState extends State<MessagingPage> {
               (firstMedia is Map ? (firstMedia['type'] ?? 'image') : 'image')
                   .toString()
                   .toLowerCase();
-          preview = type == 'video' ? '📹 Đã gửi 1 video' : '📸 Đã gửi 1 ảnh';
+          if (type == 'video') {
+            preview = 'Đã gửi 1 video';
+          } else if (type == 'file' || type == 'document') {
+            preview = 'Đã gửi 1 tài liệu';
+          } else {
+            preview = 'Đã gửi 1 ảnh';
+          }
         } else {
-          preview = '📎 Đã gửi 1 tệp đính kèm';
+          preview = 'Đã gửi 1 tài liệu';
         }
 
         if (senderId?.toString() == myId) {
@@ -275,9 +281,15 @@ class _MessagingPageState extends State<MessagingPage> {
       previewText = text;
     } else if (media is List && media.isNotEmpty) {
       final type = (media[0]['type'] ?? 'image').toString().toLowerCase();
-      previewText = type == 'video' ? '📹 Đã gửi 1 video' : '📸 Đã gửi 1 ảnh';
+      if (type == 'video') {
+        previewText = 'Đã gửi 1 video';
+      } else if (type == 'file' || type == 'document') {
+        previewText = 'Đã gửi 1 tài liệu';
+      } else {
+        previewText = 'Đã gửi 1 ảnh';
+      }
     } else if (attachments is List && attachments.isNotEmpty) {
-      previewText = '📎 Đã gửi 1 tệp đính kèm';
+      previewText = 'Đã gửi 1 tài liệu';
     } else {
       return 'Bắt đầu trò chuyện...';
     }

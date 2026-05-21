@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/api_service.dart';
@@ -12,6 +13,7 @@ import '../../../reels/presentation/pages/reels_page.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/utils/time_helper.dart';
 import '../../../../core/utils/image_editor_helper.dart';
+import '../../../../core/widgets/mention_suggestions_overlay.dart';
 // import '../../../../core/utils/notification_helper.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -48,12 +50,13 @@ class WorkHomePageState extends State<WorkHomePage> {
   bool _isMoreLoading = false;
   int _currentPage = 1;
   int _totalPages = 1;
-  final ScrollController _scrollController = ScrollController();
+  late ScrollController _scrollController;
   final Map<String, GlobalKey<_PostCardState>> _postCardKeys = {};
 
   @override
   void initState() {
     super.initState();
+    _scrollController = _SmoothScrollController();
     _fetchPosts(refresh: true);
     _scrollController.addListener(() {
       final pos = _scrollController.position.pixels;
@@ -683,7 +686,9 @@ class WorkHomePageState extends State<WorkHomePage> {
 
     Widget scrollBody = CustomScrollView(
       controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
+      physics: const _SmoothScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       slivers: [
         SliverToBoxAdapter(
           child: Center(
@@ -1640,9 +1645,11 @@ class _PostCardState extends State<_PostCard> {
             .toString();
     final bool hasMedia = mediaItems.isNotEmpty;
     final bool isLongText = content.length > 220;
-    final String displayContent = ((isLongText && !_isExpanded)
-        ? "${content.substring(0, 200)}..."
-        : content).replaceAll(RegExp(r' +'), ' ');
+    final String displayContent =
+        ((isLongText && !_isExpanded)
+                ? "${content.substring(0, 200)}..."
+                : content)
+            .replaceAll(RegExp(r' +'), ' ');
     final bool hasBg =
         widget.post["bgColor"] != null ||
         (widget.post["background"] != null &&
@@ -1697,8 +1704,8 @@ class _PostCardState extends State<_PostCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        displayContent,
+                      MentionText(
+                        text: displayContent,
                         textAlign: TextAlign.left,
                         style: const TextStyle(
                           fontSize: 15,
@@ -1734,8 +1741,8 @@ class _PostCardState extends State<_PostCard> {
                   ),
                   alignment: Alignment.center,
                   padding: const EdgeInsets.all(32),
-                  child: Text(
-                    content,
+                  child: MentionText(
+                    text: content,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
@@ -2334,7 +2341,7 @@ class _CommentBubble extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         Container(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
             color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(16),
@@ -2358,8 +2365,11 @@ class _CommentBubble extends StatelessWidget {
               if (comment["text"]?.toString().isNotEmpty == true)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    (comment["text"]?.toString() ?? "").replaceAll(RegExp(r' +'), ' '),
+                  child: MentionText(
+                    text: (comment["text"]?.toString() ?? "").replaceAll(
+                      RegExp(r' +'),
+                      ' ',
+                    ),
                     textAlign: TextAlign.left,
                     style: TextStyle(
                       fontSize: small ? 12 : 13,
@@ -2526,6 +2536,12 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
   String? _tempImagePath;
   bool _showEmoji = false;
 
+  List<dynamic> _allUsers = [];
+  List<dynamic> _filteredUsers = [];
+  bool _showMentions = false;
+  int _mentionSelectedIndex = 0;
+  int _mentionQueryIndex = -1;
+
   @override
   void didUpdateWidget(covariant _QuickCommentInput oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -2550,6 +2566,8 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) setState(() => _showEmoji = false);
     });
+    _controller.addListener(_onTextChanged);
+    _loadUsers();
     if (widget.replyTo != null) {
       final mentionText = '@${widget.replyTo} ';
       _controller.text = mentionText;
@@ -2561,11 +2579,79 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
 
   @override
   void dispose() {
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
     if (widget.focusNode == null) {
       _focusNode.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _loadUsers() async {
+    final users = await ApiService.getUsers();
+    if (mounted) {
+      setState(() => _allUsers = users);
+    }
+  }
+
+  void _onTextChanged() {
+    final text = _controller.text;
+    final selection = _controller.selection;
+
+    if (selection.start != selection.end || selection.start < 0) {
+      if (_showMentions) setState(() => _showMentions = false);
+      return;
+    }
+
+    final cursorPosition = selection.start;
+    final textBeforeCursor = text.substring(0, cursorPosition);
+
+    final lastAt = textBeforeCursor.lastIndexOf('@');
+    if (lastAt != -1) {
+      final query = textBeforeCursor.substring(lastAt + 1);
+      // Only show if there's no space between @ and cursor
+      if (!query.contains(' ') && !query.contains('\n')) {
+        final filtered = _allUsers.where((u) {
+          final name = (u['fullName'] ?? u['name'] ?? '')
+              .toString()
+              .toLowerCase();
+          return name.contains(query.toLowerCase());
+        }).toList();
+
+        setState(() {
+          _filteredUsers = filtered;
+          _showMentions = filtered.isNotEmpty;
+          _mentionSelectedIndex = 0;
+          _mentionQueryIndex = lastAt;
+        });
+        return;
+      }
+    }
+
+    if (_showMentions) {
+      setState(() {
+        _showMentions = false;
+      });
+    }
+  }
+
+  void _insertMention(Map<String, dynamic> user) {
+    final name = (user['fullName'] ?? user['name'] ?? '').toString();
+    final text = _controller.text;
+    final before = text.substring(0, _mentionQueryIndex);
+    final after = text.substring(_controller.selection.end);
+
+    final newText = "$before@$name\u200B $after";
+    _controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: before.length + name.length + 2,
+      ),
+    );
+    setState(() {
+      _showMentions = false;
+    });
+    _focusNode.requestFocus();
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -2622,6 +2708,16 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (_showMentions && _filteredUsers.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: MentionSuggestionsOverlay(
+              suggestions: _filteredUsers,
+              selectedIndex: _mentionSelectedIndex,
+              onSelect: _insertMention,
+              themeColor: const Color(0xFF3B82F6),
+            ),
+          ),
         if (widget.replyTo != null)
           _ReplyBanner(name: widget.replyTo!, onCancel: widget.onCancelReply),
         if (_tempImagePath != null)
@@ -2656,6 +2752,7 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
             ),
           ),
         Padding(
+          key: const ValueKey("comment_input_row"),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Row(
             children: [
@@ -2697,21 +2794,62 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          controller: _controller,
-                          focusNode: _focusNode,
-                          cursorColor: Colors.black87,
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontSize: 13,
-                          ),
-                          onSubmitted: (_) => _submit(),
-                          decoration: const InputDecoration(
-                            hintText: "Viết bình luận...",
-                            border: InputBorder.none,
-                            hintStyle: TextStyle(
-                              color: Colors.grey,
+                        child: Focus(
+                          onKeyEvent: (FocusNode node, KeyEvent event) {
+                            if (event is KeyDownEvent ||
+                                event is KeyRepeatEvent) {
+                              if (_showMentions) {
+                                if (event.logicalKey ==
+                                    LogicalKeyboardKey.arrowDown) {
+                                  setState(() {
+                                    _mentionSelectedIndex =
+                                        (_mentionSelectedIndex + 1) %
+                                        _filteredUsers.length;
+                                  });
+                                  return KeyEventResult.handled;
+                                } else if (event.logicalKey ==
+                                    LogicalKeyboardKey.arrowUp) {
+                                  setState(() {
+                                    _mentionSelectedIndex =
+                                        (_mentionSelectedIndex -
+                                            1 +
+                                            _filteredUsers.length) %
+                                        _filteredUsers.length;
+                                  });
+                                  return KeyEventResult.handled;
+                                } else if (event.logicalKey ==
+                                        LogicalKeyboardKey.enter ||
+                                    event.logicalKey ==
+                                        LogicalKeyboardKey.numpadEnter) {
+                                  _insertMention(
+                                    _filteredUsers[_mentionSelectedIndex],
+                                  );
+                                  return KeyEventResult.handled;
+                                } else if (event.logicalKey ==
+                                    LogicalKeyboardKey.escape) {
+                                  setState(() => _showMentions = false);
+                                  return KeyEventResult.handled;
+                                }
+                              }
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            cursorColor: Colors.black87,
+                            style: const TextStyle(
+                              color: Colors.black87,
                               fontSize: 13,
+                            ),
+                            onSubmitted: (_) => _submit(),
+                            decoration: const InputDecoration(
+                              hintText: "Viết bình luận...",
+                              border: InputBorder.none,
+                              hintStyle: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ),
@@ -3773,5 +3911,43 @@ class PostBackgroundHelper {
     }
 
     return const BoxDecoration(color: Color(0xFF3B82F6));
+  }
+}
+
+class _SmoothScrollController extends ScrollController {
+  @override
+  ScrollPosition createScrollPosition(
+    ScrollPhysics physics,
+    ScrollContext context,
+    ScrollPosition? oldPosition,
+  ) {
+    return _SmoothScrollPosition(
+      physics: physics,
+      context: context,
+      oldPosition: oldPosition,
+    );
+  }
+}
+
+class _SmoothScrollPosition extends ScrollPositionWithSingleContext {
+  _SmoothScrollPosition({
+    required super.physics,
+    required super.context,
+    super.oldPosition,
+  });
+
+  @override
+  void pointerScroll(double delta) {
+    // Smoother scrolling for news feed (0.6 multiplier)
+    super.pointerScroll(delta * 0.6);
+  }
+}
+
+class _SmoothScrollPhysics extends ClampingScrollPhysics {
+  const _SmoothScrollPhysics({super.parent});
+
+  @override
+  _SmoothScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return _SmoothScrollPhysics(parent: buildParent(ancestor));
   }
 }

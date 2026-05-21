@@ -20,7 +20,7 @@ String formatTime(dynamic timestamp) {
       return '${diff.inDays} ngày trước';
     } else {
       // > 30 days: dd - mm - yyyy HH:mm
-      return DateFormat('dd - MM - yyyy HH:mm').format(dt);
+      return DateFormat('dd/MM/yyyy HH:mm').format(dt);
     }
   } catch (e) {
     return timestamp.toString();

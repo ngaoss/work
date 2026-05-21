@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
@@ -8,6 +9,7 @@ import '../../../../core/api_service.dart';
 import '../../../../core/security.dart';
 import '../../../../core/widgets/video_preview.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
+import '../../../../core/widgets/mention_suggestions_overlay.dart';
 import '../../../../core/utils/time_helper.dart';
 import '../../../../core/utils/image_editor_helper.dart';
 import 'package:path_provider/path_provider.dart';
@@ -965,6 +967,11 @@ class _ReelItemState extends State<_ReelItem> {
     final FocusNode commentFocusNode = FocusNode();
     String? replyingToName;
     String? replyingToId;
+    List<dynamic> allUsers = [];
+    List<dynamic> filteredUsers = [];
+    bool showMentions = false;
+    int mentionSelectedIndex = 0;
+    int mentionQueryIndex = -1;
 
     showModalBottomSheet(
       context: context,
@@ -972,6 +979,65 @@ class _ReelItemState extends State<_ReelItem> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
+          void onTextChanged() {
+            final text = ctrl.text;
+            final selection = ctrl.selection;
+
+            if (selection.start != selection.end || selection.start < 0) {
+              if (showMentions) setModalState(() => showMentions = false);
+              return;
+            }
+
+            final cursorPosition = selection.start;
+            final textBeforeCursor = text.substring(0, cursorPosition);
+
+            final lastAt = textBeforeCursor.lastIndexOf('@');
+            if (lastAt != -1) {
+              final query = textBeforeCursor.substring(lastAt + 1);
+              if (!query.contains(' ') && !query.contains('\n')) {
+                final filtered = allUsers.where((u) {
+                  final name = (u['fullName'] ?? u['name'] ?? '')
+                      .toString()
+                      .toLowerCase();
+                  return name.contains(query.toLowerCase());
+                }).toList();
+
+                setModalState(() {
+                  filteredUsers = filtered;
+                  showMentions = filtered.isNotEmpty;
+                  mentionSelectedIndex = 0;
+                  mentionQueryIndex = lastAt;
+                });
+                return;
+              }
+            }
+
+            if (showMentions) {
+              setModalState(() {
+                showMentions = false;
+              });
+            }
+          }
+
+          void insertMention(Map<String, dynamic> user) {
+            final name = (user['fullName'] ?? user['name'] ?? '').toString();
+            final text = ctrl.text;
+            final before = text.substring(0, mentionQueryIndex);
+            final after = text.substring(ctrl.selection.end);
+
+            final newText = "$before@$name\u200B $after";
+            ctrl.value = TextEditingValue(
+              text: newText,
+              selection: TextSelection.collapsed(
+                offset: before.length + name.length + 2,
+              ),
+            );
+            setModalState(() {
+              showMentions = false;
+            });
+            commentFocusNode.requestFocus();
+          }
+
           // Inner function to load comments once opened
           Future<void> loadComments() async {
             if (reelId != null) {
@@ -986,8 +1052,21 @@ class _ReelItemState extends State<_ReelItem> {
             }
           }
 
+          Future<void> loadUsers() async {
+            final users = await ApiService.getUsers();
+            if (ctx.mounted) {
+              setModalState(() {
+                allUsers = users;
+              });
+            }
+          }
+
           // Trigger load on first build
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (allUsers.isEmpty) {
+              loadUsers();
+              ctrl.addListener(onTextChanged);
+            }
             if (comments.isEmpty) loadComments();
           });
 
@@ -1527,7 +1606,18 @@ class _ReelItemState extends State<_ReelItem> {
                       ],
                     ),
                   ),
+                if (showMentions && filteredUsers.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: MentionSuggestionsOverlay(
+                      suggestions: filteredUsers,
+                      selectedIndex: mentionSelectedIndex,
+                      onSelect: insertMention,
+                      themeColor: const Color(0xFF3B82F6),
+                    ),
+                  ),
                 Padding(
+                  key: const ValueKey("reels_comment_input"),
                   padding: EdgeInsets.fromLTRB(
                     16,
                     8,
@@ -1566,27 +1656,68 @@ class _ReelItemState extends State<_ReelItem> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: TextField(
-                          controller: ctrl,
-                          focusNode: commentFocusNode,
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 13,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: replyingToName != null
-                                ? 'Phản hồi $replyingToName...'
-                                : 'Thêm bình luận...',
-                            hintStyle: TextStyle(color: Colors.grey.shade400),
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
+                        child: Focus(
+                          onKeyEvent: (FocusNode node, KeyEvent event) {
+                            if (event is KeyDownEvent ||
+                                event is KeyRepeatEvent) {
+                              if (showMentions) {
+                                if (event.logicalKey ==
+                                    LogicalKeyboardKey.arrowDown) {
+                                  setModalState(() {
+                                    mentionSelectedIndex =
+                                        (mentionSelectedIndex + 1) %
+                                        filteredUsers.length;
+                                  });
+                                  return KeyEventResult.handled;
+                                } else if (event.logicalKey ==
+                                    LogicalKeyboardKey.arrowUp) {
+                                  setModalState(() {
+                                    mentionSelectedIndex =
+                                        (mentionSelectedIndex -
+                                            1 +
+                                            filteredUsers.length) %
+                                        filteredUsers.length;
+                                  });
+                                  return KeyEventResult.handled;
+                                } else if (event.logicalKey ==
+                                        LogicalKeyboardKey.enter ||
+                                    event.logicalKey ==
+                                        LogicalKeyboardKey.numpadEnter) {
+                                  insertMention(
+                                    filteredUsers[mentionSelectedIndex],
+                                  );
+                                  return KeyEventResult.handled;
+                                } else if (event.logicalKey ==
+                                    LogicalKeyboardKey.escape) {
+                                  setModalState(() => showMentions = false);
+                                  return KeyEventResult.handled;
+                                }
+                              }
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
+                            controller: ctrl,
+                            focusNode: commentFocusNode,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 13,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 10,
+                            decoration: InputDecoration(
+                              hintText: replyingToName != null
+                                  ? 'Phản hồi $replyingToName...'
+                                  : 'Thêm bình luận...',
+                              hintStyle: TextStyle(color: Colors.grey.shade400),
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 10,
+                              ),
                             ),
                           ),
                         ),
