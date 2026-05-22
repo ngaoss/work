@@ -34,6 +34,8 @@ class ChatDetailScreen extends StatefulWidget {
   final String? createdBy;
   final bool isMuted;
   final Function(bool)? onMuteToggle;
+  final bool isMini;
+  final VoidCallback? onClose;
 
   const ChatDetailScreen({
     super.key,
@@ -49,6 +51,8 @@ class ChatDetailScreen extends StatefulWidget {
     this.createdBy,
     this.isMuted = false,
     this.onMuteToggle,
+    this.isMini = false,
+    this.onClose,
   });
 
   @override
@@ -1321,45 +1325,48 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        elevation: 1,
         backgroundColor: Colors.white,
-        elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Colors.black87,
-            size: 20,
-          ),
-          onPressed: () {
-            final lastRecord = _messages.isNotEmpty ? _messages.first : null;
-            String preview = "Bắt đầu trò chuyện...";
-            String updatedTime =
-                "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
-            if (lastRecord != null) {
-              updatedTime = lastRecord["time"] ?? updatedTime;
-              if (lastRecord["isRecalled"] == true) {
-                preview = "Tin nhắn đã được thu hồi";
-              } else if (lastRecord["imagePath"] != null) {
-                preview = lastRecord["isSender"]
-                    ? "Bạn: [Đã gửi một ảnh]"
-                    : "[Đã gửi một ảnh]";
-              } else {
-                final txt = (lastRecord["text"] ?? "").toString();
-                preview = lastRecord["isSender"] ? "Bạn: $txt" : txt;
-              }
-            }
-            Navigator.pop(context, {
-              "lastMsg": preview,
-              "time": updatedTime,
-              "messages": _messages,
-              "members": _members,
-              "name": _currentName,
-              "color": _currentColor,
-              "initials": _currentInitials,
-              "avatarPath": _currentAvatarPath,
-              "conversationId": _activeConversationId,
-            });
-          },
-        ),
+        automaticallyImplyLeading: !widget.isMini,
+        leading: widget.isMini
+            ? null
+            : IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios,
+                  color: Colors.black87,
+                  size: 20,
+                ),
+                onPressed: () {
+                  final lastRecord = _messages.isNotEmpty ? _messages.first : null;
+                  String preview = "Bắt đầu trò chuyện...";
+                  String updatedTime =
+                      "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+                  if (lastRecord != null) {
+                    updatedTime = lastRecord["time"] ?? updatedTime;
+                    if (lastRecord["isRecalled"] == true) {
+                      preview = "Tin nhắn đã được thu hồi";
+                    } else if (lastRecord["imagePath"] != null) {
+                      preview = lastRecord["isSender"]
+                          ? "Bạn: [Đã gửi một ảnh]"
+                          : "[Đã gửi một ảnh]";
+                    } else {
+                      final txt = (lastRecord["text"] ?? "").toString();
+                      preview = lastRecord["isSender"] ? "Bạn: $txt" : txt;
+                    }
+                  }
+                  Navigator.pop(context, {
+                    "lastMsg": preview,
+                    "time": updatedTime,
+                    "messages": _messages,
+                    "members": _members,
+                    "name": _currentName,
+                    "color": _currentColor,
+                    "initials": _currentInitials,
+                    "avatarPath": _currentAvatarPath,
+                    "conversationId": _activeConversationId,
+                  });
+                },
+              ),
         title: Row(
           children: [
             _HeaderAvatar(
@@ -1368,79 +1375,92 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               color: _themeColor,
               avatarPath: _currentAvatarPath,
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _currentName,
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _currentName,
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                Text(
-                  widget.isOnline ? "Đang hoạt động" : "Ngoại tuyến",
-                  style: TextStyle(
-                    color: widget.isOnline ? Colors.green : Colors.grey,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                  Text(
+                    widget.isOnline ? "Đang hoạt động" : "Ngoại tuyến",
+                    style: TextStyle(
+                      color: widget.isOnline ? Colors.green : Colors.grey,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              Icons.more_horiz,
-              color:
-                  _themeColor == Colors.white ||
-                      _themeColor == const Color(0xFFFFFFFF)
-                  ? Colors.blue
-                  : _themeColor,
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatInfoScreen(
-                    name: _currentName,
-                    avatarPath: _currentAvatarPath,
-                    conversationId: _activeConversationId,
-                    isGroup: widget.isGroup,
-                    isMuted: _isMuted,
-                    themeColor: _themeColor,
-                    initialMembers: _members,
-                    createdBy: widget.createdBy,
-                    onMuteToggle: (muted) {
-                      setState(() => _isMuted = muted);
-                      widget.onMuteToggle?.call(muted);
-                    },
-                    onThemeChanged: (newColor) {
-                      setState(() {
-                        _themeColor = newColor;
-                        _currentColor = newColor;
-                      });
-                    },
-                    onNameChanged: (newName) {
-                      setState(() => _currentName = newName);
-                    },
+          if (!widget.isMini)
+            IconButton(
+              icon: Icon(
+                Icons.more_horiz,
+                color:
+                    _themeColor == Colors.white ||
+                            _themeColor == const Color(0xFFFFFFFF)
+                        ? Colors.blue
+                        : _themeColor,
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatInfoScreen(
+                      name: _currentName,
+                      avatarPath: _currentAvatarPath,
+                      conversationId: _activeConversationId,
+                      isGroup: widget.isGroup,
+                      isMuted: _isMuted,
+                      themeColor: _themeColor,
+                      initialMembers: _members,
+                      createdBy: widget.createdBy,
+                      onMuteToggle: (muted) {
+                        setState(() => _isMuted = muted);
+                        widget.onMuteToggle?.call(muted);
+                      },
+                      onThemeChanged: (newColor) {
+                        setState(() {
+                          _themeColor = newColor;
+                          _currentColor = newColor;
+                        });
+                      },
+                      onNameChanged: (newName) {
+                        setState(() => _currentName = newName);
+                      },
+                    ),
                   ),
-                ),
-              ).then((result) {
-                if (result == "deleted") {
-                  Navigator.pop(context, {
-                    "deleted": true,
-                    "conversationId": _activeConversationId,
-                  });
-                }
-              });
-            },
-          ),
-          const SizedBox(width: 8),
+                ).then((result) {
+                  if (result == "deleted") {
+                    Navigator.pop(context, {
+                      "deleted": true,
+                      "conversationId": _activeConversationId,
+                    });
+                  }
+                });
+              },
+            ),
+          if (widget.isMini)
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.black54),
+              iconSize: 20,
+              onPressed: () {
+                widget.onClose?.call();
+              },
+            ),
+          const SizedBox(width: 4),
         ],
       ),
       body: WillPopScope(
@@ -2435,7 +2455,6 @@ class _ChatBubbleState extends State<_ChatBubble> {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width > 600;
     if (isSystem) {
       return Center(
         child: Container(
@@ -2457,7 +2476,12 @@ class _ChatBubbleState extends State<_ChatBubble> {
       );
     }
 
-    final Widget bubbleOnly = Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth > 0 ? constraints.maxWidth : MediaQuery.of(context).size.width;
+        final isDesktop = availableWidth > 600;
+
+        final Widget bubbleOnly = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: isSender
           ? CrossAxisAlignment.end
@@ -2498,7 +2522,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
               child: Container(
                 padding: const EdgeInsets.all(10),
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  maxWidth: availableWidth * 0.75,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -2574,7 +2598,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   vertical: 14,
                 ),
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.72,
+                  maxWidth: availableWidth * 0.72,
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E1E1E), // Dark background for code
@@ -2612,7 +2636,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   vertical: 14,
                 ),
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.72,
+                  maxWidth: availableWidth * 0.72,
                 ),
                 decoration: BoxDecoration(
                   color: isRecalled
@@ -2776,8 +2800,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       if (isSender && isDesktop) _buildActionBar(),
-                      Stack(
-                        clipBehavior: Clip.none,
+                      Flexible(
+                        child: Stack(
+                          clipBehavior: Clip.none,
                         children: [
                           bubbleOnly,
                           if (widget.reactions != null &&
@@ -2836,6 +2861,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                               ),
                             ),
                         ],
+                        ),
                       ),
                       if (!isSender && isDesktop) _buildActionBar(),
                     ],
@@ -2867,6 +2893,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
         ),
       ),
     );
+    });
   }
 
   IconData _getFileIcon(String fileName) {
