@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../../home/presentation/pages/home_page.dart';
 import '../../../personnel/presentation/pages/personnel_page.dart';
@@ -63,7 +65,17 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     await NotificationHelper.initialize();
     await NotificationHelper.requestPermissions();
 
-    NotificationHelper.onNotificationTapped = (payload) {
+    NotificationHelper.onNotificationTapped = (payload) async {
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        try {
+          await windowManager.show();
+          await windowManager.restore();
+          await windowManager.focus();
+        } catch (e) {
+          debugPrint('Error focusing window on notification tap: $e');
+        }
+      }
+
       if (payload != null && payload.isNotEmpty) {
         // If the payload is a chatId, navigate to it
         _navigateFromNotification({'link': '/chat/$payload'});
@@ -640,399 +652,470 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
         builder: (ctx, setStatePopup) {
           return Stack(
             children: [
-          Positioned(
-            top: 75,
-            right: 220,
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: 360,
-                height: 500,
-                decoration: BoxDecoration(
-                  color: Colors.white, // Changed to white background
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
+              Positioned(
+                top: 75,
+                right: 220,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: 360,
+                    height: 500,
+                    decoration: BoxDecoration(
+                      color: Colors.white, // Changed to white background
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                      border: Border.all(color: Colors.grey.shade200),
                     ),
-                  ],
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        top: 16,
-                        left: 16,
-                        right: 8,
-                        bottom: 8,
-                      ),
-                      child: Row(
-                        children: [
-                          const Text(
-                            "Đoạn chat",
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 16,
+                            left: 16,
+                            right: 8,
+                            bottom: 8,
                           ),
-                          const Spacer(),
-                          IconButton(
-                            splashRadius: 20,
-                            icon: const Icon(
-                              Icons.open_in_full,
-                              size: 20,
-                              color: Colors.black54,
-                            ),
-                            tooltip: "Mở toàn màn hình",
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _onItemTapped(6); // Navigate to full chat
-                            },
-                          ),
-                          IconButton(
-                            splashRadius: 20,
-                            icon: const Icon(
-                              Icons.edit_square,
-                              size: 20,
-                              color: Colors.black54,
-                            ),
-                            tooltip: "Tin nhắn mới",
-                            onPressed: () {
-                              // Optional: Handle new message action
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => setStatePopup(() => currentFilter = 'all'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: currentFilter == 'all' ? const Color(0xFFE8F3FF) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                "Tất cả",
+                          child: Row(
+                            children: [
+                              const Text(
+                                "Đoạn chat",
                                 style: TextStyle(
-                                  color: currentFilter == 'all' ? const Color(0xFF0064D1) : Colors.black54,
+                                  color: Colors.black,
+                                  fontSize: 24,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 13,
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () => setStatePopup(() => currentFilter = 'unread'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: currentFilter == 'unread' ? const Color(0xFFE8F3FF) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                "Chưa đọc",
-                                style: TextStyle(
-                                  color: currentFilter == 'unread' ? const Color(0xFF0064D1) : Colors.black54,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
+                              const Spacer(),
+                              IconButton(
+                                splashRadius: 20,
+                                icon: const Icon(
+                                  Icons.open_in_full,
+                                  size: 20,
+                                  color: Colors.black54,
                                 ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () => setStatePopup(() => currentFilter = 'group'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: currentFilter == 'group' ? const Color(0xFFE8F3FF) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                "Nhóm",
-                                style: TextStyle(
-                                  color: currentFilter == 'group' ? const Color(0xFF0064D1) : Colors.black54,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: FutureBuilder<List<dynamic>>(
-                        future: chatsFuture,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.black26,
-                              ),
-                            );
-                          }
-                          final allChats = snapshot.data ?? [];
-                          final myId = (AuthService().userProfile.value?['_id'] ?? AuthService().userProfile.value?['id'])?.toString();
-                          
-                          final chats = allChats.where((chat) {
-                            final isGroup = chat['isGroup'] == true || chat['type'] == 'group';
-                            
-                            final isUnread = (chat['unreadCount'] as num? ?? 0) > 0;
-                            
-                            if (currentFilter == 'unread') return isUnread;
-                            if (currentFilter == 'group') return isGroup;
-                            return true;
-                          }).toList();
-
-                          if (chats.isEmpty) {
-                            return const Center(
-                              child: Text(
-                                "Không có cuộc trò chuyện nào",
-                                style: TextStyle(color: Colors.black54),
-                              ),
-                            );
-                          }
-                          return ListView.builder(
-                            padding: EdgeInsets.zero,
-                            itemCount: chats.length,
-                            itemBuilder: (context, index) {
-                              final chat = chats[index];
-                              final isGroup = chat['isGroup'] == true || chat['type'] == 'group';
-                              final groupName = chat['name']?.toString() ?? chat['groupName']?.toString();
-
-                              String chatName = "Chat";
-                              String? chatAvatar;
-
-                              if (isGroup) {
-                                chatName = groupName ?? "Nhóm không tên";
-                                chatAvatar = chat['groupAvatar']?.toString() ?? chat['avatar']?.toString();
-                              } else {
-                                final members =
-                                    chat['participants'] as List<dynamic>? ?? chat['members'] as List<dynamic>? ?? [];
-                                final otherMember = members.firstWhere((m) {
-                                  if (m is! Map) return false;
-                                  final mId = (m['_id'] ?? m['id'])?.toString();
-                                  final myId =
-                                      (AuthService()
-                                                  .userProfile
-                                                  .value?['_id'] ??
-                                              AuthService()
-                                                  .userProfile
-                                                  .value?['id'])
-                                          ?.toString();
-                                  return mId != null &&
-                                      myId != null &&
-                                      mId != myId;
-                                }, orElse: () => null);
-                                chatName =
-                                    chat['name']?.toString() ??
-                                    otherMember?['fullName']?.toString() ??
-                                    otherMember?['name']?.toString() ??
-                                    "Người dùng";
-                                chatAvatar =
-                                    otherMember?['profilePicture']
-                                        ?.toString() ??
-                                    otherMember?['avatar']?.toString();
-                              }
-
-                              final lastMessage = chat['lastMessage'];
-                              String messageText = "";
-                              String timeDisplay = "";
-                              bool isUnread = false;
-
-                              if (lastMessage != null && lastMessage is Map) {
-                                final text =
-                                    lastMessage['text']?.toString() ?? "";
-                                if (text.startsWith("IMAGE:")) {
-                                  messageText = "Đã gửi một ảnh";
-                                } else if (text.startsWith("FILE:")) {
-                                  messageText = "Đã gửi một tệp đính kèm";
-                                } else {
-                                  messageText = text;
-                                }
-
-                                final createdAt =
-                                    lastMessage['createdAt']?.toString() ?? "";
-                                if (createdAt.isNotEmpty) {
-                                  try {
-                                    final date = DateTime.parse(createdAt);
-                                    final now = DateTime.now();
-                                    final diff = now.difference(date);
-                                    if (diff.inDays > 0) {
-                                      timeDisplay = '${diff.inDays} ngày';
-                                    } else if (diff.inHours > 0) {
-                                      timeDisplay = '${diff.inHours} giờ';
-                                    } else if (diff.inMinutes > 0) {
-                                      timeDisplay = '${diff.inMinutes} phút';
-                                    } else {
-                                      timeDisplay = 'Vừa xong';
-                                    }
-                                  } catch (_) {}
-                                }
-
-                                final lastReadBy =
-                                    chat['lastReadBy'] as List<dynamic>? ?? [];
-                                final myId =
-                                    (AuthService().userProfile.value?['_id'] ??
-                                            AuthService()
-                                                .userProfile
-                                                .value?['id'])
-                                        ?.toString();
-                                isUnread = (chat['unreadCount'] as num? ?? 0) > 0;
-                              }
-
-                              return InkWell(
-                                highlightColor: Colors.black.withOpacity(0.05),
-                                splashColor: Colors.black.withOpacity(0.05),
-                                hoverColor: Colors.black.withOpacity(0.025),
-                                onTap: () {
+                                tooltip: "Mở toàn màn hình",
+                                onPressed: () {
                                   Navigator.pop(ctx);
-                                  final chatId =
-                                      chat['_id']?.toString() ??
-                                      chat['id']?.toString();
-                                  if (chatId != null) {
-                                    if (!_miniChats.any((c) => c['id'] == chatId)) {
-                                      setState(() {
-                                        if (_miniChats.length >= 3) _miniChats.removeAt(0);
-                                        _miniChats.add({
-                                          'id': chatId,
-                                          'name': chatName,
-                                          'avatarPath': chatAvatar,
-                                          'isGroup': isGroup,
-                                          'isOnline': false,
-                                          'createdBy': chat['createdBy'],
-                                        });
-                                      });
-                                    }
-                                  }
+                                  _onItemTapped(6); // Navigate to full chat
                                 },
-                                child: Padding(
+                              ),
+                              IconButton(
+                                splashRadius: 20,
+                                icon: const Icon(
+                                  Icons.edit_square,
+                                  size: 20,
+                                  color: Colors.black54,
+                                ),
+                                tooltip: "Tin nhắn mới",
+                                onPressed: () {
+                                  // Optional: Handle new message action
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () =>
+                                    setStatePopup(() => currentFilter = 'all'),
+                                child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
+                                    horizontal: 12,
+                                    vertical: 6,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 28,
-                                        backgroundColor: Colors.grey.shade200,
-                                        backgroundImage: chatAvatar != null && chatAvatar.toString().trim().isNotEmpty
-                                            ? NetworkImage(
-                                                ApiService.resolveImageUrl(
-                                                  chatAvatar,
-                                                ),
-                                              )
-                                            : null,
-                                        child: chatAvatar == null || chatAvatar.toString().trim().isEmpty
-                                            ? const Icon(
-                                                Icons.person,
-                                                color: Colors.black38,
-                                              )
-                                            : null,
+                                  decoration: BoxDecoration(
+                                    color: currentFilter == 'all'
+                                        ? const Color(0xFFE8F3FF)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    "Tất cả",
+                                    style: TextStyle(
+                                      color: currentFilter == 'all'
+                                          ? const Color(0xFF0064D1)
+                                          : Colors.black54,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => setStatePopup(
+                                  () => currentFilter = 'unread',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: currentFilter == 'unread'
+                                        ? const Color(0xFFE8F3FF)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    "Chưa đọc",
+                                    style: TextStyle(
+                                      color: currentFilter == 'unread'
+                                          ? const Color(0xFF0064D1)
+                                          : Colors.black54,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => setStatePopup(
+                                  () => currentFilter = 'group',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: currentFilter == 'group'
+                                        ? const Color(0xFFE8F3FF)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    "Nhóm",
+                                    style: TextStyle(
+                                      color: currentFilter == 'group'
+                                          ? const Color(0xFF0064D1)
+                                          : Colors.black54,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: FutureBuilder<List<dynamic>>(
+                            future: chatsFuture,
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black26,
+                                  ),
+                                );
+                              }
+                              final allChats = snapshot.data ?? [];
+                              final myId =
+                                  (AuthService().userProfile.value?['_id'] ??
+                                          AuthService()
+                                              .userProfile
+                                              .value?['id'])
+                                      ?.toString();
+
+                              final chats = allChats.where((chat) {
+                                final isGroup =
+                                    chat['isGroup'] == true ||
+                                    chat['type'] == 'group';
+
+                                final isUnread =
+                                    (chat['unreadCount'] as num? ?? 0) > 0;
+
+                                if (currentFilter == 'unread') return isUnread;
+                                if (currentFilter == 'group') return isGroup;
+                                return true;
+                              }).toList();
+
+                              if (chats.isEmpty) {
+                                return const Center(
+                                  child: Text(
+                                    "Không có cuộc trò chuyện nào",
+                                    style: TextStyle(color: Colors.black54),
+                                  ),
+                                );
+                              }
+                              return ListView.builder(
+                                padding: EdgeInsets.zero,
+                                itemCount: chats.length,
+                                itemBuilder: (context, index) {
+                                  final chat = chats[index];
+                                  final isGroup =
+                                      chat['isGroup'] == true ||
+                                      chat['type'] == 'group';
+                                  final groupName =
+                                      chat['name']?.toString() ??
+                                      chat['groupName']?.toString();
+
+                                  String chatName = "Chat";
+                                  String? chatAvatar;
+
+                                  if (isGroup) {
+                                    chatName = groupName ?? "Nhóm không tên";
+                                    chatAvatar =
+                                        chat['groupAvatar']?.toString() ??
+                                        chat['avatar']?.toString();
+                                  } else {
+                                    final members =
+                                        chat['participants']
+                                            as List<dynamic>? ??
+                                        chat['members'] as List<dynamic>? ??
+                                        [];
+                                    final otherMember = members.firstWhere((m) {
+                                      if (m is! Map) return false;
+                                      final mId = (m['_id'] ?? m['id'])
+                                          ?.toString();
+                                      final myId =
+                                          (AuthService()
+                                                      .userProfile
+                                                      .value?['_id'] ??
+                                                  AuthService()
+                                                      .userProfile
+                                                      .value?['id'])
+                                              ?.toString();
+                                      return mId != null &&
+                                          myId != null &&
+                                          mId != myId;
+                                    }, orElse: () => null);
+                                    chatName =
+                                        chat['name']?.toString() ??
+                                        otherMember?['fullName']?.toString() ??
+                                        otherMember?['name']?.toString() ??
+                                        "Người dùng";
+                                    chatAvatar =
+                                        otherMember?['profilePicture']
+                                            ?.toString() ??
+                                        otherMember?['avatar']?.toString();
+                                  }
+
+                                  final lastMessage = chat['lastMessage'];
+                                  String messageText = "";
+                                  String timeDisplay = "";
+                                  bool isUnread = false;
+
+                                  if (lastMessage != null &&
+                                      lastMessage is Map) {
+                                    final text =
+                                        lastMessage['text']?.toString() ?? "";
+                                    if (text.startsWith("IMAGE:")) {
+                                      messageText = "Đã gửi một ảnh";
+                                    } else if (text.startsWith("FILE:")) {
+                                      messageText = "Đã gửi một tệp đính kèm";
+                                    } else {
+                                      messageText = text;
+                                    }
+
+                                    final createdAt =
+                                        lastMessage['createdAt']?.toString() ??
+                                        "";
+                                    if (createdAt.isNotEmpty) {
+                                      try {
+                                        final date = DateTime.parse(createdAt);
+                                        final now = DateTime.now();
+                                        final diff = now.difference(date);
+                                        if (diff.inDays > 0) {
+                                          timeDisplay = '${diff.inDays} ngày';
+                                        } else if (diff.inHours > 0) {
+                                          timeDisplay = '${diff.inHours} giờ';
+                                        } else if (diff.inMinutes > 0) {
+                                          timeDisplay =
+                                              '${diff.inMinutes} phút';
+                                        } else {
+                                          timeDisplay = 'Vừa xong';
+                                        }
+                                      } catch (_) {}
+                                    }
+
+                                    final lastReadBy =
+                                        chat['lastReadBy'] as List<dynamic>? ??
+                                        [];
+                                    final myId =
+                                        (AuthService()
+                                                    .userProfile
+                                                    .value?['_id'] ??
+                                                AuthService()
+                                                    .userProfile
+                                                    .value?['id'])
+                                            ?.toString();
+                                    isUnread =
+                                        (chat['unreadCount'] as num? ?? 0) > 0;
+                                  }
+
+                                  return InkWell(
+                                    highlightColor: Colors.black.withOpacity(
+                                      0.05,
+                                    ),
+                                    splashColor: Colors.black.withOpacity(0.05),
+                                    hoverColor: Colors.black.withOpacity(0.025),
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      final chatId =
+                                          chat['_id']?.toString() ??
+                                          chat['id']?.toString();
+                                      if (chatId != null) {
+                                        if (!_miniChats.any(
+                                          (c) => c['id'] == chatId,
+                                        )) {
+                                          setState(() {
+                                            if (_miniChats.length >= 2)
+                                              _miniChats.removeAt(0);
+                                            _miniChats.add({
+                                              'id': chatId,
+                                              'name': chatName,
+                                              'avatarPath': chatAvatar,
+                                              'isGroup': isGroup,
+                                              'isOnline': false,
+                                              'createdBy': chat['createdBy'],
+                                            });
+                                          });
+                                        }
+                                      }
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 8,
                                       ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              chatName,
-                                              style: TextStyle(
-                                                color: Colors.black87,
-                                                fontSize: 15,
-                                                fontWeight: isUnread
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w500,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Row(
+                                      child: Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 28,
+                                            backgroundColor:
+                                                Colors.grey.shade200,
+                                            backgroundImage:
+                                                chatAvatar != null &&
+                                                    chatAvatar
+                                                        .toString()
+                                                        .trim()
+                                                        .isNotEmpty
+                                                ? NetworkImage(
+                                                    ApiService.resolveImageUrl(
+                                                      chatAvatar,
+                                                    ),
+                                                  )
+                                                : null,
+                                            child:
+                                                chatAvatar == null ||
+                                                    chatAvatar
+                                                        .toString()
+                                                        .trim()
+                                                        .isEmpty
+                                                ? const Icon(
+                                                    Icons.person,
+                                                    color: Colors.black38,
+                                                  )
+                                                : null,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
                                               children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    messageText.isEmpty
-                                                        ? "Chưa có tin nhắn"
-                                                        : messageText,
-                                                    style: TextStyle(
-                                                      color: isUnread
-                                                          ? Colors.black87
-                                                          : Colors.grey,
-                                                      fontSize: 13,
-                                                      fontWeight: isUnread
-                                                          ? FontWeight.w700
-                                                          : FontWeight.normal,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
+                                                Text(
+                                                  chatName,
+                                                  style: TextStyle(
+                                                    color: Colors.black87,
+                                                    fontSize: 15,
+                                                    fontWeight: isUnread
+                                                        ? FontWeight.w700
+                                                        : FontWeight.w500,
                                                   ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
-                                                if (timeDisplay.isNotEmpty) ...[
-                                                  Text(
-                                                    " · $timeDisplay",
-                                                    style: TextStyle(
-                                                      color: isUnread
-                                                          ? Colors.black87
-                                                          : Colors.grey,
-                                                      fontSize: 13,
-                                                      fontWeight: isUnread
-                                                          ? FontWeight.w600
-                                                          : FontWeight.normal,
+                                                const SizedBox(height: 4),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        messageText.isEmpty
+                                                            ? "Chưa có tin nhắn"
+                                                            : messageText,
+                                                        style: TextStyle(
+                                                          color: isUnread
+                                                              ? Colors.black87
+                                                              : Colors.grey,
+                                                          fontSize: 13,
+                                                          fontWeight: isUnread
+                                                              ? FontWeight.w700
+                                                              : FontWeight
+                                                                    .normal,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
                                                     ),
-                                                  ),
-                                                ],
+                                                    if (timeDisplay
+                                                        .isNotEmpty) ...[
+                                                      Text(
+                                                        " · $timeDisplay",
+                                                        style: TextStyle(
+                                                          color: isUnread
+                                                              ? Colors.black87
+                                                              : Colors.grey,
+                                                          fontSize: 13,
+                                                          fontWeight: isUnread
+                                                              ? FontWeight.w600
+                                                              : FontWeight
+                                                                    .normal,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
                                               ],
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                      if (isUnread) ...[
-                                        const SizedBox(width: 12),
-                                        Container(
-                                          width: 12,
-                                          height: 12,
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFF0084FF),
-                                            shape: BoxShape.circle,
                                           ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
+                                          if (isUnread) ...[
+                                            const SizedBox(width: 12),
+                                            Container(
+                                              width: 12,
+                                              height: 12,
+                                              decoration: const BoxDecoration(
+                                                color: Color(0xFF0084FF),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
                               );
                             },
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
             ],
           );
         },
@@ -1459,7 +1542,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                       Expanded(
                         child: IndexedStack(
                           index: _currentIndex,
-                          children: List.generate(7, (index) => _buildPage(index)),
+                          children: List.generate(
+                            7,
+                            (index) => _buildPage(index),
+                          ),
                         ),
                       ),
                     ],
@@ -1471,9 +1557,14 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
             if (_miniChats.isNotEmpty)
               Positioned(
                 bottom: 0,
-                right: !isFullScreen ? 260 : 20, // 250 (ContactsSidebar width) + 10 margin
+                right: !isFullScreen
+                    ? 260
+                    : 20, // 250 (ContactsSidebar width) + 10 margin
                 child: SizedBox(
-                  width: MediaQuery.of(context).size.width - (!isFullScreen ? 260 : 20) - 20,
+                  width:
+                      MediaQuery.of(context).size.width -
+                      (!isFullScreen ? 260 : 20) -
+                      20,
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     reverse: true,
@@ -1482,8 +1573,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: _miniChats.map((chatData) {
                         return Container(
-                          width: 320,
-                          height: 440,
+                          key: ValueKey(chatData['id']),
+                          width: 340,
+                          height: 490,
                           margin: const EdgeInsets.only(left: 16),
                           decoration: BoxDecoration(
                             color: Colors.white,

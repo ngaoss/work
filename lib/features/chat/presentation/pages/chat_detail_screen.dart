@@ -2479,7 +2479,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableWidth = constraints.maxWidth > 0 ? constraints.maxWidth : MediaQuery.of(context).size.width;
-        final isDesktop = availableWidth > 600;
+        final isDesktop = Theme.of(context).platform == TargetPlatform.windows || 
+                          Theme.of(context).platform == TargetPlatform.macOS || 
+                          Theme.of(context).platform == TargetPlatform.linux;
 
         final Widget bubbleOnly = Column(
       mainAxisSize: MainAxisSize.min,
@@ -2594,11 +2596,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
               onLongPress: widget.onMore,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 constraints: BoxConstraints(
-                  maxWidth: availableWidth * 0.72,
+                  maxWidth: availableWidth * 0.85,
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E1E1E), // Dark background for code
@@ -2632,11 +2634,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
               onLongPress: widget.onMore,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 constraints: BoxConstraints(
-                  maxWidth: availableWidth * 0.72,
+                  maxWidth: availableWidth * 0.85,
                 ),
                 decoration: BoxDecoration(
                   color: isRecalled
