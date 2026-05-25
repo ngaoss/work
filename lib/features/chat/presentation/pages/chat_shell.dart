@@ -478,6 +478,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                     vertical: 8,
                                   ),
                                   child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
                                     onTap: link.isNotEmpty
                                         ? () {
                                             // Mark as read

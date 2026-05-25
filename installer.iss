@@ -1,4 +1,4 @@
-#define MyAppVersion "1.0.5"
+#define MyAppVersion "1.0.6"
 
 [Setup]
 AppName=DeepCode Work

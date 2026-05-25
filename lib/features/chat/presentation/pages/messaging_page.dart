@@ -39,7 +39,9 @@ class _MessagingPageState extends State<MessagingPage> {
   void didUpdateWidget(MessagingPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialChatId != oldWidget.initialChatId && widget.initialChatId != null) {
-      _openChatById(widget.initialChatId!);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openChatById(widget.initialChatId!);
+      });
     }
   }
 
