@@ -2807,7 +2807,8 @@ class _ChatBubbleState extends State<_ChatBubble> {
                           clipBehavior: Clip.none,
                         children: [
                           bubbleOnly,
-                          if (widget.reactions != null &&
+                          if (!isRecalled &&
+                              widget.reactions != null &&
                               widget.reactions!.isNotEmpty)
                             Positioned(
                               bottom: -8,

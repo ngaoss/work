@@ -35,6 +35,14 @@ class _MessagingPageState extends State<MessagingPage> {
     _chatSubscription = ApiService.newChatStream.listen(_handleNewMessage);
   }
 
+  @override
+  void didUpdateWidget(MessagingPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialChatId != oldWidget.initialChatId && widget.initialChatId != null) {
+      _openChatById(widget.initialChatId!);
+    }
+  }
+
   void _openChatById(String id) {
     final chat = _chats.firstWhere(
       (c) => c["id"]?.toString() == id,

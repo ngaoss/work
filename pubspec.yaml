@@ -107,6 +107,7 @@ flutter:
   assets:
     - assets/work_icon.png
     - assets/app_icon.ico
+    - assets/work_icon.ico
     - assets/notification_sound.mp3
 
   # An image asset can refer to one or more resolution-specific "variants", see

@@ -1758,7 +1758,13 @@ class _PostCardState extends State<_PostCard> {
                   ),
                 ),
 
-              _PostEngagement(likes: likesCount, comments: commentsCount),
+              _PostEngagement(
+                likes: likesCount,
+                comments: commentsCount,
+                reactions: widget.post["reactions"] is List
+                    ? widget.post["reactions"] as List
+                    : [],
+              ),
               const Divider(height: 1),
               _PostActions(
                 isLiked: widget.post["isLiked"] == true,
@@ -3015,45 +3021,183 @@ class _PostHeader extends StatelessWidget {
   }
 }
 
-class _PostEngagement extends StatelessWidget {
+class _PostEngagement extends StatefulWidget {
   final int likes;
   final int comments;
-  const _PostEngagement({required this.likes, required this.comments});
+  final List<dynamic> reactions;
+  const _PostEngagement({required this.likes, required this.comments, this.reactions = const []});
+
+  @override
+  State<_PostEngagement> createState() => _PostEngagementState();
+}
+
+class _PostEngagementState extends State<_PostEngagement> {
+  bool _isHovered = false;
+  List<dynamic> _usersList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.reactions.isNotEmpty) {
+      _fetchUsers();
+    }
+  }
+  
+  Future<void> _fetchUsers() async {
+    final users = await ApiService.getUsers();
+    if (mounted) {
+      setState(() {
+        _usersList = users;
+      });
+    }
+  }
+
+  Map<String, dynamic>? _resolveUser(dynamic reaction) {
+    String? userId;
+    if (reaction is String) {
+      userId = reaction;
+    } else if (reaction is Map) {
+      final u = reaction['user'];
+      if (u is String) {
+        userId = u;
+      } else if (u is Map) {
+        if (u['fullName'] != null || u['name'] != null) {
+          return u as Map<String, dynamic>;
+        }
+        userId = u['_id']?.toString() ?? u['id']?.toString();
+      } else if (reaction['fullName'] != null || reaction['name'] != null) {
+        return reaction as Map<String, dynamic>;
+      }
+    }
+    
+    if (userId != null && _usersList.isNotEmpty) {
+      try {
+        return _usersList.firstWhere((u) => u['_id']?.toString() == userId || u['id']?.toString() == userId) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  void _showReactionsModal() {
+    if (widget.reactions.isEmpty) return;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text("Người đã bày tỏ cảm xúc", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          contentPadding: const EdgeInsets.only(top: 16, bottom: 8),
+          content: SizedBox(
+            width: 300,
+            height: 400,
+            child: ListView.builder(
+              itemCount: widget.reactions.length,
+              itemBuilder: (context, index) {
+                final resolvedUser = _resolveUser(widget.reactions[index]);
+                final String name = resolvedUser?['fullName'] ?? resolvedUser?['name'] ?? 'Người dùng';
+                final String? avatarId = resolvedUser?['profilePicture'] ?? resolvedUser?['avatar'];
+                
+                return ListTile(
+                  leading: FutureBuilder<Map<String, String>>(
+                    future: ApiService.getAuthHeaders(),
+                    builder: (context, headers) {
+                      return CircleAvatar(
+                        backgroundColor: Colors.blueGrey.shade100,
+                        backgroundImage: avatarId != null
+                            ? NetworkImage(
+                                ApiService.resolveImageUrl(avatarId),
+                                headers: headers.data,
+                              )
+                            : null,
+                        child: avatarId == null ? const Icon(Icons.person) : null,
+                      );
+                    },
+                  ),
+                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Đóng"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    String tooltipMessage = '';
+    if (widget.reactions.isNotEmpty) {
+      final names = widget.reactions
+          .map((r) => _resolveUser(r)?['fullName'] ?? _resolveUser(r)?['name'] ?? 'Người dùng')
+          .take(5)
+          .toList();
+      tooltipMessage = names.join('\n');
+      if (widget.reactions.length > 5) {
+        tooltipMessage += '\nvà ${widget.reactions.length - 5} người khác';
+      }
+    } else if (widget.likes > 0) {
+      tooltipMessage = '${widget.likes} người đã bày tỏ cảm xúc';
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
+          Tooltip(
+            message: tooltipMessage,
+            textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              onEnter: (_) => setState(() => _isHovered = true),
+              onExit: (_) => setState(() => _isHovered = false),
+              child: GestureDetector(
+                onTap: _showReactionsModal,
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.favorite,
+                        color: Colors.white,
+                        size: 10,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.likes > 0 ? "${widget.likes}" : "0",
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                        decoration: _isHovered ? TextDecoration.underline : TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      "cảm xúc",
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                        decoration: _isHovered ? TextDecoration.underline : TextDecoration.none,
+                      ),
+                    ),
+                  ],
                 ),
-                child: const Icon(
-                  Icons.favorite,
-                  color: Colors.white,
-                  size: 10,
-                ),
               ),
-              const SizedBox(width: 6),
-              Text(
-                likes > 0 ? "$likes" : "0",
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                "cảm xúc",
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-              ),
-            ],
+            ),
           ),
           Text(
-            "$comments BÌNH LUẬN",
+            "${widget.comments} BÌNH LUẬN",
             style: TextStyle(
               color: Colors.grey.shade600,
               fontSize: 11,

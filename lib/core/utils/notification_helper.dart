@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications_windows/flutter_local_notifications_windows.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:path/path.dart' as p;
 
 class NotificationHelper {
   static final AudioPlayer _audioPlayer = AudioPlayer();
@@ -36,15 +37,27 @@ class NotificationHelper {
           requestSoundPermission: true,
         );
 
-    const InitializationSettings mySettings = InitializationSettings(
+    String? windowsIconPath;
+    if (Platform.isWindows) {
+      windowsIconPath = p.join(
+        p.dirname(Platform.resolvedExecutable),
+        'data',
+        'flutter_assets',
+        'assets',
+        'work_icon.ico',
+      );
+    }
+
+    final InitializationSettings mySettings = InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsIOS,
       macOS: initializationSettingsIOS,
-      linux: LinuxInitializationSettings(defaultActionName: 'Open'),
+      linux: const LinuxInitializationSettings(defaultActionName: 'Open'),
       windows: WindowsInitializationSettings(
-        appUserModelId: 'com.deepcode.work',
-        guid: '3B82F6A1-9C1A-4A1B-8B9C-AD440487A968',
+        appUserModelId: 'com.deepcode.work.v2',
+        guid: '4C93E7B2-AD2B-5B2C-9C0D-BE551598BA79',
         appName: 'DeepCode Work',
+        iconPath: windowsIconPath,
       ),
     );
 
@@ -224,6 +237,16 @@ class NotificationHelper {
       linux: const LinuxNotificationDetails(defaultActionName: 'Open'),
       windows: WindowsNotificationDetails(
         audio: WindowsNotificationAudio.silent(),
+        images: largeIconPath != null
+            ? [
+                WindowsImage(
+                  Uri.file(largeIconPath),
+                  altText: 'Avatar',
+                  placement: WindowsImagePlacement.appLogoOverride,
+                  crop: WindowsImageCrop.circle,
+                )
+              ]
+            : const [],
       ),
     );
 

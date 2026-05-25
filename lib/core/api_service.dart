@@ -594,15 +594,7 @@ class ApiService {
         // Try POST
         var response = await http.post(url, headers: headers, body: body);
         if (response.statusCode >= 200 && response.statusCode < 300) {
-          debugPrint('DEBUG: toggleCommentLike SUCCESS: $urlStr (POST)');
-          success = true;
-          break;
-        }
-
-        // Try PATCH
-        response = await http.patch(url, headers: headers, body: body);
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          debugPrint('DEBUG: toggleCommentLike SUCCESS: $urlStr (PATCH)');
+          // debugPrint('DEBUG: toggleCommentLike SUCCESS: $urlStr (POST)');
           success = true;
           break;
         }
