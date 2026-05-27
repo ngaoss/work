@@ -14,6 +14,7 @@ import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/utils/time_helper.dart';
 import '../../../../core/utils/image_editor_helper.dart';
 import '../../../../core/widgets/mention_suggestions_overlay.dart';
+import '../../../../core/utils/reaction_utils.dart';
 // import '../../../../core/utils/notification_helper.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -813,7 +814,7 @@ class WorkHomePageState extends State<WorkHomePage> {
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: RefreshIndicator(
         onRefresh: () async {
           await _fetchPosts(refresh: true);
@@ -868,7 +869,7 @@ class _StatusInput extends StatelessWidget {
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -1018,9 +1019,9 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1064,7 +1065,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                                 borderRadius: BorderRadius.circular(16),
                               )
                             : BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
+                                color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF8FAFC),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(color: Colors.grey.shade200),
                               ),
@@ -1323,7 +1324,7 @@ class _EmojiGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: height,
-      color: const Color(0xFFF1F5F9),
+      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
       padding: const EdgeInsets.all(12),
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1660,7 +1661,7 @@ class _PostCardState extends State<_PostCard> {
       children: [
         Container(
           margin: const EdgeInsets.only(bottom: 12),
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1707,10 +1708,12 @@ class _PostCardState extends State<_PostCard> {
                       MentionText(
                         text: displayContent,
                         textAlign: TextAlign.left,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           height: 1.4,
-                          color: Colors.black87,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.9)
+                              : Colors.black87,
                         ),
                       ),
                       if (isLongText && !_isExpanded)
@@ -1872,7 +1875,7 @@ class _PostCardState extends State<_PostCard> {
               color: Colors.transparent,
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -2349,7 +2352,7 @@ class _CommentBubble extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
+            color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -2364,7 +2367,9 @@ class _CommentBubble extends StatelessWidget {
                     "Người dùng",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : Colors.black,
                   fontSize: small ? 11 : 12,
                 ),
               ),
@@ -2379,7 +2384,9 @@ class _CommentBubble extends StatelessWidget {
                     textAlign: TextAlign.left,
                     style: TextStyle(
                       fontSize: small ? 12 : 13,
-                      color: Colors.black87,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withOpacity(0.9)
+                          : Colors.black87,
                     ),
                   ),
                 ),
@@ -2390,35 +2397,46 @@ class _CommentBubble extends StatelessWidget {
           Positioned(
             bottom: -8,
             right: -8,
-            child: IgnorePointer(
-              ignoring: true,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.white,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                  hoverColor: Colors.black.withOpacity(0.05),
+                  onTap: () {
+                    if (reactions != null && reactions.isNotEmpty) {
+                      ReactionUtils.showReactionList(context, reactions);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.thumb_up, color: Colors.blue, size: 10),
+                        const SizedBox(width: 2),
+                        Text(
+                          likeCount.toString(),
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.thumb_up, color: Colors.blue, size: 10),
-                    const SizedBox(width: 2),
-                    Text(
-                      likeCount.toString(),
-                      style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -2794,7 +2812,7 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -3052,81 +3070,8 @@ class _PostEngagementState extends State<_PostEngagement> {
     }
   }
 
-  Map<String, dynamic>? _resolveUser(dynamic reaction) {
-    String? userId;
-    if (reaction is String) {
-      userId = reaction;
-    } else if (reaction is Map) {
-      final u = reaction['user'];
-      if (u is String) {
-        userId = u;
-      } else if (u is Map) {
-        if (u['fullName'] != null || u['name'] != null) {
-          return u as Map<String, dynamic>;
-        }
-        userId = u['_id']?.toString() ?? u['id']?.toString();
-      } else if (reaction['fullName'] != null || reaction['name'] != null) {
-        return reaction as Map<String, dynamic>;
-      }
-    }
-    
-    if (userId != null && _usersList.isNotEmpty) {
-      try {
-        return _usersList.firstWhere((u) => u['_id']?.toString() == userId || u['id']?.toString() == userId) as Map<String, dynamic>;
-      } catch (_) {}
-    }
-    return null;
-  }
-
   void _showReactionsModal() {
-    if (widget.reactions.isEmpty) return;
-    
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text("Người đã bày tỏ cảm xúc", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          contentPadding: const EdgeInsets.only(top: 16, bottom: 8),
-          content: SizedBox(
-            width: 300,
-            height: 400,
-            child: ListView.builder(
-              itemCount: widget.reactions.length,
-              itemBuilder: (context, index) {
-                final resolvedUser = _resolveUser(widget.reactions[index]);
-                final String name = resolvedUser?['fullName'] ?? resolvedUser?['name'] ?? 'Người dùng';
-                final String? avatarId = resolvedUser?['profilePicture'] ?? resolvedUser?['avatar'];
-                
-                return ListTile(
-                  leading: FutureBuilder<Map<String, String>>(
-                    future: ApiService.getAuthHeaders(),
-                    builder: (context, headers) {
-                      return CircleAvatar(
-                        backgroundColor: Colors.blueGrey.shade100,
-                        backgroundImage: avatarId != null
-                            ? NetworkImage(
-                                ApiService.resolveImageUrl(avatarId),
-                                headers: headers.data,
-                              )
-                            : null,
-                        child: avatarId == null ? const Icon(Icons.person) : null,
-                      );
-                    },
-                  ),
-                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text("Đóng"),
-            ),
-          ],
-        );
-      },
-    );
+    ReactionUtils.showReactionList(context, widget.reactions, _usersList);
   }
 
   @override
@@ -3134,7 +3079,7 @@ class _PostEngagementState extends State<_PostEngagement> {
     String tooltipMessage = '';
     if (widget.reactions.isNotEmpty) {
       final names = widget.reactions
-          .map((r) => _resolveUser(r)?['fullName'] ?? _resolveUser(r)?['name'] ?? 'Người dùng')
+          .map((r) => ReactionUtils.resolveUser(r, _usersList)?['fullName'] ?? ReactionUtils.resolveUser(r, _usersList)?['name'] ?? 'Người dùng')
           .take(5)
           .toList();
       tooltipMessage = names.join('\n');
@@ -3530,7 +3475,7 @@ class _BuildMediaAttachmentsTool extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(

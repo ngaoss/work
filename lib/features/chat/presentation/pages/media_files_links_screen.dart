@@ -196,9 +196,9 @@ class _MediaFilesLinksScreenState extends State<MediaFilesLinksScreen> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           elevation: 0,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,9 +222,9 @@ class _MediaFilesLinksScreenState extends State<MediaFilesLinksScreen> {
             ],
           ),
           leading: IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.arrow_back_ios_new,
-              color: Color(0xFF1E293B),
+              color: Theme.of(context).colorScheme.onSurface,
               size: 20,
             ),
             onPressed: () => Navigator.pop(context),

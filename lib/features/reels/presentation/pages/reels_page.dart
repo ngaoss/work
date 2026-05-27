@@ -12,6 +12,7 @@ import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/widgets/mention_suggestions_overlay.dart';
 import '../../../../core/utils/time_helper.dart';
 import '../../../../core/utils/image_editor_helper.dart';
+import '../../../../core/utils/reaction_utils.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ReelsPage extends StatefulWidget {
@@ -207,7 +208,9 @@ class _ReelsPageState extends State<ReelsPage> {
         if (_reels.isNotEmpty)
           Container(
             width: 400,
-            color: Colors.white,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF252728)
+                : Colors.white,
             child: ReelCommentSidebar(
               reelId:
                   (_reels[_currentPage]['_id'] ?? _reels[_currentPage]['id'])
@@ -1072,9 +1075,11 @@ class _ReelItemState extends State<_ReelItem> {
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.75,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF252728)
+                  : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
               children: [
@@ -1196,7 +1201,9 @@ class _ReelItemState extends State<_ReelItem> {
                                                         vertical: 8,
                                                       ),
                                                   decoration: BoxDecoration(
-                                                    color: const Color(
+                                                    color: Theme.of(context).brightness == Brightness.dark
+                                                         ? const Color(0xFF333537)
+                                                         : const Color(
                                                       0xFFF1F5F9,
                                                     ),
                                                     borderRadius:
@@ -1211,10 +1218,12 @@ class _ReelItemState extends State<_ReelItem> {
                                                     children: [
                                                       Text(
                                                         authorName,
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontWeight:
                                                               FontWeight.bold,
-                                                          color: Colors.black,
+                                                          color: Theme.of(context).brightness == Brightness.dark
+                                                              ? Colors.white
+                                                              : Colors.black,
                                                           fontSize: 12,
                                                         ),
                                                       ),
@@ -1224,9 +1233,11 @@ class _ReelItemState extends State<_ReelItem> {
                                                             comment['text']
                                                                 ?.toString() ??
                                                             '',
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontSize: 13,
-                                                          color: Colors.black87,
+                                                          color: Theme.of(context).brightness == Brightness.dark
+                                                              ? Colors.white.withOpacity(0.9)
+                                                              : Colors.black87,
                                                         ),
                                                       ),
                                                     ],
@@ -1243,59 +1254,93 @@ class _ReelItemState extends State<_ReelItem> {
                                                   Positioned(
                                                     bottom: -8,
                                                     right: -8,
-                                                    child: Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 4,
-                                                            vertical: 2,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.white,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              12,
+                                                    child: GestureDetector(
+                                                      onTap: () {
+                                                        final List<dynamic>?
+                                                            commentReactions =
+                                                            comment['reactions']
+                                                                as List<
+                                                                    dynamic>?;
+                                                        if (commentReactions !=
+                                                                null &&
+                                                            commentReactions
+                                                                .isNotEmpty) {
+                                                          ReactionUtils
+                                                              .showReactionList(
+                                                            context,
+                                                            commentReactions,
+                                                            allUsers,
+                                                          );
+                                                        }
+                                                      },
+                                                      child: Container(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                              horizontal: 4,
+                                                              vertical: 2,
                                                             ),
-                                                        boxShadow: [
-                                                          BoxShadow(
-                                                            color: Colors.black
-                                                                .withOpacity(
-                                                                  0.1,
-                                                                ),
-                                                            blurRadius: 4,
-                                                            offset:
-                                                                const Offset(
-                                                                  0,
-                                                                  2,
-                                                                ),
+                                                        decoration: BoxDecoration(
+                                                          color: Theme.of(context)
+                                                                      .brightness ==
+                                                                  Brightness.dark
+                                                              ? const Color(
+                                                                  0xFF333537,
+                                                                )
+                                                              : Colors.white,
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(
+                                                            12,
                                                           ),
-                                                        ],
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          const Icon(
-                                                            Icons.favorite,
-                                                            color: Colors.red,
-                                                            size: 10,
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 2,
-                                                          ),
-                                                          Text(
-                                                            comment['likes']
-                                                                .toString(),
-                                                            style:
-                                                                const TextStyle(
-                                                                  fontSize: 9,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  color: Colors
-                                                                      .black54,
-                                                                ),
-                                                          ),
-                                                        ],
+                                                          boxShadow: [
+                                                            BoxShadow(
+                                                              color: Colors.black
+                                                                  .withOpacity(
+                                                                    0.1,
+                                                                  ),
+                                                              blurRadius: 4,
+                                                              offset:
+                                                                  const Offset(
+                                                                    0,
+                                                                    2,
+                                                                  ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
+                                                          children: [
+                                                            const Icon(
+                                                              Icons.favorite,
+                                                              color: Colors.red,
+                                                              size: 10,
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 2,
+                                                            ),
+                                                            Text(
+                                                              comment['likes']
+                                                                  .toString(),
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: Theme.of(
+                                                                            context)
+                                                                        .brightness ==
+                                                                        Brightness
+                                                                            .dark
+                                                                    ? Colors
+                                                                        .white70
+                                                                    : Colors
+                                                                        .black54,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
                                                       ),
                                                     ),
                                                   ),
@@ -1498,12 +1543,12 @@ class _ReelItemState extends State<_ReelItem> {
                                                               vertical: 6,
                                                             ),
                                                         decoration: BoxDecoration(
-                                                          color: const Color(
-                                                            0xFFF1F5F9,
-                                                          ),
+                                                          color: Theme.of(context).brightness == Brightness.dark
+                                                              ? const Color(0xFF333537)
+                                                              : const Color(0xFFF1F5F9),
                                                           borderRadius:
                                                               BorderRadius.circular(
-                                                                12,
+                                                                16,
                                                               ),
                                                         ),
                                                         child: Column(
@@ -2894,13 +2939,18 @@ class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         // Header
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+            border: Border(
+              bottom: BorderSide(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
+              ),
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2945,7 +2995,7 @@ class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
         // Input
         if (_replyingToName != null)
           Container(
-            color: const Color(0xFFEFF6FF),
+            color: isDark ? Colors.blue.withOpacity(0.1) : const Color(0xFFEFF6FF),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
@@ -2970,7 +3020,11 @@ class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            border: Border(
+              top: BorderSide(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
+              ),
+            ),
           ),
           child: Row(
             children: [
@@ -2978,10 +3032,13 @@ class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
                 child: TextField(
                   controller: _ctrl,
                   focusNode: _focusNode,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'Viết cảm nghĩ...',
                     border: InputBorder.none,
-                    hintStyle: TextStyle(fontSize: 13),
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.grey : Colors.grey.shade400,
+                    ),
                   ),
                   style: const TextStyle(fontSize: 13),
                   onSubmitted: (_) => _postComment(),
@@ -3023,6 +3080,7 @@ class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
   }
 
   Widget _commentItem(Map<String, dynamic> comment) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final author = comment['author'];
     final authorName = (author is Map)
         ? (author['fullName'] ?? 'Người dùng')
@@ -3053,7 +3111,9 @@ class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: isDark
+                        ? const Color(0xFF333537)
+                        : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -3061,15 +3121,19 @@ class _ReelCommentSidebarState extends State<ReelCommentSidebar> {
                     children: [
                       Text(
                         authorName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         comment['text'] ?? '',
-                        style: const TextStyle(fontSize: 13),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white.withOpacity(0.9) : Colors.black87,
+                        ),
                       ),
                     ],
                   ),

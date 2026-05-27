@@ -87,9 +87,9 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -100,12 +100,12 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     "CÀI ĐẶT HỒ SƠ",
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 20,
-                      color: Color(0xFF1E293B),
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   IconButton(
@@ -113,7 +113,7 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
                     icon: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
+                        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -240,16 +240,16 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
       ),
       child: TextField(
         controller: controller,
         keyboardType: type,
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w900,
           fontSize: 15,
-          color: Color(0xFF1E293B),
+          color: Theme.of(context).colorScheme.onSurface,
         ),
         decoration: InputDecoration(
           hintText: hint,
@@ -279,7 +279,7 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
       ),
       child: DropdownButtonHideUnderline(

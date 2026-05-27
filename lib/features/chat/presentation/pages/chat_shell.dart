@@ -351,9 +351,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Container(
           height: MediaQuery.of(context).size.height * 0.75,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF252728) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             children: [
@@ -368,13 +368,17 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
+                        color: Theme.of(ctx).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade300,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.refresh, size: 20),
+                      icon: Icon(
+                        Icons.refresh,
+                        size: 20,
+                        color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black87,
+                      ),
                       onPressed: () async {
                         setModalState(() {});
                         await _fetchNotifications();
@@ -388,14 +392,18 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Text(
                   'THÔNG BÁO (${_notifications.length})',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                     letterSpacing: 0.5,
+                    color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white : Colors.black87,
                   ),
                 ),
               ),
-              const Divider(height: 1),
+              Divider(
+                height: 1,
+                color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white12 : null,
+              ),
               Expanded(
                 child: _notifications.isEmpty
                     ? Center(
@@ -405,12 +413,14 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                             Icon(
                               Icons.notifications_none_outlined,
                               size: 48,
-                              color: Colors.grey.shade300,
+                              color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white30 : Colors.grey.shade300,
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'Chưa có thông báo nào',
-                              style: TextStyle(color: Colors.grey.shade400),
+                              style: TextStyle(
+                                color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white38 : Colors.grey.shade400,
+                              ),
                             ),
                           ],
                         ),
@@ -473,40 +483,43 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
 
                             return Column(
                               children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: link.isNotEmpty
-                                        ? () {
-                                            // Mark as read
-                                            setState(() {
-                                              notification['isRead'] = true;
-                                              _notificationCount =
-                                                  _notifications
-                                                      .where(
-                                                        (n) =>
-                                                            n['isRead'] != true,
-                                                      )
-                                                      .length;
-                                            });
-                                            Navigator.pop(
-                                              ctx,
-                                            ); // Close bottom sheet
-                                            _navigateFromNotification(
-                                              notification,
-                                            );
-                                          }
-                                        : null,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                      ),
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                InkWell(
+                                   highlightColor: Theme.of(ctx).brightness == Brightness.dark
+                                       ? Colors.white.withOpacity(0.05)
+                                       : Colors.black.withOpacity(0.05),
+                                   splashColor: Theme.of(ctx).brightness == Brightness.dark
+                                       ? Colors.white.withOpacity(0.05)
+                                       : Colors.black.withOpacity(0.05),
+                                   hoverColor: Theme.of(ctx).brightness == Brightness.dark
+                                       ? Colors.white.withOpacity(0.025)
+                                       : Colors.black.withOpacity(0.025),
+                                   onTap: () {
+                                     // Mark as read
+                                     setState(() {
+                                       notification['isRead'] = true;
+                                       _notificationCount =
+                                           _notifications
+                                               .where(
+                                                 (n) =>
+                                                     n['isRead'] != true,
+                                               )
+                                               .length;
+                                     });
+                                     Navigator.pop(
+                                       ctx,
+                                     ); // Close bottom sheet
+                                     _navigateFromNotification(
+                                       notification,
+                                     );
+                                   },
+                                   child: Padding(
+                                     padding: const EdgeInsets.symmetric(
+                                       vertical: 8,
+                                       horizontal: 12,
+                                     ),
+                                     child: Row(
+                                       crossAxisAlignment:
+                                           CrossAxisAlignment.start,
                                         children: [
                                           // Avatar
                                           FutureBuilder<Map<String, String>>(
@@ -514,8 +527,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                             builder: (context, headers) {
                                               return CircleAvatar(
                                                 radius: 20,
-                                                backgroundColor:
-                                                    Colors.blueGrey.shade100,
+                                                backgroundColor: Theme.of(ctx).brightness == Brightness.dark
+                                                    ? const Color(0xFF1E1F20)
+                                                    : Colors.blueGrey.shade100,
                                                 backgroundImage:
                                                     senderAvatar != null
                                                     ? NetworkImage(
@@ -531,8 +545,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                             ? senderName[0]
                                                                   .toUpperCase()
                                                             : 'U',
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
+                                                        style: TextStyle(
+                                                          color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.white,
                                                           fontSize: 12,
                                                           fontWeight:
                                                               FontWeight.bold,
@@ -554,25 +568,23 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                     Expanded(
                                                       child: Text(
                                                         senderName,
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontWeight:
                                                               FontWeight.bold,
                                                           fontSize: 13,
-                                                          color: Colors.black87,
+                                                          color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white.withOpacity(0.9) : Colors.black87,
                                                         ),
                                                       ),
                                                     ),
                                                     Container(
-                                                      padding:
+                        padding:
                                                           const EdgeInsets.symmetric(
                                                             horizontal: 6,
                                                             vertical: 2,
                                                           ),
                                                       decoration: BoxDecoration(
                                                         color: isRead
-                                                            ? Colors
-                                                                  .grey
-                                                                  .shade200
+                                                            ? (Theme.of(ctx).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200)
                                                             : const Color(
                                                                 0xFFE3F2FD,
                                                               ),
@@ -604,7 +616,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                         TextOverflow.ellipsis,
                                                     style: TextStyle(
                                                       fontSize: 13,
-                                                      color: Colors.black54,
+                                                      color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white60 : Colors.black54,
                                                       fontWeight: isRead
                                                           ? FontWeight.normal
                                                           : FontWeight.w500,
@@ -615,9 +627,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                 // Time
                                                 Text(
                                                   timeDisplay,
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontSize: 11,
-                                                    color: Colors.grey,
+                                                    color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white30 : Colors.grey,
                                                   ),
                                                 ),
                                               ],
@@ -627,8 +639,11 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                       ),
                                     ),
                                   ),
+                                Divider(
+                                  height: 1,
+                                  indent: 52,
+                                  color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white12 : null,
                                 ),
-                                const Divider(height: 1, indent: 52),
                               ],
                             );
                           },
@@ -662,7 +677,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                     width: 360,
                     height: 500,
                     decoration: BoxDecoration(
-                      color: Colors.white, // Changed to white background
+                      color: Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF252728) : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
@@ -671,7 +686,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                           offset: const Offset(0, 10),
                         ),
                       ],
-                      border: Border.all(color: Colors.grey.shade200),
+                      border: Border.all(
+                        color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white12 : Colors.grey.shade200,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,10 +702,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                           ),
                           child: Row(
                             children: [
-                              const Text(
+                              Text(
                                 "Đoạn chat",
                                 style: TextStyle(
-                                  color: Colors.black,
+                                  color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white : Colors.black,
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -696,10 +713,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                               const Spacer(),
                               IconButton(
                                 splashRadius: 20,
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.open_in_full,
                                   size: 20,
-                                  color: Colors.black54,
+                                  color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54,
                                 ),
                                 tooltip: "Mở toàn màn hình",
                                 onPressed: () {
@@ -709,10 +726,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                               ),
                               IconButton(
                                 splashRadius: 20,
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.edit_square,
                                   size: 20,
-                                  color: Colors.black54,
+                                  color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54,
                                 ),
                                 tooltip: "Tin nhắn mới",
                                 onPressed: () {
@@ -739,7 +756,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                   ),
                                   decoration: BoxDecoration(
                                     color: currentFilter == 'all'
-                                        ? const Color(0xFFE8F3FF)
+                                        ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF1E3A8A) : const Color(0xFFE8F3FF))
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(20),
                                   ),
@@ -747,8 +764,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                     "Tất cả",
                                     style: TextStyle(
                                       color: currentFilter == 'all'
-                                          ? const Color(0xFF0064D1)
-                                          : Colors.black54,
+                                          ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF93C5FD) : const Color(0xFF0064D1))
+                                          : (Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
                                     ),
@@ -767,7 +784,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                   ),
                                   decoration: BoxDecoration(
                                     color: currentFilter == 'unread'
-                                        ? const Color(0xFFE8F3FF)
+                                        ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF1E3A8A) : const Color(0xFFE8F3FF))
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(20),
                                   ),
@@ -775,8 +792,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                     "Chưa đọc",
                                     style: TextStyle(
                                       color: currentFilter == 'unread'
-                                          ? const Color(0xFF0064D1)
-                                          : Colors.black54,
+                                          ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF93C5FD) : const Color(0xFF0064D1))
+                                          : (Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
                                     ),
@@ -795,7 +812,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                   ),
                                   decoration: BoxDecoration(
                                     color: currentFilter == 'group'
-                                        ? const Color(0xFFE8F3FF)
+                                        ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF1E3A8A) : const Color(0xFFE8F3FF))
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(20),
                                   ),
@@ -803,8 +820,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                     "Nhóm",
                                     style: TextStyle(
                                       color: currentFilter == 'group'
-                                          ? const Color(0xFF0064D1)
-                                          : Colors.black54,
+                                          ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF93C5FD) : const Color(0xFF0064D1))
+                                          : (Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
                                     ),
@@ -821,9 +838,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                             builder: (context, snapshot) {
                               if (snapshot.connectionState ==
                                   ConnectionState.waiting) {
-                                return const Center(
+                                return Center(
                                   child: CircularProgressIndicator(
-                                    color: Colors.black26,
+                                    color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white30 : Colors.black26,
                                   ),
                                 );
                               }
@@ -849,10 +866,12 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                               }).toList();
 
                               if (chats.isEmpty) {
-                                return const Center(
+                                return Center(
                                   child: Text(
                                     "Không có cuộc trò chuyện nào",
-                                    style: TextStyle(color: Colors.black54),
+                                    style: TextStyle(
+                                      color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white54 : Colors.black54,
+                                    ),
                                   ),
                                 );
                               }
@@ -963,11 +982,15 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                   }
 
                                   return InkWell(
-                                    highlightColor: Colors.black.withOpacity(
-                                      0.05,
-                                    ),
-                                    splashColor: Colors.black.withOpacity(0.05),
-                                    hoverColor: Colors.black.withOpacity(0.025),
+                                    highlightColor: Theme.of(ctx).brightness == Brightness.dark
+                                        ? Colors.white.withOpacity(0.05)
+                                        : Colors.black.withOpacity(0.05),
+                                    splashColor: Theme.of(ctx).brightness == Brightness.dark
+                                        ? Colors.white.withOpacity(0.05)
+                                        : Colors.black.withOpacity(0.05),
+                                    hoverColor: Theme.of(ctx).brightness == Brightness.dark
+                                        ? Colors.white.withOpacity(0.025)
+                                        : Colors.black.withOpacity(0.025),
                                     onTap: () {
                                       Navigator.pop(ctx);
                                       final chatId =
@@ -1001,8 +1024,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                         children: [
                                           CircleAvatar(
                                             radius: 28,
-                                            backgroundColor:
-                                                Colors.grey.shade200,
+                                            backgroundColor: Theme.of(ctx).brightness == Brightness.dark
+                                                ? const Color(0xFF1E1F20)
+                                                : Colors.grey.shade200,
                                             backgroundImage:
                                                 chatAvatar != null &&
                                                     chatAvatar
@@ -1021,9 +1045,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                         .toString()
                                                         .trim()
                                                         .isEmpty
-                                                ? const Icon(
+                                                ? Icon(
                                                     Icons.person,
-                                                    color: Colors.black38,
+                                                    color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white38 : Colors.black38,
                                                   )
                                                 : null,
                                           ),
@@ -1038,7 +1062,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                 Text(
                                                   chatName,
                                                   style: TextStyle(
-                                                    color: Colors.black87,
+                                                    color: Theme.of(context).brightness == Brightness.dark
+                                                        ? Colors.white.withOpacity(0.95)
+                                                        : Colors.black87,
                                                     fontSize: 15,
                                                     fontWeight: isUnread
                                                         ? FontWeight.w700
@@ -1058,13 +1084,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                             : messageText,
                                                         style: TextStyle(
                                                           color: isUnread
-                                                              ? Colors.black87
-                                                              : Colors.grey,
+                                                              ? (Theme.of(context).brightness == Brightness.dark
+                                                                  ? Colors.white
+                                                                  : Colors.black87)
+                                                              : (Theme.of(context).brightness == Brightness.dark
+                                                                  ? Colors.white60
+                                                                  : Colors.black45),
                                                           fontSize: 13,
                                                           fontWeight: isUnread
                                                               ? FontWeight.w700
-                                                              : FontWeight
-                                                                    .normal,
+                                                              : FontWeight.normal,
                                                         ),
                                                         maxLines: 1,
                                                         overflow: TextOverflow
@@ -1077,13 +1106,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                                         " · $timeDisplay",
                                                         style: TextStyle(
                                                           color: isUnread
-                                                              ? Colors.black87
-                                                              : Colors.grey,
+                                                              ? (Theme.of(context).brightness == Brightness.dark
+                                                                  ? Colors.blue.shade300
+                                                                  : Colors.blue.shade700)
+                                                              : (Theme.of(context).brightness == Brightness.dark
+                                                                  ? Colors.white30
+                                                                  : Colors.grey),
                                                           fontSize: 13,
                                                           fontWeight: isUnread
                                                               ? FontWeight.w600
-                                                              : FontWeight
-                                                                    .normal,
+                                                              : FontWeight.normal,
                                                         ),
                                                       ),
                                                     ],
@@ -1139,7 +1171,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                 width: 360,
                 height: 500,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF252728) : Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
@@ -1148,7 +1180,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                       offset: const Offset(0, 10),
                     ),
                   ],
-                  border: Border.all(color: Colors.grey.shade100),
+                  border: Border.all(
+                    color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white12 : Colors.grey.shade100,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1158,14 +1192,17 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                       child: Text(
                         "THÔNG BÁO MỚI",
                         style: TextStyle(
-                          color: Colors.grey.shade500,
+                          color: Theme.of(ctx).brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey.shade500,
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.5,
                         ),
                       ),
                     ),
-                    const Divider(height: 1),
+                    Divider(
+                      height: 1,
+                      color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white12 : null,
+                    ),
                     Expanded(
                       child: _notifications.isEmpty
                           ? Center(
@@ -1175,13 +1212,13 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                   Icon(
                                     Icons.notifications_none_outlined,
                                     size: 40,
-                                    color: Colors.grey.shade300,
+                                    color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white30 : Colors.grey.shade300,
                                   ),
                                   const SizedBox(height: 12),
-                                  const Text(
+                                  Text(
                                     "Không có thông báo mới",
                                     style: TextStyle(
-                                      color: Colors.grey,
+                                      color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white54 : Colors.grey,
                                       fontSize: 13,
                                     ),
                                   ),
@@ -1195,7 +1232,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                   data: Theme.of(context).copyWith(
                                     scrollbarTheme: ScrollbarThemeData(
                                       thumbColor: MaterialStateProperty.all(
-                                        Colors.grey.shade400,
+                                        Theme.of(ctx).brightness == Brightness.dark ? Colors.white24 : Colors.grey.shade400,
                                       ),
                                       thickness: MaterialStateProperty.all(6),
                                       radius: const Radius.circular(3),
@@ -1209,7 +1246,10 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                       padding: EdgeInsets.zero,
                                       itemCount: _notifications.length,
                                       separatorBuilder: (context, index) =>
-                                          const Divider(height: 1),
+                                          Divider(
+                                            height: 1,
+                                            color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white12 : null,
+                                          ),
                                       itemBuilder: (context, index) {
                                         final notification =
                                             _notifications[index];
@@ -1264,100 +1304,111 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                         }
 
                                         return InkWell(
-                                          onTap: () {
-                                            Navigator.pop(ctx);
-                                            _navigateFromNotification(
-                                              notification,
-                                            );
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(16),
-                                            child: Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                CircleAvatar(
-                                                  radius: 20,
-                                                  backgroundColor:
-                                                      Colors.blueGrey.shade50,
-                                                  backgroundImage:
-                                                      senderAvatar != null
-                                                      ? NetworkImage(
-                                                          ApiService.resolveImageUrl(
-                                                            senderAvatar,
-                                                          ),
-                                                        )
-                                                      : null,
-                                                  child: senderAvatar == null
-                                                      ? const Icon(
-                                                          Icons.person,
-                                                          size: 20,
-                                                        )
-                                                      : null,
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      RichText(
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        text: TextSpan(
-                                                          children: [
-                                                            TextSpan(
-                                                              text:
-                                                                  notification['groupName'] !=
-                                                                      null
-                                                                  ? "$senderName : "
-                                                                  : "$senderName ",
-                                                              style: const TextStyle(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w900,
-                                                                color: Color(
-                                                                  0xFF1E293B,
-                                                                ),
-                                                                fontSize: 13,
-                                                              ),
-                                                            ),
-                                                            TextSpan(
-                                                              text: content,
-                                                              style: const TextStyle(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w500,
-                                                                color: Color(
-                                                                  0xFF64748B,
-                                                                ),
-                                                                fontSize: 13,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 6),
-                                                      Text(
-                                                        timeDisplay,
-                                                        style: TextStyle(
-                                                          color: Colors
-                                                              .grey
-                                                              .shade400,
-                                                          fontSize: 10,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
+                                           highlightColor: Theme.of(ctx).brightness == Brightness.dark
+                                               ? Colors.white.withOpacity(0.05)
+                                               : Colors.black.withOpacity(0.05),
+                                           splashColor: Theme.of(ctx).brightness == Brightness.dark
+                                               ? Colors.white.withOpacity(0.05)
+                                               : Colors.black.withOpacity(0.05),
+                                           hoverColor: Theme.of(ctx).brightness == Brightness.dark
+                                               ? Colors.white.withOpacity(0.025)
+                                               : Colors.black.withOpacity(0.025),
+                                           onTap: () {
+                                             Navigator.pop(ctx);
+                                             _navigateFromNotification(
+                                               notification,
+                                             );
+                                           },
+                                           child: Padding(
+                                             padding: const EdgeInsets.all(16),
+                                             child: Row(
+                                               crossAxisAlignment:
+                                                   CrossAxisAlignment.start,
+                                               children: [
+                                                 CircleAvatar(
+                                                   radius: 20,
+                                                   backgroundColor: Theme.of(ctx).brightness == Brightness.dark
+                                                       ? const Color(0xFF1E1F20)
+                                                       : Colors.blueGrey.shade50,
+                                                   backgroundImage:
+                                                       senderAvatar != null
+                                                       ? NetworkImage(
+                                                           ApiService.resolveImageUrl(
+                                                             senderAvatar,
+                                                           ),
+                                                         )
+                                                       : null,
+                                                   child: senderAvatar == null
+                                                       ? Icon(
+                                                           Icons.person,
+                                                           size: 20,
+                                                           color: Theme.of(ctx).brightness == Brightness.dark ? Colors.white38 : null,
+                                                         )
+                                                       : null,
+                                                 ),
+                                                 const SizedBox(width: 12),
+                                                 Expanded(
+                                                   child: Column(
+                                                     crossAxisAlignment:
+                                                         CrossAxisAlignment
+                                                             .start,
+                                                     children: [
+                                                       RichText(
+                                                         maxLines: 2,
+                                                         overflow: TextOverflow
+                                                             .ellipsis,
+                                                         text: TextSpan(
+                                                           children: [
+                                                             TextSpan(
+                                                               text:
+                                                                   notification['groupName'] !=
+                                                                       null
+                                                                   ? "$senderName : "
+                                                                   : "$senderName ",
+                                                               style: TextStyle(
+                                                                 fontWeight:
+                                                                     FontWeight
+                                                                         .w900,
+                                                                 color: Theme.of(ctx).brightness == Brightness.dark
+                                                                     ? Colors.white.withOpacity(0.9)
+                                                                     : const Color(0xFF1E293B),
+                                                                 fontSize: 13,
+                                                               ),
+                                                             ),
+                                                             TextSpan(
+                                                               text: content,
+                                                               style: TextStyle(
+                                                                 fontWeight:
+                                                                     FontWeight
+                                                                         .w500,
+                                                                 color: Theme.of(ctx).brightness == Brightness.dark
+                                                                     ? Colors.white60
+                                                                     : const Color(0xFF64748B),
+                                                                 fontSize: 13,
+                                                               ),
+                                                             ),
+                                                           ],
+                                                         ),
+                                                       ),
+                                                       const SizedBox(height: 6),
+                                                       Text(
+                                                         timeDisplay,
+                                                         style: TextStyle(
+                                                           color: Theme.of(ctx).brightness == Brightness.dark
+                                                               ? Colors.white30
+                                                               : Colors.grey.shade400,
+                                                           fontSize: 10,
+                                                           fontWeight:
+                                                               FontWeight.bold,
+                                                         ),
+                                                       ),
+                                                     ],
+                                                   ),
+                                                 ),
+                                               ],
+                                             ),
+                                           ),
+                                         );
                                       },
                                     ),
                                   ),
@@ -1515,7 +1566,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       final bool isFullScreen = isMessaging || isReels;
 
       return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF252728)
+            : const Color(0xFFF8FAFC),
         body: Stack(
           children: [
             Row(
@@ -1579,7 +1632,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                           height: 490,
                           margin: const EdgeInsets.only(left: 16),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF252728)
+                                : Colors.white,
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               topRight: Radius.circular(12),
@@ -1631,7 +1686,12 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       key: _scaffoldKey,
       appBar: AppBar(
         leading: IconButton(
-          icon: Icon(Icons.menu, color: Colors.blueGrey.shade700),
+          icon: Icon(
+            Icons.menu,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.blueGrey.shade700,
+          ),
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
         title: _buildAppLogo(),
@@ -1668,7 +1728,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           const SizedBox(width: 8),
         ],
         centerTitle: false,
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF252728)
+            : Colors.white,
         elevation: 0.5,
       ),
       drawer: _CustomDrawer(currentIndex: _currentIndex, onTap: _onItemTapped),
@@ -1678,8 +1740,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.1))),
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF252728)
+              : Colors.white,
+          border: Border(
+            top: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white12
+                  : Colors.grey.withOpacity(0.1),
+            ),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.01),
@@ -1689,10 +1759,15 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           ],
         ),
         child: BottomNavigationBar(
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF252728)
+              : Colors.white,
           currentIndex: _getBottomIndex(),
           type: BottomNavigationBarType.fixed,
           selectedItemColor: const Color(0xFF3B82F6),
-          unselectedItemColor: Colors.blueGrey.shade300,
+          unselectedItemColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white38
+              : Colors.blueGrey.shade300,
           showSelectedLabels: true,
           showUnselectedLabels: true,
           selectedLabelStyle: const TextStyle(
@@ -1786,9 +1861,15 @@ class _TopActionStatus extends StatelessWidget {
       width: 38,
       height: 38,
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E3A8A).withOpacity(0.3)
+            : const Color(0xFFEFF6FF),
         shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF3B82F6).withOpacity(0.4)
+              : const Color(0xFF3B82F6).withOpacity(0.2),
+        ),
       ),
       child: const Icon(
         Icons.notifications_active_outlined,
@@ -1884,7 +1965,7 @@ class _TopActionState extends State<_TopAction>
         decoration: BoxDecoration(
           color: widget.isActive
               ? const Color(0xFF3B82F6).withOpacity(0.1)
-              : const Color(0xFFF1F5F9),
+              : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1F20) : const Color(0xFFF1F5F9)),
           shape: BoxShape.circle,
         ),
         child: Stack(
@@ -1896,7 +1977,7 @@ class _TopActionState extends State<_TopAction>
               size: 20,
               color: widget.isActive
                   ? const Color(0xFF3B82F6)
-                  : const Color(0xFF475569),
+                  : (Theme.of(context).brightness == Brightness.dark ? Colors.white70 : const Color(0xFF475569)),
             ),
             if (widget.badge != null)
               Positioned(
@@ -2132,14 +2213,22 @@ class _DrawerItem extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isActive ? Colors.white : Colors.blueGrey.shade600,
+                color: isActive
+                    ? Colors.white
+                    : (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white70
+                        : Colors.blueGrey.shade600),
                 size: 22,
               ),
               const SizedBox(width: 16),
               Text(
                 label,
                 style: TextStyle(
-                  color: isActive ? Colors.white : Colors.blueGrey.shade700,
+                  color: isActive
+                      ? Colors.white
+                      : (Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white70
+                          : Colors.blueGrey.shade700),
                   fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
                   fontSize: 14,
                   letterSpacing: 0.2,
@@ -2164,8 +2253,16 @@ class _DesktopSidebar extends StatelessWidget {
     return Container(
       width: 240,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(right: BorderSide(color: Colors.grey.shade100)),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF252728)
+            : Colors.white,
+        border: Border(
+          right: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white12
+                : Colors.grey.shade100,
+          ),
+        ),
       ),
       child: Column(
         children: [
@@ -2197,10 +2294,12 @@ class _DesktopSidebar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text(
+                  Text(
                     "WORK",
                     style: TextStyle(
-                      color: Color(0xFF1E293B),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF1E293B),
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.5,
@@ -2331,12 +2430,17 @@ class _DesktopHeaderState extends State<_DesktopHeader>
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 32),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+        color: isDark ? const Color(0xFF252728) : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.white12 : Colors.grey.shade100,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -2350,19 +2454,22 @@ class _DesktopHeaderState extends State<_DesktopHeader>
                     height: 40,
                     child: TextField(
                       onSubmitted: widget.onSearch,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
                       decoration: InputDecoration(
                         hintText: "Tìm kiếm đồng nghiệp...",
                         hintStyle: TextStyle(
-                          color: Colors.grey.shade400,
+                          color: isDark ? Colors.white38 : Colors.grey.shade400,
                           fontSize: 13,
                         ),
                         prefixIcon: Icon(
                           Icons.search,
-                          color: Colors.grey.shade400,
+                          color: isDark ? Colors.white38 : Colors.grey.shade400,
                           size: 20,
                         ),
                         filled: true,
-                        fillColor: const Color(0xFFF1F5F9),
+                        fillColor: isDark ? const Color(0xFF1E1F20) : const Color(0xFFF1F5F9),
                         contentPadding: EdgeInsets.zero,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -2520,8 +2627,16 @@ class _ContactsSidebarState extends State<_ContactsSidebar> {
     return Container(
       width: 250,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(left: BorderSide(color: Colors.grey.shade100)),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF252728)
+            : Colors.white,
+        border: Border(
+          left: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white12
+                : Colors.grey.shade100,
+          ),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2593,7 +2708,9 @@ class _ContactsSidebarState extends State<_ContactsSidebar> {
                                   color: Colors.green,
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: Colors.white,
+                                    color: Theme.of(context).brightness == Brightness.dark
+                                        ? const Color(0xFF252728)
+                                        : Colors.white,
                                     width: 1.5,
                                   ),
                                 ),
@@ -2608,10 +2725,12 @@ class _ContactsSidebarState extends State<_ContactsSidebar> {
                           children: [
                             Text(
                               name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 13,
-                                color: Colors.black87,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white.withOpacity(0.9)
+                                    : Colors.black87,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

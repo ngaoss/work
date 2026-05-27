@@ -5,6 +5,7 @@ import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:window_manager/window_manager.dart';
 import 'core/theme.dart';
+import 'core/providers/theme_provider.dart';
 import 'core/utils/notification_helper.dart';
 import 'core/utils/tray_helper.dart';
 import 'features/auth/presentation/pages/login_screen.dart';
@@ -65,14 +66,14 @@ void main() async {
   runApp(const ProviderScope(child: DeepCodeApp()));
 }
 
-class DeepCodeApp extends StatefulWidget {
+class DeepCodeApp extends ConsumerStatefulWidget {
   const DeepCodeApp({super.key});
 
   @override
-  State<DeepCodeApp> createState() => _DeepCodeAppState();
+  ConsumerState<DeepCodeApp> createState() => _DeepCodeAppState();
 }
 
-class _DeepCodeAppState extends State<DeepCodeApp> with WindowListener {
+class _DeepCodeAppState extends ConsumerState<DeepCodeApp> with WindowListener {
   @override
   void initState() {
     super.initState();
@@ -107,6 +108,7 @@ class _DeepCodeAppState extends State<DeepCodeApp> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeProvider);
     return ValueListenableBuilder<bool>(
       valueListenable: AuthService().isAuthenticated,
       builder: (context, isAuthenticated, child) {
@@ -114,6 +116,8 @@ class _DeepCodeAppState extends State<DeepCodeApp> with WindowListener {
           title: 'DeepCode Work',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
           home: isAuthenticated ? const ChatShell() : const LoginScreen(),
         );
       },

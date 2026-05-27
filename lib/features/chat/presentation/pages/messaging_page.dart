@@ -909,7 +909,9 @@ class _MessagingPageState extends State<MessagingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF252728)
+          : Colors.white,
       body: RefreshIndicator(
         onRefresh: () async {
           await _fetchChats();
@@ -929,10 +931,12 @@ class _MessagingPageState extends State<MessagingPage> {
                         padding: const EdgeInsets.only(right: 16),
                         child: GestureDetector(
                           onTap: widget.onBack,
-                          child: const Icon(
+                          child: Icon(
                             Icons.arrow_back_ios_new,
                             size: 24,
-                            color: Colors.black87,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                         ),
                       ),
@@ -1182,7 +1186,9 @@ class _SearchBar extends StatelessWidget {
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF333537)
+            : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -1317,7 +1323,13 @@ class _ChatItem extends StatelessWidget {
               color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05),
           child: Ink(
             decoration: BoxDecoration(
-              color: hasUnread ? const Color(0xFFF1F5F9) : Colors.white,
+              color: hasUnread
+                  ? (Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF2E3032)
+                      : const Color(0xFFF1F5F9))
+                  : (Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF333537)
+                      : Colors.white),
               borderRadius: BorderRadius.circular(20),
             ),
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -1444,7 +1456,9 @@ class _ChatItem extends StatelessWidget {
                                     ? FontWeight.bold
                                     : FontWeight.w600,
                                 fontSize: 13,
-                                color: const Color(0xFF0F172A),
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white.withOpacity(0.95)
+                                    : const Color(0xFF0F172A),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1502,8 +1516,12 @@ class _ChatItem extends StatelessWidget {
                               lastMsg,
                               style: TextStyle(
                                 color: hasUnread
-                                    ? Colors.black87
-                                    : Colors.blueGrey.shade600,
+                                    ? (Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black87)
+                                    : (Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.white60
+                                        : Colors.blueGrey.shade600),
                                 fontSize: 13,
                                 fontWeight: hasUnread
                                     ? FontWeight.w700

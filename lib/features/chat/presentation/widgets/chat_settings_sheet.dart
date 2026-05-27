@@ -236,9 +236,9 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.9,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
@@ -383,7 +383,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(32),
                       boxShadow: [
                         BoxShadow(
@@ -507,7 +507,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: _members.isEmpty
@@ -584,7 +584,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: TextField(

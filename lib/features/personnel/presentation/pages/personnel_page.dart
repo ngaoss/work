@@ -53,7 +53,7 @@ class _PersonnelPageState extends State<PersonnelPage> {
     final bool isDesktop = MediaQuery.of(context).size.width > 900;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 1200),
@@ -68,12 +68,12 @@ class _PersonnelPageState extends State<PersonnelPage> {
                       // Header
                       Column(
                         children: [
-                          const Text(
+                          Text(
                             "NHÂN SỰ",
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 40,
-                              color: Color(0xFF1E293B),
+                              color: Theme.of(context).colorScheme.onSurface,
                               letterSpacing: -1.0,
                             ),
                           ),
@@ -150,9 +150,14 @@ class _PersonnelPageState extends State<PersonnelPage> {
                         width: double.infinity,
                         height: 54,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white12
+                                : Colors.white,
+                            width: 2,
+                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.02),
@@ -160,14 +165,14 @@ class _PersonnelPageState extends State<PersonnelPage> {
                             ),
                           ],
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Text(
                             "TẤT CẢ",
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 14,
                               letterSpacing: 1.2,
-                              color: Color(0xFF1E293B),
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                         ),
@@ -253,7 +258,7 @@ class _UserCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
@@ -275,7 +280,7 @@ class _UserCard extends StatelessWidget {
                   height: 100,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
-                    color: const Color(0xFFF1F5F9),
+                    color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
@@ -321,10 +326,10 @@ class _UserCard extends StatelessWidget {
               children: [
                 Text(
                   fullName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 13,
-                    color: Color(0xFF1E293B),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 1,
@@ -349,7 +354,7 @@ class _UserCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -501,13 +506,17 @@ class _ActionButton extends StatelessWidget {
 class _SearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: 54,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.white,
+          width: 2,
+        ),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10),
         ],
@@ -518,6 +527,9 @@ class _SearchBar extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             child: TextField(
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+              ),
               decoration: InputDecoration(
                 hintText: "Tìm theo tên, email, vị trí...",
                 hintStyle: const TextStyle(
@@ -562,7 +574,7 @@ class _UserListTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 32),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(40),
         boxShadow: [
           BoxShadow(
@@ -584,7 +596,7 @@ class _UserListTile extends StatelessWidget {
                   height: 115,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(38),
-                    color: const Color(0xFFF1F5F9),
+                    color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(38),
@@ -633,10 +645,12 @@ class _UserListTile extends StatelessWidget {
           // Name & Role
           Text(
             fullName,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 17,
-              color: Color(0xFF0F172A),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F172A),
               letterSpacing: 0.1,
             ),
             textAlign: TextAlign.center,
@@ -659,7 +673,7 @@ class _UserListTile extends StatelessWidget {
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -687,7 +701,7 @@ class _UserListTile extends StatelessWidget {
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(

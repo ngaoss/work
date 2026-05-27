@@ -20,6 +20,7 @@ import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter/gestures.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/widgets/mention_suggestions_overlay.dart';
+import '../../../../core/utils/reaction_utils.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -1323,17 +1324,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         elevation: 1,
-        backgroundColor: Colors.white,
         automaticallyImplyLeading: !widget.isMini,
         leading: widget.isMini
             ? null
             : IconButton(
                 icon: const Icon(
                   Icons.arrow_back_ios,
-                  color: Colors.black87,
                   size: 20,
                 ),
                 onPressed: () {
@@ -1382,8 +1380,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 children: [
                   Text(
                     _currentName,
-                    style: const TextStyle(
-                      color: Colors.black87,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1806,9 +1804,9 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
   Widget build(BuildContext context) {
     return Container(
       height: 250, // Fixed height for mobile keyboard-like feel
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: Center(
         child: Container(
@@ -2009,7 +2007,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
@@ -2527,9 +2525,15 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   maxWidth: availableWidth * 0.75,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF333537)
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white10
+                        : Colors.grey.shade200,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.04),
@@ -2564,10 +2568,12 @@ class _ChatBubbleState extends State<_ChatBubble> {
                             fileName!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white.withOpacity(0.9)
+                                  : Colors.black87,
                             ),
                           ),
                           if (fileSize != null) ...[
@@ -2643,21 +2649,37 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 decoration: BoxDecoration(
                   color: isRecalled
                       ? (isSystemRecall
-                            ? const Color(0xFFFFF7ED)
-                            : Colors.grey.shade100)
-                      : (isSender ? bubbleColor : Colors.white),
+                            ? (Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF3E2D1D)
+                                : const Color(0xFFFFF7ED))
+                            : (Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF2E3032)
+                                : Colors.grey.shade100))
+                      : (isSender
+                            ? bubbleColor
+                            : (Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF333537)
+                                : Colors.white)),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isRecalled
                         ? (isSystemRecall
-                              ? Colors.orange.shade200
-                              : Colors.grey.shade300)
+                              ? (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.orange.shade800
+                                  : Colors.orange.shade200)
+                              : (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white10
+                                  : Colors.grey.shade300))
                         : (isSender
                               ? (bubbleColor == Colors.white ||
                                         bubbleColor == const Color(0xFFFFFFFF)
-                                    ? Colors.grey.shade200
+                                    ? (Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.white10
+                                        : Colors.grey.shade200)
                                     : Colors.transparent)
-                              : Colors.grey.shade200),
+                              : (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white10
+                                  : Colors.grey.shade200)),
                   ),
                   boxShadow: (isSender || isRecalled)
                       ? null
@@ -2793,7 +2815,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blueGrey.shade600,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey.shade300
+                              : Colors.blueGrey.shade600,
                         ),
                       ),
                     ),
@@ -2821,15 +2845,15 @@ class _ChatBubbleState extends State<_ChatBubble> {
                                   entry,
                                 ) {
                                   return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: Theme.of(context).brightness == Brightness.dark
+                                          ? const Color(0xFF333537)
+                                          : Colors.white,
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: Colors.grey.shade200,
+                                        color: Theme.of(context).brightness == Brightness.dark
+                                            ? Colors.white12
+                                            : Colors.grey.shade200,
                                       ),
                                       boxShadow: [
                                         BoxShadow(
@@ -2839,35 +2863,55 @@ class _ChatBubbleState extends State<_ChatBubble> {
                                         ),
                                       ],
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          entry.key,
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
-                                        if (entry.value > 1) ...[
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            entry.value.toString(),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.blue.shade700,
-                                            ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(12),
+                                        hoverColor: Colors.black.withOpacity(0.05),
+                                        onTap: () {
+                                          if (widget.reactions != null) {
+                                            ReactionUtils.showReactionList(context, widget.reactions!);
+                                          }
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
                                           ),
-                                        ],
-                                      ],
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                entry.key,
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                              if (entry.value > 1) ...[
+                                                const SizedBox(width: 2),
+                                                Text(
+                                                  entry.value.toString(),
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Theme.of(context).brightness == Brightness.dark
+                                                        ? Colors.blue.shade300
+                                                        : Colors.blue.shade700,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   );
                                 }).toList(),
                               ),
-                            ),
+                          ),
                         ],
-                        ),
                       ),
-                      if (!isSender && isDesktop) _buildActionBar(),
-                    ],
+                    ),
+                    if (!isSender && isDesktop) _buildActionBar(),
+                  ],
                   ),
                   timeWidget,
                   _buildReadBy(),
@@ -2963,11 +3007,12 @@ class _LinkifiedSelectableText extends StatelessWidget {
                           bubbleColor == const Color(0xFFFFFFFF)
                       ? Colors.black87
                       : Colors.white)
-                : Colors.black87),
+                : (Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white.withOpacity(0.95)
+                    : Colors.black87)),
       fontSize: 14,
       fontWeight: isRecalled ? FontWeight.w400 : FontWeight.w500,
       fontStyle: isRecalled ? FontStyle.italic : FontStyle.normal,
-      fontFamily: 'sans-serif',
       height: 1.5,
     );
 
@@ -3167,7 +3212,7 @@ class _SurveyBubble extends StatelessWidget {
       padding: const EdgeInsets.all(8), // Reduced padding
       constraints: const BoxConstraints(maxWidth: 320),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.blue.withOpacity(0.1), width: 1),
         boxShadow: [
@@ -3189,10 +3234,10 @@ class _SurveyBubble extends StatelessWidget {
               Expanded(
                 child: Text(
                   question,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 13, // Smaller font
-                    color: Color(0xFF1E293B),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -3280,8 +3325,8 @@ class _SurveyOptionState extends State<_SurveyOption> {
               height: 36, // Shorter bars
               decoration: BoxDecoration(
                 color: _isHovered
-                    ? const Color(0xFFF1F5F9)
-                    : const Color(0xFFF8FAFC),
+                    ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9))
+                    : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF8FAFC)),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: widget.isVotedByMe
@@ -3435,7 +3480,7 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
               border: Border(
                 top: BorderSide(color: Colors.grey.withOpacity(0.08)),
               ),
@@ -3592,9 +3637,15 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
                 : MediaQuery.of(context).padding.bottom + 6,
           ),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF252728)
+                : Colors.white,
             border: Border(
-              top: BorderSide(color: Colors.grey.withOpacity(0.08)),
+              top: BorderSide(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white12
+                    : Colors.grey.withOpacity(0.08),
+              ),
             ),
           ),
           child: Row(
@@ -3616,7 +3667,9 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
                       tooltip: "Gửi ảnh",
                       icon: Icon(
                         Icons.image_outlined,
-                        color: Colors.blueGrey.shade600,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white70
+                            : Colors.blueGrey.shade600,
                         size: 20,
                       ),
                     ),
@@ -3628,7 +3681,9 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
                       tooltip: "Gửi tài liệu",
                       icon: Icon(
                         Icons.attach_file_outlined,
-                        color: Colors.blueGrey.shade600,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white70
+                            : Colors.blueGrey.shade600,
                         size: 20,
                       ),
                     ),
@@ -3640,7 +3695,9 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
                       tooltip: "Tạo khảo sát",
                       icon: Icon(
                         Icons.poll_outlined,
-                        color: Colors.blueGrey.shade600,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white70
+                            : Colors.blueGrey.shade600,
                         size: 20,
                       ),
                     ),
@@ -3656,7 +3713,9 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
                     vertical: 0,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF1E1F20)
+                        : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(22),
                   ),
                   child: Row(
@@ -3721,7 +3780,13 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
                             controller: widget.controller,
                             focusNode: widget.focusNode,
                             maxLines: null,
-                            style: const TextStyle(fontSize: 14, height: 1.5),
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 1.5,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white
+                                  : Colors.black87,
+                            ),
                             keyboardType: TextInputType.multiline,
                             textInputAction: isDesktop
                                 ? TextInputAction.none
@@ -3752,7 +3817,9 @@ class _ChatInputAreaState extends State<_ChatInputArea> {
                             size: 22,
                             color: widget.isEmojiVisible
                                 ? widget.themeColor
-                                : const Color(0xFF64748B),
+                                : (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white60
+                                    : const Color(0xFF64748B)),
                           ),
                         ),
                       ),
@@ -4042,8 +4109,8 @@ class _SurveyBottomSheetState extends State<_SurveyBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
@@ -4070,13 +4137,13 @@ class _SurveyBottomSheetState extends State<_SurveyBottomSheet> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   "TẠO KHẢO SÁT",
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 13,
                     letterSpacing: 1.2,
-                    color: Color(0xFF1E293B),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 IconButton(
@@ -4111,7 +4178,7 @@ class _SurveyBottomSheetState extends State<_SurveyBottomSheet> {
                     decoration: InputDecoration(
                       hintText: "Bạn muốn hỏi gì?",
                       filled: true,
-                      fillColor: const Color(0xFFF1F5F9),
+                      fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -4142,7 +4209,7 @@ class _SurveyBottomSheetState extends State<_SurveyBottomSheet> {
                               decoration: InputDecoration(
                                 hintText: "Lựa chọn ${index + 1}",
                                 filled: true,
-                                fillColor: const Color(0xFFF1F5F9),
+                                fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(16),
                                   borderSide: BorderSide.none,

@@ -243,15 +243,15 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         centerTitle: true,
-        title: const Text(
+        title: Text(
           "CÀI ĐẶT HỘI THOẠI",
           style: TextStyle(
-            color: Color(0xFF1E293B),
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 16,
             fontWeight: FontWeight.bold,
             letterSpacing: 0.5,
@@ -422,7 +422,7 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 20),
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
             ),
             child: Row(
@@ -515,7 +515,7 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 20),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Column(
@@ -723,10 +723,10 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
                   Flexible(
                     child: Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E293B),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -839,7 +839,7 @@ class _AddMemberDialogState extends State<_AddMemberDialog> {
                   icon: const Icon(Icons.arrow_back_ios, size: 16),
                   onPressed: () => Navigator.pop(context),
                 ),
-                const Expanded(
+                Expanded(
                   child: Center(
                     child: Text(
                       "THÊM THÀNH VIÊN",
@@ -847,7 +847,7 @@ class _AddMemberDialogState extends State<_AddMemberDialog> {
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.2,
-                        color: Color(0xFF1E293B),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                   ),
@@ -867,7 +867,7 @@ class _AddMemberDialogState extends State<_AddMemberDialog> {
                   size: 18,
                 ),
                 filled: true,
-                fillColor: const Color(0xFFF1F5F9),
+                fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -924,10 +924,10 @@ class _AddMemberDialogState extends State<_AddMemberDialog> {
                               children: [
                                 Text(
                                   name,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E293B),
+                                    color: Theme.of(context).colorScheme.onSurface,
                                   ),
                                 ),
                                 Text(

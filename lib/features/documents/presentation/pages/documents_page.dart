@@ -7,7 +7,7 @@ class DocumentsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -15,12 +15,12 @@ class DocumentsPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 48),
-              const Text(
+              Text(
                 "TÀI LIỆU",
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 32,
-                  color: Color(0xFF1E293B),
+                  color: Theme.of(context).colorScheme.onSurface,
                   letterSpacing: -1,
                 ),
               ),

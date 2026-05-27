@@ -6,16 +6,18 @@ import '../../../../core/utils/notification_helper.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../core/utils/update_helper.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/providers/theme_provider.dart';
 
-class ProfilePage extends StatefulWidget {
+class ProfilePage extends ConsumerStatefulWidget {
   final Map<String, dynamic>? user;
   const ProfilePage({super.key, this.user});
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends ConsumerState<ProfilePage> {
   String _name = "...";
   String _job = "...";
   String _department = "...";
@@ -258,7 +260,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (!isDesktop) {
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : SingleChildScrollView(
@@ -298,7 +300,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           child: Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(32),
                               boxShadow: [
                                 BoxShadow(
@@ -352,10 +354,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     const SizedBox(height: 80),
                     Text(
                       _name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 24,
-                        color: Color(0xFF1E293B),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -432,6 +434,15 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           const SizedBox(height: 12),
                           _SettingsItem(
+                            icon: Icons.dark_mode_outlined,
+                            label: "GIAO DIỆN TỐI",
+                            value: ref.watch(themeProvider) == ThemeMode.dark ? "Bật" : "Tắt",
+                            onTap: () {
+                              final isDark = ref.read(themeProvider) == ThemeMode.dark;
+                              ref.read(themeProvider.notifier).toggleTheme(!isDark);
+                            },
+                          ),
+                          _SettingsItem(
                             icon: Icons.music_note_outlined,
                             label: "ÂM THANH THÔNG BÁO",
                             value: _activeSoundName,
@@ -483,7 +494,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -499,7 +510,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       // Profile Header Card
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(32),
                           boxShadow: [
                             BoxShadow(
@@ -551,7 +562,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: Theme.of(context).colorScheme.surface,
                                       borderRadius: BorderRadius.circular(32),
                                     ),
                                     child: Container(
@@ -600,10 +611,10 @@ class _ProfilePageState extends State<ProfilePage> {
                             const SizedBox(height: 60),
                             Text(
                               _name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 24,
-                                color: Color(0xFF1E293B),
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -658,7 +669,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(32),
                           boxShadow: [
                             BoxShadow(
@@ -700,6 +711,15 @@ class _ProfilePageState extends State<ProfilePage> {
                               icon: Icons.language_outlined,
                               label: "NGÔN NGỮ",
                               value: "Tiếng Việt",
+                            ),
+                            _SettingsItem(
+                              icon: Icons.dark_mode_outlined,
+                              label: "GIAO DIỆN TỐI",
+                              value: ref.watch(themeProvider) == ThemeMode.dark ? "Bật" : "Tắt",
+                              onTap: () {
+                                final isDark = ref.read(themeProvider) == ThemeMode.dark;
+                                ref.read(themeProvider.notifier).toggleTheme(!isDark);
+                              },
                             ),
                             _SettingsItem(
                               icon: Icons.music_note_outlined,
@@ -832,7 +852,7 @@ class _InfoField extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
@@ -858,10 +878,10 @@ class _InfoField extends StatelessWidget {
             padding: const EdgeInsets.only(left: 22),
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w900,
                 fontSize: 14,
-                color: Color(0xFF1E293B),
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ),
@@ -917,10 +937,10 @@ class _SettingsItem extends StatelessWidget {
                   if (value != null)
                     Text(
                       value!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        color: Color(0xFF1E293B),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -935,3 +955,4 @@ class _SettingsItem extends StatelessWidget {
     );
   }
 }
+
