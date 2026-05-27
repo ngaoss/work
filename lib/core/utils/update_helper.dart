@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:updat/updat.dart';
 import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -9,6 +11,24 @@ import 'package:url_launcher/url_launcher.dart';
 class UpdateHelper {
   static const String versionUrl =
       "https://raw.githubusercontent.com/ngaoss/work/main/version.json";
+
+  static const _channel = MethodChannel('com.deepcode.flutter_app/apk_installer');
+  static File? _downloadedFile;
+
+  static Future<void> _installApkAndroid() async {
+    if (_downloadedFile == null) {
+      debugPrint("UpdateHelper: _downloadedFile is null!");
+      return;
+    }
+    try {
+      final success = await _channel.invokeMethod<bool>('installApk', {
+        'filePath': _downloadedFile!.path,
+      });
+      debugPrint("UpdateHelper: APK installation triggered: $success");
+    } catch (e) {
+      debugPrint("UpdateHelper: Error launching APK installer: $e");
+    }
+  }
 
   // Cache response to avoid multiple requests
   static Map<String, dynamic>? _cachedUpdateData;
@@ -207,6 +227,7 @@ class UpdateHelper {
                       child: UpdatWidget(
                         currentVersion: currentVersion,
                         appName: 'DeepCode Work',
+                        openOnDownload: !Platform.isAndroid,
                         getLatestVersion: () async {
                           final data = await _fetchUpdateData();
                           return data?['version']?.toString() ?? currentVersion;
@@ -226,7 +247,177 @@ class UpdateHelper {
                                   ?.toString() ??
                               '';
                         },
-                        // Custom style cho UpdatWidget nếu thư viện hỗ trợ
+                        getDownloadFileLocation: (latestVersion) async {
+                          final downloadDir = await getDownloadsDirectory();
+                          if (downloadDir == null) {
+                            throw Exception('Unable to get downloads directory');
+                          }
+                          final ext = Platform.isAndroid ? 'apk' : 'exe';
+                          final file = File('${downloadDir.path}/DeepCode Work-$latestVersion.$ext');
+                          _downloadedFile = file;
+                          return file;
+                        },
+                        callback: (status) {
+                          if (status == UpdatStatus.readyToInstall && Platform.isAndroid) {
+                            _installApkAndroid();
+                          }
+                        },
+                        updateChipBuilder: ({
+                          required BuildContext context,
+                          required String? latestVersion,
+                          required String appVersion,
+                          required UpdatStatus status,
+                          required void Function() checkForUpdate,
+                          required void Function() openDialog,
+                          required void Function() startUpdate,
+                          required Future<void> Function() launchInstaller,
+                          required void Function() dismissUpdate,
+                        }) {
+                          switch (status) {
+                            case UpdatStatus.checking:
+                              return const Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    CircularProgressIndicator(color: Color(0xFF3B82F6)),
+                                    SizedBox(height: 12),
+                                    Text(
+                                      "Đang kiểm tra bản cập nhật...",
+                                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            case UpdatStatus.available:
+                            case UpdatStatus.availableWithChangelog:
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      "Bản cập nhật $latestVersion đã sẵn sàng!",
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      onPressed: startUpdate,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF3B82F6),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.download_rounded),
+                                      label: const Text("Tải và Cập nhật"),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            case UpdatStatus.downloading:
+                              return const Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    CircularProgressIndicator(color: Color(0xFF3B82F6)),
+                                    SizedBox(height: 12),
+                                    Text(
+                                      "Đang tải bản cập nhật...",
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            case UpdatStatus.readyToInstall:
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      "Đã tải xong bản cập nhật!",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        if (Platform.isAndroid) {
+                                          _installApkAndroid();
+                                        } else {
+                                          launchInstaller();
+                                        }
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF10B981),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.check_circle_outline),
+                                      label: const Text("Cài đặt ngay"),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            case UpdatStatus.error:
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      "Có lỗi xảy ra khi tải bản cập nhật.",
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      onPressed: startUpdate,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFEF4444),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.refresh_rounded),
+                                      label: const Text("Thử lại"),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            case UpdatStatus.upToDate:
+                              return const Center(
+                                child: Text(
+                                  "Ứng dụng đã ở phiên bản mới nhất.",
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              );
+                            default:
+                              return const SizedBox.shrink();
+                          }
+                        },
                       ),
                     ),
                   ),

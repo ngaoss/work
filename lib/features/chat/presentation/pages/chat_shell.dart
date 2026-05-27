@@ -2040,7 +2040,9 @@ class _CustomDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF252728)
+          : Colors.white,
       width: MediaQuery.of(context).size.width * 0.75,
       child: Column(
         children: [
@@ -2132,12 +2134,20 @@ class _CloseButton extends StatelessWidget {
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1F20)
+            : const Color(0xFFF1F5F9),
         shape: BoxShape.circle,
       ),
       child: Center(
         child: IconButton(
-          icon: const Icon(Icons.close, size: 16, color: Colors.blueGrey),
+          icon: Icon(
+            Icons.close,
+            size: 16,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white70
+                : Colors.blueGrey,
+          ),
           onPressed: () => Navigator.pop(context),
           padding: EdgeInsets.zero,
         ),
