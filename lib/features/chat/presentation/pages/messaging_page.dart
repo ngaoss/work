@@ -124,9 +124,24 @@ class _MessagingPageState extends State<MessagingPage> {
             "";
 
         final dynamic media = data["media"] ?? data["message"]?["media"];
+        final dynamic msgData = data["message"] ?? data;
+        final bool hasDirectImage =
+            msgData["image"] != null ||
+            msgData["imagePath"] != null ||
+            (msgData["images"] is List && (msgData["images"] as List).isNotEmpty);
+        final bool hasDirectVideo = msgData["video"] != null;
+        final bool hasDirectFile =
+            msgData["file"] != null || msgData["fileName"] != null;
+
         String preview;
-        if (text.isNotEmpty) {
+        if (text.isNotEmpty && !text.startsWith('IMAGE:') && !text.startsWith('FILE:')) {
           preview = text;
+        } else if (text.startsWith('IMAGE:') || hasDirectImage) {
+          preview = 'Đã gửi 1 ảnh';
+        } else if (hasDirectVideo) {
+          preview = 'Đã gửi 1 video';
+        } else if (text.startsWith('FILE:') || hasDirectFile) {
+          preview = 'Đã gửi 1 tài liệu';
         } else if (media is List && media.isNotEmpty) {
           final firstMedia = media[0];
           final type =
@@ -146,7 +161,7 @@ class _MessagingPageState extends State<MessagingPage> {
 
         if (senderId?.toString() == myId) {
           preview = "Bạn: $preview";
-        } else if (senderName != null && _chats[index]["isGroup"] == true) {
+        } else if (senderName != null) {
           preview = "$senderName: $preview";
         }
 
@@ -287,8 +302,24 @@ class _MessagingPageState extends State<MessagingPage> {
     final media = lastMessage['media'];
     final attachments = lastMessage['attachments'];
 
-    if (text.isNotEmpty) {
+    // Check direct image/video/file fields (varies by API response shape)
+    final bool hasDirectImage =
+        lastMessage['image'] != null ||
+        lastMessage['imagePath'] != null ||
+        (lastMessage['images'] is List &&
+            (lastMessage['images'] as List).isNotEmpty);
+    final bool hasDirectVideo = lastMessage['video'] != null;
+    final bool hasDirectFile =
+        lastMessage['file'] != null || lastMessage['fileName'] != null;
+
+    if (text.isNotEmpty && !text.startsWith('IMAGE:') && !text.startsWith('FILE:')) {
       previewText = text;
+    } else if (text.startsWith('IMAGE:') || hasDirectImage) {
+      previewText = 'Đã gửi 1 ảnh';
+    } else if (hasDirectVideo) {
+      previewText = 'Đã gửi 1 video';
+    } else if (text.startsWith('FILE:') || hasDirectFile) {
+      previewText = 'Đã gửi 1 tài liệu';
     } else if (media is List && media.isNotEmpty) {
       final type = (media[0]['type'] ?? 'image').toString().toLowerCase();
       if (type == 'video') {
@@ -1325,11 +1356,9 @@ class _ChatItem extends StatelessWidget {
             decoration: BoxDecoration(
               color: hasUnread
                   ? (Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF2E3032)
+                      ? Colors.white.withOpacity(0.04)
                       : const Color(0xFFF1F5F9))
-                  : (Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF333537)
-                      : Colors.white),
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(20),
             ),
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),

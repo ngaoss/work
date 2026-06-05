@@ -937,12 +937,47 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                       lastMessage is Map) {
                                     final text =
                                         lastMessage['text']?.toString() ?? "";
-                                    if (text.startsWith("IMAGE:")) {
+                                    // Check for image/video/file in message fields
+                                    final hasImage =
+                                        lastMessage['image'] != null ||
+                                        lastMessage['imagePath'] != null ||
+                                        (lastMessage['images'] is List &&
+                                            (lastMessage['images'] as List).isNotEmpty);
+                                    final hasVideo = lastMessage['video'] != null;
+                                    final hasFile = lastMessage['file'] != null ||
+                                        lastMessage['fileName'] != null;
+
+                                    if (text.startsWith("IMAGE:") || hasImage) {
                                       messageText = "Đã gửi một ảnh";
-                                    } else if (text.startsWith("FILE:")) {
+                                    } else if (hasVideo) {
+                                      messageText = "Đã gửi một video";
+                                    } else if (text.startsWith("FILE:") || hasFile) {
                                       messageText = "Đã gửi một tệp đính kèm";
                                     } else {
                                       messageText = text;
+                                    }
+
+                                    // Add sender prefix
+                                    if (messageText.isNotEmpty) {
+                                      final sender = lastMessage['sender'];
+                                      final senderId = (sender is Map
+                                              ? (sender['_id'] ?? sender['id'])
+                                              : sender)
+                                          ?.toString();
+                                      final currentUserId =
+                                          (AuthService().userProfile.value?['_id'] ??
+                                                  AuthService().userProfile.value?['id'])
+                                              ?.toString();
+
+                                      if (senderId == currentUserId && currentUserId != null) {
+                                        messageText = "Bạn: $messageText";
+                                      } else if (sender is Map) {
+                                        final senderName =
+                                            (sender['fullName'] ?? sender['name'])?.toString();
+                                        if (senderName != null) {
+                                          messageText = "$senderName: $messageText";
+                                        }
+                                      }
                                     }
 
                                     final createdAt =
@@ -1608,73 +1643,68 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                 if (!isFullScreen) const _ContactsSidebar(),
               ],
             ),
-            if (_miniChats.isNotEmpty)
+            // Mini chat popup windows - only visible when NOT in messaging tab (index 6)
+            // The Row uses mainAxisSize.min so it only covers actual chat window area,
+            // allowing background content (posts, reels) to remain scrollable
+            // Hide mini chats on Messaging (6) and Reels (1) tabs
+            if (_miniChats.isNotEmpty && _currentIndex != 6 && _currentIndex != 1)
               Positioned(
                 bottom: 0,
-                right: !isFullScreen
-                    ? 260
-                    : 20, // 250 (ContactsSidebar width) + 10 margin
-                child: SizedBox(
-                  width:
-                      MediaQuery.of(context).size.width -
-                      (!isFullScreen ? 260 : 20) -
-                      20,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    reverse: true,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: _miniChats.map((chatData) {
-                        return Container(
-                          key: ValueKey(chatData['id']),
-                          width: 340,
-                          height: 490,
-                          margin: const EdgeInsets.only(left: 16),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? const Color(0xFF252728)
-                                : Colors.white,
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(12),
-                              topRight: Radius.circular(12),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.15),
-                                blurRadius: 10,
-                                offset: const Offset(0, -2),
-                              ),
-                            ],
+                right: !isFullScreen ? 260 : 20,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: _miniChats.reversed.map((chatData) {
+                    return Container(
+                      key: ValueKey(chatData['id']),
+                      width: 340,
+                      height: 490,
+                      margin: const EdgeInsets.only(left: 16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF252728)
+                            : Colors.white,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 10,
+                            offset: const Offset(0, -2),
                           ),
-                          child: ClipRRect(
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(12),
-                              topRight: Radius.circular(12),
-                            ),
-                            child: Material(
-                              child: ChatDetailScreen(
-                                conversationId: chatData['id'],
-                                name: chatData['name'],
-                                avatarPath: chatData['avatarPath'],
-                                isGroup: chatData['isGroup'] ?? false,
-                                isOnline: chatData['isOnline'] ?? false,
-                                createdBy: chatData['createdBy'],
-                                isMini: true,
-                                onClose: () {
-                                  setState(() {
-                                    _miniChats.removeWhere(
-                                      (c) => c['id'] == chatData['id'],
-                                    );
-                                  });
-                                },
-                              ),
-                            ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
+                        ),
+                        child: Material(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF252728)
+                              : Colors.white,
+                          child: ChatDetailScreen(
+                            conversationId: chatData['id'],
+                            name: chatData['name'],
+                            avatarPath: chatData['avatarPath'],
+                            isGroup: chatData['isGroup'] ?? false,
+                            isOnline: chatData['isOnline'] ?? false,
+                            createdBy: chatData['createdBy'],
+                            isMini: true,
+                            onClose: () {
+                              setState(() {
+                                _miniChats.removeWhere(
+                                  (c) => c['id'] == chatData['id'],
+                                );
+                              });
+                            },
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
           ],

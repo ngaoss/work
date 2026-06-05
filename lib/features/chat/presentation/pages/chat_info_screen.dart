@@ -257,23 +257,18 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
             letterSpacing: 0.5,
           ),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.transparent),
-          onPressed: null,
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: CircleAvatar(
-              backgroundColor: Colors.grey.shade100,
-              radius: 18,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.black87, size: 20),
-                onPressed: () => Navigator.pop(context),
-              ),
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: IconButton(
+            icon: Icon(
+              Icons.close,
+              color: Theme.of(context).colorScheme.onSurface,
+              size: 22,
             ),
+            onPressed: () => Navigator.pop(context),
           ),
-        ],
+        ),
+        actions: const [],
       ),
       body: ListView(
         padding: EdgeInsets.zero,
@@ -384,10 +379,10 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
             children: [
               Text(
                 _name,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               if (widget.isGroup &&
@@ -493,7 +488,7 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
                     _isMembersExpanded
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
-                    color: Colors.black45,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
                     size: 20,
                   ),
                 ),
@@ -670,16 +665,22 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
     required VoidCallback onTap,
     Color? color,
   }) {
-    return ListTile(
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-      leading: Icon(icon, color: color ?? Colors.black87, size: 24),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: color ?? Colors.black87,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
+    return Builder(
+      builder: (context) => ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+        leading: Icon(
+          icon,
+          color: color ?? Theme.of(context).colorScheme.onSurface,
+          size: 24,
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: color ?? Theme.of(context).colorScheme.onSurface,
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
     );

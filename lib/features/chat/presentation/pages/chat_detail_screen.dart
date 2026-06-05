@@ -1452,7 +1452,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
           if (widget.isMini)
             IconButton(
-              icon: const Icon(Icons.close, color: Colors.black54),
+              icon: Icon(
+                Icons.close,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white70
+                    : Colors.black54,
+              ),
               iconSize: 20,
               onPressed: () {
                 widget.onClose?.call();
@@ -2363,18 +2368,15 @@ class _ChatBubbleState extends State<_ChatBubble> {
       decoration: BoxDecoration(
         color: isCodeBubble
             ? Colors.white.withOpacity(0.05)
-            : (isSender
-                  ? (bubbleColor == Colors.white ||
-                            bubbleColor == const Color(0xFFFFFFFF)
-                        ? Colors.black.withOpacity(0.05)
-                        : Colors.white.withOpacity(0.2))
-                  : Colors.grey.shade100),
+            : (Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white.withOpacity(0.08)
+                  : Colors.black.withOpacity(0.05)),
         borderRadius: BorderRadius.circular(10),
         border: Border(
           left: BorderSide(
             color: isCodeBubble
                 ? Colors.blue.shade400
-                : (isSender ? Colors.white.withOpacity(0.7) : bubbleColor),
+                : bubbleColor,
             width: 3,
           ),
         ),
@@ -2395,12 +2397,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     fontWeight: FontWeight.bold,
                     color: isCodeBubble
                         ? Colors.blue.shade300
-                        : (isSender
-                              ? (bubbleColor == Colors.white ||
-                                        bubbleColor == const Color(0xFFFFFFFF)
-                                    ? Colors.black87
-                                    : Colors.white.withOpacity(0.9))
-                              : bubbleColor),
+                        : (Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.9)
+                              : Colors.black87),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -2412,11 +2411,8 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     fontSize: 11,
                     color: isCodeBubble
                         ? Colors.grey.shade400
-                        : (isSender
-                              ? (bubbleColor == Colors.white ||
-                                        bubbleColor == const Color(0xFFFFFFFF)
-                                    ? Colors.grey.shade700
-                                    : Colors.white.withOpacity(0.75))
+                        : (Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.6)
                               : Colors.grey.shade600),
                   ),
                 ),
@@ -2655,11 +2651,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
                             : (Theme.of(context).brightness == Brightness.dark
                                 ? const Color(0xFF2E3032)
                                 : Colors.grey.shade100))
-                      : (isSender
-                            ? bubbleColor
-                            : (Theme.of(context).brightness == Brightness.dark
-                                ? const Color(0xFF333537)
-                                : Colors.white)),
+                      : (Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF333537)
+                            : Colors.white),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isRecalled
@@ -2670,18 +2664,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
                               : (Theme.of(context).brightness == Brightness.dark
                                   ? Colors.white10
                                   : Colors.grey.shade300))
-                        : (isSender
-                              ? (bubbleColor == Colors.white ||
-                                        bubbleColor == const Color(0xFFFFFFFF)
-                                    ? (Theme.of(context).brightness == Brightness.dark
-                                        ? Colors.white10
-                                        : Colors.grey.shade200)
-                                    : Colors.transparent)
-                              : (Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white10
-                                  : Colors.grey.shade200)),
+                        : (Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white10
+                              : Colors.grey.shade200),
                   ),
-                  boxShadow: (isSender || isRecalled)
+                  boxShadow: isRecalled
                       ? null
                       : [
                           BoxShadow(
@@ -3002,14 +2989,9 @@ class _LinkifiedSelectableText extends StatelessWidget {
     final style = TextStyle(
       color: isRecalled
           ? (isSystemRecall ? Colors.orange.shade900 : Colors.grey.shade500)
-          : (isSender
-                ? (bubbleColor == Colors.white ||
-                          bubbleColor == const Color(0xFFFFFFFF)
-                      ? Colors.black87
-                      : Colors.white)
-                : (Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white.withOpacity(0.95)
-                    : Colors.black87)),
+          : (Theme.of(context).brightness == Brightness.dark
+                ? Colors.white.withOpacity(0.95)
+                : Colors.black87),
       fontSize: 14,
       fontWeight: isRecalled ? FontWeight.w400 : FontWeight.w500,
       fontStyle: isRecalled ? FontStyle.italic : FontStyle.normal,
