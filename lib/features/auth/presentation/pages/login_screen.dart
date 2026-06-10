@@ -85,9 +85,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? const Color(0xFF1E1F20) : Colors.white,
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -176,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFF1F2),
+                      color: isDark ? const Color(0xFF3F000E) : const Color(0xFFFFF1F2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -197,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: isDark ? const Color(0xFF3B82F6) : const Color(0xFF1E293B),
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -266,11 +267,12 @@ class _LogoWidget extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
-            const Text(
+            Text(
               "NEXUS",
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.w900,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
                 letterSpacing: -1,
               ),
             ),
@@ -302,27 +304,29 @@ class _InputField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF64748B),
+            color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
             letterSpacing: 1,
           ),
         ),
         const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: isDark ? const Color(0xFF252728) : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: isDark ? const Color(0xFF333333) : const Color(0xFFE2E8F0)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.02),
+                color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),

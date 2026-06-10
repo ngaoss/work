@@ -317,7 +317,7 @@ class ApiService {
   static Future<Map<String, String>> _getHeaders() async {
     final token = AuthService().authToken.value;
     return {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json; charset=UTF-8',
       if (token != null) 'Authorization': 'Bearer $token',
     };
   }
@@ -337,6 +337,7 @@ class ApiService {
         'messages',
         'chats',
         'notifications',
+        'documents',
       ]) {
         if (data.containsKey(key) && data[key] is List) return data[key];
       }
@@ -758,6 +759,202 @@ class ApiService {
     return null;
   }
 
+  // --- Attendance ---
+  static Future<Map<String, dynamic>> getMyAttendance() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/attendance/me'),
+        headers: await _getHeaders(),
+      );
+      final res = _processResponse(response, 'getMyAttendance');
+      if (res is Map<String, dynamic>) {
+        return res;
+      }
+      if (res is List && res.isNotEmpty) {
+        return {'history': res};
+      }
+      return {'history': []};
+    } catch (e) {
+      debugPrint('ApiService error (getMyAttendance): $e');
+      return {'history': []};
+    }
+  }
+
+  static Future<bool> toggleAttendance(
+    bool isCheckIn, {
+    double? lat,
+    double? lon,
+    String? address,
+  }) async {
+    try {
+      final endpoint = '/attendance/check';
+
+      final body = <String, dynamic>{
+        'type': isCheckIn ? 'checkin' : 'checkout',
+      };
+      if (lat != null) body['lat'] = lat;
+      if (lon != null) body['lon'] = lon;
+      if (address != null) body['address'] = address;
+
+      final response = await http.post(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: await _getHeaders(),
+        body: jsonEncode(body),
+      );
+
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (toggleAttendance): $e');
+      return false;
+    }
+  }
+
+  // --- Documents ---
+  static Future<Map<String, dynamic>> getDocuments({String? parentId}) async {
+    try {
+      final queryParams = parentId != null ? '?parentId=$parentId' : '';
+      final response = await http.get(
+        Uri.parse('$baseUrl/documents$queryParams'),
+        headers: await _getHeaders(),
+      );
+      final res = _processResponse(response, 'getDocuments');
+
+      if (res is Map<String, dynamic> &&
+          (res.containsKey('folders') || res.containsKey('files'))) {
+        if (res['folders'] is List || res['files'] is List) {
+          return res;
+        }
+      }
+
+      final allItems = extractList(res);
+      return {
+        'folders': allItems
+            .where((e) => e is Map && e['type'] == 'folder')
+            .toList(),
+        'files': allItems
+            .where(
+              (e) => e is Map && (e['type'] == 'file' || e['type'] == null),
+            )
+            .toList(),
+      };
+    } catch (e) {
+      debugPrint('ApiService error (getDocuments): $e');
+      return {'folders': [], 'files': []};
+    }
+  }
+
+  static Future<Map<String, dynamic>?> createFolder(
+    String name, {
+    String? parentId,
+  }) async {
+    try {
+      final body = <String, dynamic>{'name': name};
+      if (parentId != null) body['parentId'] = parentId;
+      final response = await http.post(
+        Uri.parse('$baseUrl/documents/folder'),
+        headers: await _getHeaders(),
+        body: jsonEncode(body),
+      );
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('ApiService error (createFolder): $e');
+      return null;
+    }
+  }
+
+  static Future<dynamic> uploadDocuments(
+    List<String> filePaths, {
+    String? parentId,
+  }) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/documents/upload'),
+      );
+      final token = AuthService().authToken.value;
+      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      if (parentId != null) request.fields['parentId'] = parentId;
+
+      for (final path in filePaths) {
+        final file = await http.MultipartFile.fromPath('documents', path);
+        request.files.add(file);
+      }
+
+      final streamedResponse = await request.send();
+      final respStr = await streamedResponse.stream.bytesToString();
+      debugPrint(
+        'uploadDocuments status=${streamedResponse.statusCode} body=$respStr',
+      );
+
+      if (streamedResponse.statusCode >= 200 &&
+          streamedResponse.statusCode < 300) {
+        return jsonDecode(respStr);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('ApiService error (uploadDocuments): $e');
+      return null;
+    }
+  }
+
+  static Future<bool> renameDocument(String id, String newName) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/documents/$id'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'name': newName}),
+      );
+      debugPrint(
+        'renameDocument status: ${response.statusCode} - ${response.body}',
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) return true;
+
+      final response2 = await http.put(
+        Uri.parse('$baseUrl/documents/rename/$id'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'name': newName}),
+      );
+      debugPrint(
+        'renameDocument (fallback) status: ${response2.statusCode} - ${response2.body}',
+      );
+      return response2.statusCode >= 200 && response2.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (renameDocument): $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteDocument(String id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/documents/$id'),
+        headers: await _getHeaders(),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (deleteDocument): $e');
+      return false;
+    }
+  }
+
+  static Future<bool> shareDocument(String docId, List<String> userIds) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/documents/share/$docId'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'userIds': userIds}),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('ApiService error (shareDocument): $e');
+      return false;
+    }
+  }
+
   // --- Notifications ---
   static Future<bool> addLocalNotification(Map<String, dynamic> data) async {
     // This is likely a local UI thing, but we can mock it or send back success
@@ -782,7 +979,7 @@ class ApiService {
   static Future<bool> markNotificationsAsRead() async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/notifications/read-all'),
+        Uri.parse('$baseUrl/notifications/mark-all-read'),
         headers: await _getHeaders(),
       );
       return response.statusCode >= 200 && response.statusCode < 300;
@@ -1178,40 +1375,123 @@ class ApiService {
     String groupName = "Nhóm mới",
   }) async {
     try {
+      if (isGroup) {
+        // Create Group Chat: POST /api/chats/group
+        debugPrint('ApiService: Creating group chat with members: $userIds');
+        final response = await http.post(
+          Uri.parse('$baseUrl/chats/group'),
+          headers: await _getHeaders(),
+          body: jsonEncode({
+            'isGroup': true,
+            'groupName': groupName,
+            'name': groupName,
+            'members': userIds,
+            'users': userIds, // as array
+            'participants': userIds,
+            'usersString': jsonEncode(userIds), // just in case
+            'membersString': jsonEncode(userIds), // just in case
+          }),
+        );
+        debugPrint(
+          'ApiService: createChat group response ${response.statusCode} - ${response.body}',
+        );
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic>) {
+            // Normalize keys for frontend compatibility
+            if (data.containsKey('groupName') && !data.containsKey('name')) {
+              data['name'] = data['groupName'];
+            }
+            if (data.containsKey('members') &&
+                !data.containsKey('participants')) {
+              data['participants'] = data['members'];
+            }
+          }
+          return data;
+        }
+
+        if (response.statusCode != 404) {
+          debugPrint(
+            'ApiService: createChat group failed with ${response.statusCode}, returning null instead of fallback',
+          );
+          return null;
+        }
+      } else {
+        // Create Private 1-1 Chat: POST /api/chats/private
+        debugPrint(
+          'ApiService: Creating private chat with targetUserId: ${userIds.first}',
+        );
+        final response = await http.post(
+          Uri.parse('$baseUrl/chats/private'),
+          headers: await _getHeaders(),
+          body: jsonEncode({'targetUserId': userIds.first}),
+        );
+        debugPrint(
+          'ApiService: createChat private response ${response.statusCode} - ${response.body}',
+        );
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic>) {
+            // Normalize keys for frontend compatibility
+            if (data.containsKey('members') &&
+                !data.containsKey('participants')) {
+              data['participants'] = data['members'];
+            }
+          }
+          return data;
+        }
+        if (response.statusCode != 404) {
+          debugPrint(
+            'ApiService: createChat private failed with ${response.statusCode}, returning null instead of fallback',
+          );
+          return null;
+        }
+      }
+
+      // Fallback: Old endpoint /api/chats (if new endpoints failed with 404)
+      debugPrint('ApiService: Falling back to old /api/chats endpoint');
       final payload = isGroup
-          ? {
-              'isGroup': true,
-              'name': groupName,
-              'users': jsonEncode(userIds),
-            } // Often backend expects 'users' as stringified array or 'participants'
+          ? {'isGroup': true, 'name': groupName, 'users': jsonEncode(userIds)}
           : {'userId': userIds.first};
 
-      // Typically the creation endpoint is POST /api/chats
-      final response = await http.post(
+      final fallbackResponse = await http.post(
         Uri.parse('$baseUrl/chats'),
         headers: await _getHeaders(),
         body: jsonEncode(payload),
       );
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return jsonDecode(response.body);
-      } else {
-        // Fallback for group creation structure
-        if (isGroup) {
-          final response2 = await http.post(
-            Uri.parse('$baseUrl/chats/group'),
-            headers: await _getHeaders(),
-            body: jsonEncode({'name': groupName, 'users': userIds}),
-          );
-          if (response2.statusCode >= 200 && response2.statusCode < 300) {
-            return jsonDecode(response2.body);
-          }
-        }
+      debugPrint(
+        'ApiService: fallback createChat response ${fallbackResponse.statusCode} - ${fallbackResponse.body}',
+      );
+      if (fallbackResponse.statusCode >= 200 &&
+          fallbackResponse.statusCode < 300) {
+        return jsonDecode(fallbackResponse.body);
       }
       return null;
     } catch (e) {
       debugPrint('ApiService error (createChat): $e');
       return null;
+    }
+  }
+
+  static Future<List<dynamic>> getGroups() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/groups'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is List) return decoded;
+        if (decoded is Map && decoded.containsKey('data')) {
+          return decoded['data'] as List<dynamic>;
+        }
+        return [];
+      }
+      return [];
+    } catch (e) {
+      debugPrint('ApiService error (getGroups): $e');
+      return [];
     }
   }
 

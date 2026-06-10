@@ -1,7 +1,7 @@
 {
-    "version":  "1.0.6",
-    "windowsUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.6/DeepCodeWork_Setup.exe",
-    "macosUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.6/DeepCodeWork.dmg",
-    "androidUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.6/DeepCodeWork.apk",
-    "downloadUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.6/DeepCodeWork_Setup.exe"
+    "version":  "1.0.7",
+    "windowsUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.7/DeepCodeWork_Setup.exe",
+    "macosUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.7/DeepCodeWork.dmg",
+    "androidUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.7/DeepCodeWork.apk",
+    "downloadUrl":  "https://github.com/ngaoss/work/raw/main/dist/1.0.7/DeepCodeWork_Setup.exe"
 }

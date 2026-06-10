@@ -9,6 +9,7 @@ import '../../../community/presentation/pages/community_page.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 import '../../../reels/presentation/pages/reels_page.dart';
 import '../../../documents/presentation/pages/documents_page.dart';
+import '../../../attendance/presentation/pages/attendance_page.dart';
 import 'messaging_page.dart';
 import 'chat_detail_screen.dart';
 import '../../../../core/security.dart';
@@ -721,7 +722,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                 tooltip: "Mở toàn màn hình",
                                 onPressed: () {
                                   Navigator.pop(ctx);
-                                  _onItemTapped(6); // Navigate to full chat
+                                  _onItemTapped(7); // Navigate to full chat
                                 },
                               ),
                               IconButton(
@@ -1489,14 +1490,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           onRefresh: _fetchGlobalReels,
         );
       case 2:
-        return const DocumentsPage();
+        return DocumentsPage(isActive: _currentIndex == 2);
       case 3:
         return const PersonnelPage();
       case 4:
         return const CommunityPage();
       case 5:
-        return const ProfilePage();
+        return const AttendancePage();
       case 6:
+        return const ProfilePage();
+      case 7:
         return MessagingPage(
           onBack: () => _onItemTapped(0),
           initialChatId: _pendingChatId,
@@ -1563,7 +1566,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       setState(() {
         _pendingChatId = chatId;
       });
-      _onItemTapped(6);
+      _onItemTapped(7);
 
       // Clear pending ID after a short delay so it doesn't re-open every time we switch tabs
       Future.delayed(const Duration(seconds: 2), () {
@@ -1586,8 +1589,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
   int _getBottomIndex() {
     if (_currentIndex == 0) return 0; // BẢNG TIN
     if (_currentIndex == 3) return 1; // NHÂN SỰ
-    if (_currentIndex == 4) return 2; // NHÓM (CỘNG ĐỒNG)
-    if (_currentIndex == 5) return 3; // CÁ NHÂN
+    if (_currentIndex == 4) return 2; // NHÓM
+    if (_currentIndex == 5) return 3; // CHẤM CÔNG
+    if (_currentIndex == 6) return 4; // CÁ NHÂN
     return 0; // Default to Home for other pages
   }
 
@@ -1596,7 +1600,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
     final bool isDesktop = MediaQuery.of(context).size.width > 1100;
 
     if (isDesktop) {
-      final bool isMessaging = _currentIndex == 6;
+      final bool isMessaging = _currentIndex == 7;
       final bool isReels = _currentIndex == 1;
       final bool isFullScreen = isMessaging || isReels;
 
@@ -1619,7 +1623,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                       if (!isFullScreen)
                         _DesktopHeader(
                           onChatTap: _showDesktopChats,
-                          currentChatActive: _currentIndex == 6,
+                          currentChatActive: _currentIndex == 7,
                           notificationCount: _notificationCount,
                           onNotificationTap: _showNotifications,
                           onSearch: (val) {
@@ -1632,7 +1636,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                         child: IndexedStack(
                           index: _currentIndex,
                           children: List.generate(
-                            7,
+                            8,
                             (index) => _buildPage(index),
                           ),
                         ),
@@ -1730,7 +1734,6 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
             _BlinkingUpdateButton(
               onTap: () => UpdateHelper.checkUpdate(context),
             ),
-          _TopActionStatus(),
           ValueListenableBuilder<int>(
             valueListenable: ApiService.unreadChatCount,
             builder: (context, count, _) {
@@ -1739,8 +1742,8 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                 badge: count > 0
                     ? (count > 99 ? "99+" : count.toString())
                     : null,
-                onTap: () => _onItemTapped(6),
-                isActive: _currentIndex == 6,
+                onTap: () => _onItemTapped(7),
+                isActive: _currentIndex == 7,
               );
             },
           ),
@@ -1766,7 +1769,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       drawer: _CustomDrawer(currentIndex: _currentIndex, onTap: _onItemTapped),
       body: IndexedStack(
         index: _currentIndex,
-        children: List.generate(7, (index) => _buildPage(index)),
+        children: List.generate(8, (index) => _buildPage(index)),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -1808,22 +1811,6 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
             fontWeight: FontWeight.w500,
             fontSize: 11,
           ),
-          onTap: (index) {
-            switch (index) {
-              case 0:
-                _onItemTapped(0);
-                break;
-              case 1:
-                _onItemTapped(3);
-                break;
-              case 2:
-                _onItemTapped(4);
-                break;
-              case 3:
-                _onItemTapped(5);
-                break;
-            }
-          },
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
@@ -1838,14 +1825,27 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
             BottomNavigationBarItem(
               icon: Icon(Icons.group_outlined),
               activeIcon: Icon(Icons.group),
-              label: 'Cộng đồng',
+              label: 'Nhóm',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.account_circle_outlined),
-              activeIcon: Icon(Icons.account_circle),
+              icon: Icon(Icons.access_time_outlined),
+              activeIcon: Icon(Icons.access_time),
+              label: 'Chấm công',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
               label: 'Cá nhân',
             ),
           ],
+          onTap: (index) {
+            // Map BottomNav index to shell index
+            if (index == 0) _onItemTapped(0);
+            if (index == 1) _onItemTapped(3);
+            if (index == 2) _onItemTapped(4);
+            if (index == 3) _onItemTapped(5);
+            if (index == 4) _onItemTapped(6);
+          },
         ),
       ),
     );
@@ -2143,10 +2143,16 @@ class _CustomDrawer extends StatelessWidget {
             onTap: () => onTap(4),
           ),
           _DrawerItem(
-            label: "CÁ NHÂN",
-            icon: Icons.person_outline,
+            label: "CHẤM CÔNG",
+            icon: Icons.access_time_outlined,
             isActive: currentIndex == 5,
             onTap: () => onTap(5),
+          ),
+          _DrawerItem(
+            label: "CÁ NHÂN",
+            icon: Icons.person_outline,
+            isActive: currentIndex == 6,
+            onTap: () => onTap(6),
           ),
           const Spacer(),
           const _LogoutButton(),
@@ -2401,10 +2407,16 @@ class _DesktopSidebar extends StatelessWidget {
                     onTap: () => onTap(4),
                   ),
                   _DrawerItem(
-                    label: "CÁ NHÂN",
-                    icon: Icons.person_outline,
+                    label: "CHẤM CÔNG",
+                    icon: Icons.access_time_outlined,
                     isActive: currentIndex == 5,
                     onTap: () => onTap(5),
+                  ),
+                  _DrawerItem(
+                    label: "CÁ NHÂN",
+                    icon: Icons.person_outline,
+                    isActive: currentIndex == 6,
+                    onTap: () => onTap(6),
                   ),
                 ],
               ),

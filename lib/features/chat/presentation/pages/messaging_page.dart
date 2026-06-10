@@ -514,84 +514,107 @@ class _MessagingPageState extends State<MessagingPage> {
   Future<void> _createChat(List<Map<String, dynamic>> selectedUsers) async {
     if (selectedUsers.isEmpty) return;
 
-    // Show loading? or just do it.
-    final myProfile = AuthService().userProfile.value;
-    final List<String> userIds = selectedUsers
-        .map((u) => (u["_id"] ?? u["id"]).toString())
-        .toList();
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
 
-    Map<String, dynamic>? result;
-    if (selectedUsers.length == 1) {
-      final user = selectedUsers.first;
-      final name = user["fullName"] ?? user["name"] ?? "Người dùng";
+    try {
+      final myProfile = AuthService().userProfile.value;
+      final List<String> userIds = selectedUsers
+          .map((u) => (u["_id"] ?? u["id"]).toString())
+          .toList();
 
-      // Check if already exists in local list
-      final existingIndex = _chats.indexWhere(
-        (c) =>
-            (c["isGroup"] == false || c["isGroup"] == null) &&
-            c["name"] == name,
-      );
+      Map<String, dynamic>? result;
+      if (selectedUsers.length == 1) {
+        final user = selectedUsers.first;
+        final name = user["fullName"] ?? user["name"] ?? "Người dùng";
 
-      if (existingIndex != -1 &&
-          ApiService.isObjectId(_chats[existingIndex]["id"])) {
-        _openChatDetailScreen(_chats[existingIndex]);
-        return;
-      }
+        // Check if already exists in local list
+        final existingIndex = _chats.indexWhere(
+          (c) =>
+              (c["isGroup"] == false || c["isGroup"] == null) &&
+              c["name"] == name,
+        );
 
-      // Try creating on server
-      result = await ApiService.createChat([userIds.first]);
-    } else {
-      // Group
-      result = await ApiService.createChat(userIds, isGroup: true);
-    }
+        if (existingIndex != -1 &&
+            ApiService.isObjectId(_chats[existingIndex]["id"])) {
+          Navigator.pop(context); // Close loading
+          _openChatDetailScreen(_chats[existingIndex]);
+          return;
+        }
 
-    if (result != null) {
-      // Backend returned chat object
-      final String realId =
-          (result["_id"] ?? result["id"] ?? result["data"]?["_id"] ?? "")
-              .toString();
-
-      if (ApiService.isObjectId(realId)) {
-        final participants = result["participants"] ?? result["users"] ?? [];
-        final isGroup = result["isGroup"] == true;
-        final chatName = isGroup
-            ? (result["name"] ?? "Nhóm mới")
-            : (selectedUsers.first["fullName"] ??
-                  selectedUsers.first["name"] ??
-                  "Chat");
-
-        final newChat = {
-          "id": realId,
-          "name": chatName,
-          "status": isGroup
-              ? "${(participants as List).length} thành viên"
-              : (selectedUsers.first["position"] ?? "Nhân viên"),
-          "lastMsg": "Bắt đầu cuộc trò chuyện",
-          "time":
-              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-          "isOnline": !isGroup,
-          "initials": chatName
-              .substring(0, math.min(2, chatName.length))
-              .toUpperCase(),
-          "color": isGroup ? Colors.orange : Colors.blue,
-          "isGroup": isGroup,
-          "hasUnread": false,
-          "messages": result["messages"] ?? [],
-          "participants": participants,
-          "avatarPath": isGroup
-              ? result["avatar"]
-              : (selectedUsers.first["profilePicture"] ??
-                    selectedUsers.first["avatar"]),
-        };
-
-        setState(() {
-          _chats.insert(0, newChat);
-        });
-        _openChatDetailScreen(newChat);
+        // Try creating on server
+        result = await ApiService.createChat([userIds.first]);
       } else {
-        debugPrint("Error: Created chat has no valid ObjectId: $result");
-        _showError("Không thể tạo ID hội thoại hợp lệ.");
+        // Group
+        final myProfile = AuthService().userProfile.value;
+        final myId = (myProfile?["_id"] ?? myProfile?["id"])?.toString();
+        final List<String> groupUserIds = List.from(userIds);
+        if (myId != null && !groupUserIds.contains(myId)) {
+          groupUserIds.add(myId); // Try adding creator to the members list
+        }
+        result = await ApiService.createChat(groupUserIds, isGroup: true);
       }
+
+      Navigator.pop(context); // Close loading
+
+      if (result != null) {
+        // Backend returned chat object
+        final String realId =
+            (result["_id"] ?? result["id"] ?? result["data"]?["_id"] ?? "")
+                .toString();
+
+        if (ApiService.isObjectId(realId)) {
+          final participants = result["participants"] ?? result["users"] ?? [];
+          final isGroup = result["isGroup"] == true;
+          final chatName = isGroup
+              ? (result["name"] ?? result["groupName"] ?? "Nhóm mới")
+              : (selectedUsers.first["fullName"] ??
+                    selectedUsers.first["name"] ??
+                    "Chat");
+
+          final newChat = {
+            "id": realId,
+            "name": chatName,
+            "status": isGroup
+                ? "${(participants as List).length} thành viên"
+                : (selectedUsers.first["position"] ?? "Nhân viên"),
+            "lastMsg": "Bắt đầu cuộc trò chuyện",
+            "time":
+                "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
+            "isOnline": !isGroup,
+            "initials": chatName
+                .substring(0, math.min(2, chatName.length))
+                .toUpperCase(),
+            "color": isGroup ? Colors.orange : Colors.blue,
+            "isGroup": isGroup,
+            "hasUnread": false,
+            "messages": result["messages"] ?? [],
+            "participants": participants,
+            "avatarPath": isGroup
+                ? (result["groupAvatar"] ?? result["avatar"])
+                : (selectedUsers.first["profilePicture"] ??
+                      selectedUsers.first["avatar"]),
+          };
+
+          setState(() {
+            _chats.insert(0, newChat);
+          });
+          _openChatDetailScreen(newChat);
+        } else {
+          debugPrint("Error: Created chat has no valid ObjectId: $result");
+          _showError("Không thể tạo ID hội thoại hợp lệ.");
+        }
+      } else {
+        _showError("Lỗi kết nối. Không thể tạo cuộc trò chuyện.");
+      }
+    } catch (e) {
+      Navigator.pop(context); // Close loading
+      debugPrint("Error in _createChat: $e");
+      _showError("Đã xảy ra lỗi: $e");
     }
   }
 
@@ -610,12 +633,13 @@ class _MessagingPageState extends State<MessagingPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           return Container(
             height: MediaQuery.of(context).size.height * 0.75,
             padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1F20) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -623,26 +647,29 @@ class _MessagingPageState extends State<MessagingPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       "Tạo tin nhắn mới",
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 20,
+                        color: isDark ? Colors.white : Colors.black,
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close),
+                      icon: Icon(Icons.close, color: isDark ? Colors.white70 : Colors.black87),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 TextField(
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
                   decoration: InputDecoration(
                     hintText: "Tìm kiếm người liên hệ...",
-                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    hintStyle: TextStyle(color: isDark ? Colors.white60 : Colors.grey),
+                    prefixIcon: Icon(Icons.search, color: isDark ? Colors.white60 : Colors.grey),
                     filled: true,
-                    fillColor: const Color(0xFFF1F5F9),
+                    fillColor: isDark ? const Color(0xFF2D3238) : const Color(0xFFF1F5F9),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide.none,
@@ -661,7 +688,7 @@ class _MessagingPageState extends State<MessagingPage> {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
-                          backgroundColor: Colors.blueGrey.shade50,
+                          backgroundColor: isDark ? const Color(0xFF2D3238) : Colors.blueGrey.shade50,
                           backgroundImage:
                               (user["profilePicture"] != null ||
                                   user["avatar"] != null)
@@ -676,21 +703,25 @@ class _MessagingPageState extends State<MessagingPage> {
                                   user["avatar"] == null)
                               ? Text(
                                   name.substring(0, 1),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white70 : Colors.black87,
                                   ),
                                 )
                               : null,
                         ),
                         title: Text(
                           name,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white.withOpacity(0.9) : Colors.black87,
+                          ),
                         ),
                         subtitle: Text(
                           user["position"] ?? user["role"] ?? "Nhân viên",
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey,
+                            color: isDark ? Colors.white60 : Colors.grey,
                           ),
                         ),
                         trailing: Icon(
@@ -699,7 +730,7 @@ class _MessagingPageState extends State<MessagingPage> {
                               : Icons.circle_outlined,
                           color: isSelected
                               ? Colors.blue
-                              : Colors.grey.shade300,
+                              : (isDark ? Colors.white30 : Colors.grey.shade300),
                           size: 28,
                         ),
                         onTap: () {
@@ -766,103 +797,112 @@ class _MessagingPageState extends State<MessagingPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          24,
-          24,
-          MediaQuery.of(context).viewInsets.bottom + 24,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Sửa thông tin",
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: groupNameController,
-              decoration: InputDecoration(
-                hintText: "Tên nhóm",
-                filled: true,
-                fillColor: const Color(0xFFF1F5F9),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            24,
+            24,
+            MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1F20) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Sửa thông tin",
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  color: isDark ? Colors.white : Colors.black,
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              "Thành viên nhóm",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: Colors.blueGrey,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 50,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  const CircleAvatar(
-                    backgroundColor: Color(0xFFEFF6FF),
-                    child: Icon(Icons.add, color: Color(0xFF3B82F6)),
+              const SizedBox(height: 24),
+              TextField(
+                controller: groupNameController,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                decoration: InputDecoration(
+                  hintText: "Tên nhóm",
+                  hintStyle: TextStyle(color: isDark ? Colors.white60 : Colors.grey),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF2D3238) : const Color(0xFFF1F5F9),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
                   ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    backgroundColor: Colors.orange.shade100,
-                    child: const Text(
-                      "L",
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "Thành viên nhóm",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isDark ? Colors.white60 : Colors.blueGrey,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 50,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: isDark ? const Color(0xFF1E3A8A).withOpacity(0.3) : const Color(0xFFEFF6FF),
+                      child: Icon(Icons.add, color: isDark ? Colors.blue.shade300 : const Color(0xFF3B82F6)),
+                    ),
+                    const SizedBox(width: 8),
+                    CircleAvatar(
+                      backgroundColor: Colors.orange.shade100,
+                      child: const Text(
+                        "L",
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: () {
-                  if (groupNameController.text.isNotEmpty) {
-                    _upsertGroup(
-                      id: existingChat?["id"],
-                      name: groupNameController.text,
-                    );
-                    Navigator.pop(context);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: const Text(
-                  "LƯU THAY ĐỔI",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (groupNameController.text.isNotEmpty) {
+                      _upsertGroup(
+                        id: existingChat?["id"],
+                        name: groupNameController.text,
+                      );
+                      Navigator.pop(context);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B82F6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    "LƯU THAY ĐỔI",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -870,70 +910,79 @@ class _MessagingPageState extends State<MessagingPage> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1F20) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey.shade800 : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: Icon(
-                chat["isMuted"] == true
-                    ? Icons.notifications_active_outlined
-                    : Icons.notifications_off_outlined,
-                color: Colors.black87,
-              ),
-              title: Text(
-                chat["isMuted"] == true ? 'Bật thông báo' : 'Tắt thông báo',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              onTap: () async {
-                await _toggleMute(chat);
-                Navigator.pop(context);
-              },
-            ),
-            if (chat["isGroup"] == true)
+              const SizedBox(height: 16),
               ListTile(
-                leading: const Icon(Icons.edit_outlined, color: Colors.blue),
-                title: const Text(
-                  "Sửa thông tin nhóm",
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                leading: Icon(
+                  chat["isMuted"] == true
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_off_outlined,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+                title: Text(
+                  chat["isMuted"] == true ? 'Bật thông báo' : 'Tắt thông báo',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white.withOpacity(0.9) : Colors.black87,
+                  ),
+                ),
+                onTap: () async {
+                  await _toggleMute(chat);
+                  Navigator.pop(context);
+                },
+              ),
+              if (chat["isGroup"] == true)
+                ListTile(
+                  leading: Icon(Icons.edit_outlined, color: isDark ? Colors.blue.shade300 : Colors.blue),
+                  title: Text(
+                    "Sửa thông tin nhóm",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white.withOpacity(0.9) : Colors.black87,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showGroupSheet(existingChat: chat);
+                  },
+                ),
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: isDark ? Colors.red.shade300 : Colors.red),
+                title: Text(
+                  chat["isGroup"] == true ? "Xóa nhóm" : "Xóa hội thoại",
+                  style: TextStyle(
+                    color: isDark ? Colors.red.shade300 : Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  _showGroupSheet(existingChat: chat);
+                  _deleteGroup(chat["id"]);
                 },
               ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: Text(
-                chat["isGroup"] == true ? "Xóa nhóm" : "Xóa hội thoại",
-                style: const TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _deleteGroup(chat["id"]);
-              },
-            ),
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
+              const SizedBox(height: 32),
+            ],
+          ),
+        );
+      },
     );
   }
 
