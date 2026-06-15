@@ -442,12 +442,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               ref.read(themeProvider.notifier).toggleTheme(!isDark);
                             },
                           ),
-                          _SettingsItem(
-                            icon: Icons.music_note_outlined,
-                            label: "ÂM THANH THÔNG BÁO",
-                            value: _activeSoundName,
-                            onTap: _pickNotificationSound,
-                          ),
                           const SizedBox(height: 32),
                           Center(
                             child: Column(

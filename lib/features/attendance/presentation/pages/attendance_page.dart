@@ -37,7 +37,7 @@ class _AttendancePageState extends State<AttendancePage> {
       } else {
         _history = [];
       }
-      
+
       _isCheckedIn = false;
       if (_history.isNotEmpty) {
         // Find the latest day with events
@@ -61,10 +61,10 @@ class _AttendancePageState extends State<AttendancePage> {
 
   Future<void> _handleCheckInOut() async {
     setState(() => _isActionLoading = true);
-    
+
     // In a real scenario, this would be determined by whether we are checking in or out
     final bool isCheckingIn = !_isCheckedIn;
-    
+
     double? lat;
     double? lon;
     String? address;
@@ -82,9 +82,11 @@ class _AttendancePageState extends State<AttendancePage> {
           throw Exception('Bị từ chối quyền vị trí');
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
-        throw Exception('Quyền vị trí bị từ chối vĩnh viễn, vui lòng mở Cài đặt');
+        throw Exception(
+          'Quyền vị trí bị từ chối vĩnh viễn, vui lòng mở Cài đặt',
+        );
       }
 
       Position position = await Geolocator.getCurrentPosition();
@@ -95,21 +97,28 @@ class _AttendancePageState extends State<AttendancePage> {
         List<Placemark> placemarks = await placemarkFromCoordinates(lat, lon);
         if (placemarks.isNotEmpty) {
           Placemark place = placemarks.first;
-          address = '${place.street ?? ""}, ${place.subAdministrativeArea ?? ""}, ${place.administrativeArea ?? ""}, ${place.country ?? ""}';
+          address =
+              '${place.street ?? ""}, ${place.subAdministrativeArea ?? ""}, ${place.administrativeArea ?? ""}, ${place.country ?? ""}';
         }
       } catch (geocodingError) {
-        debugPrint("Could not get address (geocoding might not be supported on this platform): $geocodingError");
+        debugPrint(
+          "Could not get address (geocoding might not be supported on this platform): $geocodingError",
+        );
         address = "Không thể lấy địa chỉ (Chưa hỗ trợ trên thiết bị này)";
       }
     } catch (e) {
       debugPrint("Could not get location: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Không thể lấy GPS (Có thể do thiết bị hoặc quyền). Sẽ chấm công không kèm GPS.")),
+          SnackBar(
+            content: Text(
+              "Không thể lấy GPS (Có thể do thiết bị hoặc quyền). Sẽ chấm công không kèm GPS.",
+            ),
+          ),
         );
       }
     }
-    
+
     // Attempt to toggle attendance
     final success = await ApiService.toggleAttendance(
       isCheckingIn,
@@ -117,13 +126,15 @@ class _AttendancePageState extends State<AttendancePage> {
       lon: lon,
       address: address,
     );
-    
+
     if (!mounted) return;
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(isCheckingIn ? "Đã Check In thành công" : "Đã Check Out thành công"),
+          content: Text(
+            isCheckingIn ? "Đã Check In thành công" : "Đã Check Out thành công",
+          ),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
         ),
@@ -140,7 +151,9 @@ class _AttendancePageState extends State<AttendancePage> {
         setState(() => _isActionLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Có lỗi xảy ra hoặc bạn đã thực hiện thao tác này. Đã đồng bộ lại dữ liệu."),
+            content: Text(
+              "Có lỗi xảy ra hoặc bạn đã thực hiện thao tác này. Đã đồng bộ lại dữ liệu.",
+            ),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
           ),
@@ -241,19 +254,22 @@ class _AttendancePageState extends State<AttendancePage> {
               ),
               elevation: 0,
             ),
-            child: _isActionLoading 
-              ? const SizedBox(
-                  width: 16, 
-                  height: 16, 
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-                )
-              : Text(
-                  _isCheckedIn ? "Check Out" : "Check In",
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+            child: _isActionLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    _isCheckedIn ? "Check Out" : "Check In",
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
           ),
         ],
       ),
@@ -302,7 +318,9 @@ class _AttendancePageState extends State<AttendancePage> {
                       Icons.keyboard_arrow_down,
                       color: isDark ? Colors.white70 : Colors.black87,
                     ),
-                    dropdownColor: isDark ? const Color(0xFF252728) : Colors.white,
+                    dropdownColor: isDark
+                        ? const Color(0xFF252728)
+                        : Colors.white,
                     style: TextStyle(
                       color: isDark ? Colors.white : Colors.black87,
                       fontSize: 14,
@@ -314,7 +332,9 @@ class _AttendancePageState extends State<AttendancePage> {
                         });
                       }
                     },
-                    items: _filters.map<DropdownMenuItem<String>>((String value) {
+                    items: _filters.map<DropdownMenuItem<String>>((
+                      String value,
+                    ) {
                       return DropdownMenuItem<String>(
                         value: value,
                         child: Text(value),
@@ -351,13 +371,13 @@ class _AttendancePageState extends State<AttendancePage> {
               separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 final record = _history[index];
-                
+
                 // Extract events array
                 final events = record['events'] as List?;
-                
+
                 // Default to record's date if no recordedAt is found
                 String dateStr = record['date']?.toString() ?? "Hôm nay";
-                
+
                 // Try to get recordedAt from the first event
                 if (events != null && events.isNotEmpty) {
                   final firstEvent = events.first;
@@ -365,7 +385,7 @@ class _AttendancePageState extends State<AttendancePage> {
                     dateStr = firstEvent['recordedAt'].toString();
                   }
                 }
-                
+
                 // Format the date
                 String formattedDate = dateStr;
                 try {
@@ -375,10 +395,10 @@ class _AttendancePageState extends State<AttendancePage> {
                     formattedDate = "${d.day}/${d.month}/${d.year}";
                   }
                 } catch (_) {}
-                
+
                 final totalHours = record['totalHours'] ?? 0;
                 final eventsCount = events?.length ?? 0;
-                
+
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -407,7 +427,9 @@ class _AttendancePageState extends State<AttendancePage> {
                               "Tổng giờ: $totalHours giờ",
                               style: TextStyle(
                                 fontSize: 14,
-                                color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+                                color: isDark
+                                    ? Colors.white70
+                                    : Colors.blueGrey.shade700,
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -415,7 +437,9 @@ class _AttendancePageState extends State<AttendancePage> {
                               "Đã ghi nhận dữ liệu checkin/checkout.",
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isDark ? Colors.white60 : Colors.blueGrey.shade400,
+                                color: isDark
+                                    ? Colors.white60
+                                    : Colors.blueGrey.shade400,
                               ),
                             ),
                           ],

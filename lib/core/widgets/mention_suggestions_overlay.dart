@@ -59,19 +59,21 @@ class _MentionSuggestionsOverlayState extends State<MentionSuggestionsOverlay> {
   Widget build(BuildContext context) {
     if (widget.suggestions.isEmpty) return const SizedBox.shrink();
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       constraints: const BoxConstraints(maxHeight: 200),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
             blurRadius: 15,
             offset: const Offset(0, -4),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: isDark ? const Color(0xFF444444) : Colors.grey.shade100),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -100,12 +102,12 @@ class _MentionSuggestionsOverlayState extends State<MentionSuggestionsOverlay> {
                       ),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? widget.themeColor.withOpacity(0.08)
+                            ? widget.themeColor.withOpacity(isDark ? 0.2 : 0.08)
                             : null,
                         borderRadius: BorderRadius.circular(8),
                         border: isSelected
                             ? Border.all(
-                                color: Colors.grey.withOpacity(0.2),
+                                color: isDark ? Colors.grey.withOpacity(0.4) : Colors.grey.withOpacity(0.2),
                                 width: 1,
                               )
                             : null,
@@ -153,7 +155,7 @@ class _MentionSuggestionsOverlayState extends State<MentionSuggestionsOverlay> {
                                     ? (widget.themeColor == Colors.white
                                           ? const Color(0xFF3B82F6)
                                           : widget.themeColor)
-                                    : const Color(0xFF1E293B),
+                                    : (isDark ? Colors.white : const Color(0xFF1E293B)),
                               ),
                             ),
                           ),
@@ -164,14 +166,14 @@ class _MentionSuggestionsOverlayState extends State<MentionSuggestionsOverlay> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
+                                color: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 member['role']!,
                                 style: TextStyle(
                                   fontSize: 8,
-                                  color: Colors.grey.shade600,
+                                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade600,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),

@@ -1627,7 +1627,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                 };
                               }
                               return GestureDetector(
-                                onLongPress: () => _showOptions(context, msg),
+                                onLongPress: (Theme.of(context).platform == TargetPlatform.windows ||
+                                        Theme.of(context).platform == TargetPlatform.macOS ||
+                                        Theme.of(context).platform == TargetPlatform.linux)
+                                    ? null
+                                    : () => _showOptions(context, msg),
                                 child: _ChatBubble(
                                   message: msg["isRecalled"] == true
                                       ? (msg["isSystemRecall"] == true
@@ -2344,7 +2348,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
           ),
         );
       },
-      onLongPress: widget.onMore,
+      onLongPress: (Theme.of(context).platform == TargetPlatform.windows || Theme.of(context).platform == TargetPlatform.macOS || Theme.of(context).platform == TargetPlatform.linux) ? null : widget.onMore,
       child: Container(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.7,
@@ -2427,7 +2431,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   ),
                 );
               },
-              onLongPress: widget.onMore,
+              onLongPress: (Theme.of(context).platform == TargetPlatform.windows || Theme.of(context).platform == TargetPlatform.macOS || Theme.of(context).platform == TargetPlatform.linux) ? null : widget.onMore,
               child: _isNetworkUrl(path)
                   ? CachedNetworkImage(
                       imageUrl: ApiService.resolveImageUrl(path),
@@ -2543,6 +2547,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
   @override
   Widget build(BuildContext context) {
     if (isSystem) {
+      final isDesktop = Theme.of(context).platform == TargetPlatform.windows ||
+          Theme.of(context).platform == TargetPlatform.macOS ||
+          Theme.of(context).platform == TargetPlatform.linux;
+
       return Center(
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 8),
@@ -2551,14 +2559,23 @@ class _ChatBubbleState extends State<_ChatBubble> {
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: SelectableText(
-            message,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.blueGrey.shade400,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          child: isDesktop 
+            ? SelectableText(
+                message,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.blueGrey.shade400,
+                  fontWeight: FontWeight.bold,
+                ),
+              )
+            : Text(
+                message,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.blueGrey.shade400,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
         ),
       );
     }
@@ -2616,7 +2633,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                       );
                     }
                   },
-                  onLongPress: widget.onMore,
+                  onLongPress: isDesktop ? null : widget.onMore,
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     padding: const EdgeInsets.all(10),
@@ -2700,7 +2717,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
             if (message.isNotEmpty && survey == null)
               if (_isCode(message))
                 GestureDetector(
-                  onLongPress: widget.onMore,
+                  onLongPress: isDesktop ? null : widget.onMore,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -2721,8 +2738,22 @@ class _ChatBubbleState extends State<_ChatBubble> {
                       children: [
                         if (replyTo != null && !isRecalled)
                           _buildReplyPreview(replyTo!, isSender, true),
-                        SelectionArea(
-                          child: HighlightView(
+                        if (isDesktop)
+                          SelectionArea(
+                            child: HighlightView(
+                              message,
+                              language: _detectLanguage(message),
+                              theme: atomOneDarkTheme,
+                              padding: EdgeInsets.zero,
+                              textStyle: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            ),
+                          )
+                        else
+                          HighlightView(
                             message,
                             language: _detectLanguage(message),
                             theme: atomOneDarkTheme,
@@ -2733,14 +2764,13 @@ class _ChatBubbleState extends State<_ChatBubble> {
                               height: 1.4,
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
                 )
               else
                 GestureDetector(
-                  onLongPress: widget.onMore,
+                  onLongPress: isDesktop ? null : widget.onMore,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -3132,6 +3162,10 @@ class _LinkifiedSelectableText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = Theme.of(context).platform == TargetPlatform.windows ||
+        Theme.of(context).platform == TargetPlatform.macOS ||
+        Theme.of(context).platform == TargetPlatform.linux;
+
     final style = TextStyle(
       color: isRecalled
           ? (isSystemRecall ? Colors.orange.shade900 : Colors.grey.shade500)
@@ -3145,7 +3179,7 @@ class _LinkifiedSelectableText extends StatelessWidget {
     );
 
     if (isRecalled) {
-      return SelectableText(text, style: style);
+      return isDesktop ? SelectableText(text, style: style) : Text(text, style: style);
     }
 
     // Regex for URLs and Mentions
@@ -3207,11 +3241,17 @@ class _LinkifiedSelectableText extends StatelessWidget {
       spans.add(TextSpan(text: text.substring(start)));
     }
 
-    return SelectableText.rich(
-      TextSpan(children: spans),
-      style: style,
-      textAlign: isSender ? TextAlign.left : TextAlign.left,
-    );
+    return isDesktop
+        ? SelectableText.rich(
+            TextSpan(children: spans),
+            style: style,
+            textAlign: isSender ? TextAlign.left : TextAlign.left,
+          )
+        : Text.rich(
+            TextSpan(children: spans),
+            style: style,
+            textAlign: isSender ? TextAlign.left : TextAlign.left,
+          );
   }
 }
 
