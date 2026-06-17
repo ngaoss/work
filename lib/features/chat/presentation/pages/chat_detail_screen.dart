@@ -799,7 +799,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final textBeforeCursor = text.substring(0, cursorPosition);
 
     // Find the last '@' before cursor
-    final lastAt = textBeforeCursor.lastIndexOf('@');
+    int lastAt = -1;
+    for (int i = textBeforeCursor.length - 1; i >= 0; i--) {
+      if (textBeforeCursor[i] == '@') {
+        if (i == 0 || textBeforeCursor[i - 1].trim().isEmpty) {
+          lastAt = i;
+          break;
+        }
+      }
+    }
 
     if (lastAt != -1) {
       // Check if there's a space between '@' and cursor
@@ -3187,7 +3195,7 @@ class _LinkifiedSelectableText extends StatelessWidget {
     // 2. Fallback to capitalized words for legacy/web messages
     final combinedRegex = RegExp(
       r'(([hH][tT][tT][pP][sS]?:\/\/|[wW][wW][wW]\.)[^\s\/$.?#].[^\s]*)|' // URL
-      r'(@\S+(?:\s+[^ \s@:;!?,]+)*\u200B|@\S+(?:\s+[A-ZÀ-Ỹ][^ \s@:;!?,]*)*)', // Mentions
+      r'((?<!\S)@\S+(?:\s+[^ \s@:;!?,]+)*\u200B|(?<!\S)@\S+(?:\s+[A-ZÀ-Ỹ][^ \s@:;!?,]*)*)', // Mentions
     );
 
     final List<InlineSpan> spans = [];

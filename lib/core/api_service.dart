@@ -652,10 +652,26 @@ class ApiService {
         headers: await _getHeaders(),
         body: jsonEncode(data),
       );
-      return response.statusCode == 201 || response.statusCode == 200;
+      return response.statusCode >= 200 && response.statusCode < 300;
     } catch (e) {
       debugPrint('ApiService error (createReel): $e');
       return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteReel(String id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/reels/$id'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {'success': true, 'message': 'Đã xóa reel thành công'};
+      }
+      return {'success': false, 'message': 'Lỗi máy chủ (${response.statusCode})'};
+    } catch (e) {
+      debugPrint('ApiService error (deleteReel): $e');
+      return {'success': false, 'message': e.toString()};
     }
   }
 
@@ -908,19 +924,19 @@ class ApiService {
         headers: await _getHeaders(),
         body: jsonEncode({'name': newName}),
       );
-      debugPrint(
-        'renameDocument status: ${response.statusCode} - ${response.body}',
-      );
+      // debugPrint(
+      //   'renameDocument status: ${response.statusCode} - ${response.body}',
+      // );
       if (response.statusCode >= 200 && response.statusCode < 300) return true;
 
       final response2 = await http.put(
         Uri.parse('$baseUrl/documents/rename/$id'),
         headers: await _getHeaders(),
-        body: jsonEncode({'name': newName}),
+        body: jsonEncode({'newName': newName}),
       );
-      debugPrint(
-        'renameDocument (fallback) status: ${response2.statusCode} - ${response2.body}',
-      );
+      // debugPrint(
+      //   'renameDocument (fallback) status: ${response2.statusCode} - ${response2.body}',
+      // );
       return response2.statusCode >= 200 && response2.statusCode < 300;
     } catch (e) {
       debugPrint('ApiService error (renameDocument): $e');
@@ -1381,16 +1397,7 @@ class ApiService {
         final response = await http.post(
           Uri.parse('$baseUrl/chats/group'),
           headers: await _getHeaders(),
-          body: jsonEncode({
-            'isGroup': true,
-            'groupName': groupName,
-            'name': groupName,
-            'members': userIds,
-            'users': userIds, // as array
-            'participants': userIds,
-            'usersString': jsonEncode(userIds), // just in case
-            'membersString': jsonEncode(userIds), // just in case
-          }),
+          body: jsonEncode({'name': groupName, 'participantIds': userIds}),
         );
         debugPrint(
           'ApiService: createChat group response ${response.statusCode} - ${response.body}',

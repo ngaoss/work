@@ -41,6 +41,7 @@ class _ReelsPageState extends State<ReelsPage> {
   late int _currentPage;
   late final PageController _pageController;
   bool _isMuted = false;
+  bool _showCommentsSidebar = true;
 
   @override
   void initState() {
@@ -176,8 +177,7 @@ class _ReelsPageState extends State<ReelsPage> {
                         isMuted: _isMuted,
                         onLike: () => _handleLike(i),
                         onComment: (c) => _handleComment(i, c),
-                        showSideActions:
-                            false, // Hide default icons on desktop if we want
+                        showSideActions: false,
                       ),
                     ),
                   ),
@@ -201,11 +201,17 @@ class _ReelsPageState extends State<ReelsPage> {
                   ],
                 ),
               ),
+              if (_reels.isNotEmpty)
+                Positioned(
+                  bottom: 40,
+                  right: 16,
+                  child: _buildDesktopSideActions(),
+                ),
             ],
           ),
         ),
         // Sidebar
-        if (_reels.isNotEmpty)
+        if (_reels.isNotEmpty && _showCommentsSidebar)
           Container(
             width: 400,
             color: Theme.of(context).brightness == Brightness.dark
@@ -216,8 +222,119 @@ class _ReelsPageState extends State<ReelsPage> {
                   (_reels[_currentPage]['_id'] ?? _reels[_currentPage]['id'])
                       ?.toString() ??
                   '',
-              onClose: () {}, // Desktop sidebar stays open
+              onClose: () => setState(() => _showCommentsSidebar = false),
             ),
+          ),
+      ],
+    );
+  }
+
+  void _deleteReelFromFeed(BuildContext context, int index) {
+    final reel = _reels[index];
+    showDialog(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Xóa Reel"),
+        content: const Text(
+          "Bạn có chắc chắn muốn xóa reel này? Hành động này không thể hoàn tác.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final String? reelId = (reel["id"] ?? reel["_id"])?.toString();
+              if (reelId != null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Đang xóa reel..."),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
+
+                final result = await ApiService.deleteReel(reelId);
+
+                if (mounted) {
+                  if (result['success'] == true) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? "Đã xóa reel"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    setState(() {
+                      _reels.removeAt(index);
+                      if (_currentPage >= _reels.length && _currentPage > 0) {
+                        _currentPage--;
+                        _pageController.jumpToPage(_currentPage);
+                      }
+                    });
+                    ApiService.notificationRefresh.notifyListeners();
+                    widget.onRefresh?.call();
+                    widget.onClose?.call();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? "Không thể xóa reel"),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Xóa"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopSideActions() {
+    if (_currentPage >= _reels.length) return const SizedBox.shrink();
+    final reel = _reels[_currentPage];
+    final currentUserId = (AuthService().userProfile.value?['_id'] ?? AuthService().userProfile.value?['id'])?.toString();
+    final authorId = (reel['author']?['_id'] ?? reel['author']?['id'])?.toString();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ActionIcon(
+          icon: (reel['isLiked'] ?? false) ? Icons.favorite : Icons.favorite_border,
+          label: (reel['likes'] ?? 0).toString(),
+          color: (reel['isLiked'] ?? false) ? Colors.red : Colors.white,
+          onTap: () => _handleLike(_currentPage),
+        ),
+        _ActionIcon(
+          icon: Icons.chat_bubble_outline,
+          label: (reel['commentsCount'] ?? reel['comments']?.length ?? 0).toString(),
+          onTap: () {
+            setState(() {
+              _showCommentsSidebar = !_showCommentsSidebar;
+            });
+          },
+        ),
+        _ActionIcon(
+          icon: Icons.visibility_outlined,
+          label: (reel['views'] ?? 1).toString(),
+        ),
+        if (currentUserId != null && currentUserId == authorId)
+          _ActionIcon(
+            icon: Icons.delete_outline,
+            label: 'Xóa',
+            color: Colors.redAccent,
+            onTap: () => _deleteReelFromFeed(context, _currentPage),
           ),
       ],
     );
@@ -601,6 +718,74 @@ class _ReelItemState extends State<_ReelItem> {
     }
   }
 
+  void _deleteReel(BuildContext context) {
+    showDialog(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Xóa Reel"),
+        content: const Text(
+          "Bạn có chắc chắn muốn xóa reel này? Hành động này không thể hoàn tác.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final String? reelId =
+                  (widget.reel["id"] ?? widget.reel["_id"])?.toString();
+              if (reelId != null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Đang xóa reel..."),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
+
+                final result = await ApiService.deleteReel(reelId);
+
+                if (mounted) {
+                  if (result['success'] == true) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? "Đã xóa reel"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    // Trigger a refresh somehow. If the page provides a way to refresh or pop if it's the last one.
+                    // For now, if we are in a Feed, we should probably remove it from the list.
+                    // If `ReelsPage` had `onDelete` we could call it. Since not, we can trigger global refresh.
+                    ApiService.notificationRefresh.notifyListeners();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          result['message'] ?? "Không thể xóa reel",
+                        ),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Xóa"),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _onTap() {
     setState(() {
       _isPlaying = !_isPlaying;
@@ -740,7 +925,18 @@ class _ReelItemState extends State<_ReelItem> {
                           .toString(),
                   onTap: () => _showComments(context),
                 ),
-                const _ActionIcon(icon: Icons.share_outlined, label: 'Chia sẻ'),
+                _ActionIcon(
+                  icon: Icons.visibility_outlined,
+                  label: (widget.reel['views'] ?? 1).toString(),
+                ),
+                if ((AuthService().userProfile.value?['_id'] ?? AuthService().userProfile.value?['id'])?.toString() == 
+                    (widget.reel['author']?['_id'] ?? widget.reel['author']?['id'])?.toString())
+                  _ActionIcon(
+                    icon: Icons.delete_outline,
+                    label: 'Xóa',
+                    color: Colors.redAccent,
+                    onTap: () => _deleteReel(context),
+                  ),
               ],
             ),
           ),
@@ -994,7 +1190,15 @@ class _ReelItemState extends State<_ReelItem> {
             final cursorPosition = selection.start;
             final textBeforeCursor = text.substring(0, cursorPosition);
 
-            final lastAt = textBeforeCursor.lastIndexOf('@');
+            int lastAt = -1;
+            for (int i = textBeforeCursor.length - 1; i >= 0; i--) {
+              if (textBeforeCursor[i] == '@') {
+                if (i == 0 || textBeforeCursor[i - 1].trim().isEmpty) {
+                  lastAt = i;
+                  break;
+                }
+              }
+            }
             if (lastAt != -1) {
               final query = textBeforeCursor.substring(lastAt + 1);
               if (!query.contains(' ') && !query.contains('\n')) {
@@ -1942,7 +2146,7 @@ class _MusicMarqueeState extends State<_MusicMarquee>
   }
 }
 
-class _ActionIcon extends StatelessWidget {
+class _ActionIcon extends StatefulWidget {
   final IconData icon;
   final String label;
   final Color color;
@@ -1956,20 +2160,47 @@ class _ActionIcon extends StatelessWidget {
   });
 
   @override
+  State<_ActionIcon> createState() => _ActionIconState();
+}
+
+class _ActionIconState extends State<_ActionIcon> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-          ],
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Column(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _isHovered ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                ),
+                child: Icon(
+                  widget.icon, 
+                  color: widget.color, 
+                  size: _isHovered ? 32 : 28,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: Colors.white, 
+                  fontSize: 11,
+                  fontWeight: _isHovered ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2082,7 +2313,14 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
           _selectedXFile!.name,
         );
         if (uploadedPath != null) {
-          finalMediaPath = uploadedPath;
+          String pathId = uploadedPath;
+          if (pathId.startsWith('http')) {
+            final uri = Uri.parse(pathId);
+            if (uri.pathSegments.isNotEmpty) {
+              pathId = uri.pathSegments.last;
+            }
+          }
+          finalMediaPath = "/api/images/$pathId";
         }
       } catch (e) {
         debugPrint("Reel upload error: $e");
@@ -2216,61 +2454,84 @@ class _CreateReelDialogState extends State<CreateReelDialog> {
   }
 
   Widget _videoPicked() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.check_circle_outline, color: Colors.green, size: 56),
-          const SizedBox(height: 12),
-          const Text(
-            'Phương tiện đã chọn',
-            style: TextStyle(color: Colors.white70, fontSize: 13),
-          ),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: _pickMedia,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white38),
-                borderRadius: BorderRadius.circular(20),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_mediaPath != null)
+          _mediaType == 'image'
+              ? (kIsWeb
+                  ? Image.network(_mediaPath!, fit: BoxFit.cover)
+                  : Image.file(File(_mediaPath!), fit: BoxFit.cover))
+              : (kIsWeb
+                  ? const Center(
+                      child: Icon(
+                        Icons.videocam,
+                        color: Colors.white,
+                        size: 64,
+                      ),
+                    )
+                  : VideoPreview(
+                      file: File(_mediaPath!),
+                    )),
+        Container(color: Colors.black.withOpacity(0.4)),
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.green, size: 56),
+              const SizedBox(height: 12),
+              const Text(
+                'Phương tiện đã chọn',
+                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
               ),
-              child: const Text(
-                'CHỌN LẠI',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          if (_mediaType == 'image') ...[
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: _editImage,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade700,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'CHỈNH SỬA ẢNH',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _pickMedia,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    border: Border.all(color: Colors.white38),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'CHỌN LẠI',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ],
-      ),
+              if (_mediaType == 'image') ...[
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: _editImage,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade700,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'CHỈNH SỬA ẢNH',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 

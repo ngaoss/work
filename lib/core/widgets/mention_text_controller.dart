@@ -16,7 +16,7 @@ class MentionTextEditingController extends TextEditingController {
   // Regex to find URLs and @mentions including fullname words.
   static final RegExp _combinedRegex = RegExp(
     r'(([hH][tT][tT][pP][sS]?:\/\/|[wW][wW][wW]\.)[^\s\/$.?#].[^\s]*)|' // URL
-    r'(@\S+(?:\s+[^ \s@:;!?,]+)*\u200B|@\S+(?:\s+[A-ZÀ-Ỹ][^ \s@:;!?,]*)*)', // Mentions
+    r'((?<!\S)@\S+(?:\s+[^ \s@:;!?,]+)*\u200B|(?<!\S)@\S+(?:\s+[A-ZÀ-Ỹ][^ \s@:;!?,]*)*)', // Mentions
   );
 
   @override

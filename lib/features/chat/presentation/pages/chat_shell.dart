@@ -734,7 +734,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                 ),
                                 tooltip: "Tin nhắn mới",
                                 onPressed: () {
-                                  // Optional: Handle new message action
+                                  Navigator.pop(ctx);
+                                  _onItemTapped(7);
+                                  MessagingPage.triggerShowUserSelection.value = true;
                                 },
                               ),
                             ],

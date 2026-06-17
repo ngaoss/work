@@ -666,7 +666,10 @@ class WorkHomePageState extends State<WorkHomePage> {
         onPublish: (reel) async {
           final success = await ApiService.createReel(reel);
           if (success) {
+            // Đợi 1 chút để server xử lý xong video và cập nhật danh sách
+            await Future.delayed(const Duration(milliseconds: 1500));
             widget.onRefreshReels?.call();
+            _fetchPosts(refresh: true);
           }
           if (success && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -2630,7 +2633,15 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
     final cursorPosition = selection.start;
     final textBeforeCursor = text.substring(0, cursorPosition);
 
-    final lastAt = textBeforeCursor.lastIndexOf('@');
+    int lastAt = -1;
+    for (int i = textBeforeCursor.length - 1; i >= 0; i--) {
+      if (textBeforeCursor[i] == '@') {
+        if (i == 0 || textBeforeCursor[i - 1].trim().isEmpty) {
+          lastAt = i;
+          break;
+        }
+      }
+    }
     if (lastAt != -1) {
       final query = textBeforeCursor.substring(lastAt + 1);
       // Only show if there's no space between @ and cursor

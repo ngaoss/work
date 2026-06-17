@@ -10,6 +10,8 @@ import '../../../../core/utils/notification_helper.dart';
 class MessagingPage extends StatefulWidget {
   final VoidCallback? onBack;
   final String? initialChatId;
+  static final ValueNotifier<bool> triggerShowUserSelection = ValueNotifier(false);
+
   const MessagingPage({super.key, this.onBack, this.initialChatId});
 
   @override
@@ -24,15 +26,37 @@ class _MessagingPageState extends State<MessagingPage> {
   List<dynamic> _realUsers = [];
   StreamSubscription? _chatSubscription;
 
+  void _onTriggerShowUserSelection() {
+    if (MessagingPage.triggerShowUserSelection.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showUserSelectionSheet();
+          MessagingPage.triggerShowUserSelection.value = false;
+        }
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    MessagingPage.triggerShowUserSelection.addListener(_onTriggerShowUserSelection);
     _initializeData().then((_) {
       if (widget.initialChatId != null) {
         _openChatById(widget.initialChatId!);
       }
+      if (MessagingPage.triggerShowUserSelection.value) {
+        _onTriggerShowUserSelection();
+      }
     });
     _chatSubscription = ApiService.newChatStream.listen(_handleNewMessage);
+  }
+
+  @override
+  void dispose() {
+    MessagingPage.triggerShowUserSelection.removeListener(_onTriggerShowUserSelection);
+    _chatSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -185,11 +209,6 @@ class _MessagingPageState extends State<MessagingPage> {
     });
   }
 
-  @override
-  void dispose() {
-    _chatSubscription?.cancel();
-    super.dispose();
-  }
 
   Future<void> _fetchUsers() async {
     final users = await ApiService.getUsers();
@@ -627,20 +646,22 @@ class _MessagingPageState extends State<MessagingPage> {
   void _showUserSelectionSheet() {
     List<Map<String, dynamic>> selectedUsers = [];
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.75,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1F20) : Colors.white,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-            ),
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Container(
+              width: 500,
+              height: MediaQuery.of(context).size.height * 0.75,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1F20) : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -777,16 +798,26 @@ class _MessagingPageState extends State<MessagingPage> {
                   ),
               ],
             ),
+            ),
           );
         },
       ),
     );
   }
 
-  void _deleteGroup(int id) {
-    setState(() {
-      _chats.removeWhere((c) => c["id"] == id);
-    });
+  void _deleteGroup(dynamic id) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    final success = await ApiService.deleteGroup(id.toString());
+    Navigator.pop(context); // close loading
+    if (success) {
+      await _fetchChats();
+    } else {
+      _showError("Không thể xóa nhóm.");
+    }
   }
 
   void _showGroupSheet({Map<String, dynamic>? existingChat}) {
@@ -1212,10 +1243,11 @@ class _MessagingPageState extends State<MessagingPage> {
     );
 
     if (result != null && result is Map<String, dynamic>) {
-      if (result["action"] == 'leave' || result["action"] == 'disband') {
+      if (result["action"] == 'leave' || result["action"] == 'disband' || result["deleted"] == true) {
         setState(() {
           _chats.removeWhere((c) => c["id"] == chat["id"]);
         });
+        _fetchChats(); // refresh
         return;
       }
 
