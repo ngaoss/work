@@ -17,6 +17,7 @@ class ChatInfoScreen extends StatefulWidget {
   final Function(bool) onMuteToggle;
   final Function(Color) onThemeChanged;
   final Function(String) onNameChanged;
+  final Function(String)? onAvatarChanged;
   final List<Map<String, dynamic>>? initialMembers;
 
   const ChatInfoScreen({
@@ -31,6 +32,7 @@ class ChatInfoScreen extends StatefulWidget {
     required this.onMuteToggle,
     required this.onThemeChanged,
     required this.onNameChanged,
+    this.onAvatarChanged,
     this.initialMembers,
   });
 
@@ -117,28 +119,37 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
 
     try {
       final file = File(image.path);
-      final uploadRes = await ApiService.uploadDocument(
-        file,
-        conversationId: widget.conversationId,
-      );
+      final bytes = await file.readAsBytes();
+      final fileName = image.name.isNotEmpty ? image.name : "avatar.jpg";
+      
+      final imageId = await ApiService.uploadImage(bytes, fileName);
 
-      if (uploadRes != null && uploadRes['path'] != null) {
-        final newAvatarPath = uploadRes['path'].toString();
+      debugPrint('chat_info_screen: uploadImage returned = $imageId');
+
+      if (imageId != null) {
+        debugPrint('chat_info_screen: updating group with avatar = $imageId');
         final success = await ApiService.updateGroupInfo(
           widget.conversationId!,
-          {'avatar': newAvatarPath},
+          {
+            'groupAvatar': imageId, 
+            'avatar': imageId
+          },
         );
 
         if (success && mounted) {
           setState(() {
-            _avatarPath = newAvatarPath;
+            _avatarPath = imageId;
             _isUploadingAvatar = false;
           });
+          widget.onAvatarChanged?.call(imageId);
+          ApiService.notificationRefresh.notifyListeners();
         }
       } else {
+        debugPrint('chat_info_screen: uploadImage failed');
         throw "Không thể tải ảnh lên máy chủ";
       }
     } catch (e) {
+      debugPrint('chat_info_screen exception: $e');
       if (mounted) {
         setState(() => _isUploadingAvatar = false);
         ScaffoldMessenger.of(

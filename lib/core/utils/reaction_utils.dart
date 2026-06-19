@@ -42,7 +42,10 @@ class ReactionUtils {
           builder: (context, snapshot) {
             final List<dynamic> availableUsers = snapshot.data ?? [];
             return AlertDialog(
-              title: const Text("Người đã bày tỏ cảm xúc", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF252728)
+                  : Colors.white,
+              title: Text("Người đã bày tỏ cảm xúc", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).textTheme.bodyLarge?.color)),
               contentPadding: const EdgeInsets.only(top: 16, bottom: 8),
               content: SizedBox(
                 width: 300,
@@ -74,7 +77,11 @@ class ReactionUtils {
                       ),
                       title: Text(
                         name,
-                        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500, 
+                          fontSize: 14,
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
+                        ),
                       ),
                     );
                   },

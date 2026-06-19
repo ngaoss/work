@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/api_service.dart';
 import '../../../ocr/presentation/pages/ocr_page.dart';
+import '../../../../core/widgets/global_error_wrapper.dart';
 
 class DocumentsPage extends StatefulWidget {
   final bool isActive;
@@ -396,12 +397,13 @@ class _DocumentsPageState extends State<DocumentsPage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDesktop = MediaQuery.of(context).size.width > 900;
 
-    return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF252728) : const Color(0xFFF8FAFC),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1200),
+    return GlobalErrorWrapper(
+      child: Scaffold(
+        backgroundColor:
+            isDark ? const Color(0xFF252728) : const Color(0xFFF8FAFC),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1200),
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32.0 : 0),
             child: NestedScrollView(
@@ -423,8 +425,9 @@ class _DocumentsPageState extends State<DocumentsPage>
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildMobileHeader(bool isDark) {
     return Column(

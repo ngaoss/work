@@ -12,6 +12,7 @@ import '../../../../core/widgets/video_preview.dart';
 import '../../../reels/presentation/pages/reels_page.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/utils/time_helper.dart';
+import '../../../../core/widgets/global_error_wrapper.dart';
 import '../../../../core/utils/image_editor_helper.dart';
 import '../../../../core/widgets/mention_suggestions_overlay.dart';
 import '../../../../core/utils/reaction_utils.dart';
@@ -48,6 +49,7 @@ class WorkHomePageState extends State<WorkHomePage> {
 
   List<Map<String, dynamic>> _posts = [];
   bool _isPostsLoading = false;
+  bool _isPostsError = false;
   bool _isMoreLoading = false;
   int _currentPage = 1;
   int _totalPages = 1;
@@ -85,6 +87,7 @@ class WorkHomePageState extends State<WorkHomePage> {
     if (refresh) {
       setState(() {
         _isPostsLoading = true;
+        _isPostsError = false;
         _currentPage = 1;
       });
     } else {
@@ -93,6 +96,17 @@ class WorkHomePageState extends State<WorkHomePage> {
 
     final int targetPage = refresh ? 1 : _currentPage + 1;
     final result = await ApiService.getPosts(page: targetPage, limit: 10);
+
+    if (result['error'] == true) {
+      if (mounted) {
+        setState(() {
+          if (refresh) _isPostsError = true;
+          _isPostsLoading = false;
+          _isMoreLoading = false;
+        });
+      }
+      return;
+    }
 
     final List<dynamic> newPosts = result['posts'] ?? [];
     int total = result['totalPages'] ?? 1;
@@ -666,16 +680,28 @@ class WorkHomePageState extends State<WorkHomePage> {
         onPublish: (reel) async {
           final success = await ApiService.createReel(reel);
           if (success) {
-            // Đợi 1 chút để server xử lý xong video và cập nhật danh sách
-            await Future.delayed(const Duration(milliseconds: 1500));
-            widget.onRefreshReels?.call();
-            _fetchPosts(refresh: true);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Đang xử lý Khoảnh khắc...'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+            
+            // Do server có thể cần thời gian xử lý video, ta poll vài lần để cập nhật danh sách
+            for (int i = 0; i < 3; i++) {
+              await Future.delayed(const Duration(milliseconds: 2000));
+              widget.onRefreshReels?.call();
+              _fetchPosts(refresh: true);
+            }
           }
           if (success && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Đang tải Reel lên...'),
+                content: Text('Đã cập nhật Khoảnh khắc mới'),
                 duration: Duration(seconds: 2),
+                backgroundColor: Colors.green,
               ),
             );
           }
@@ -721,6 +747,28 @@ class WorkHomePageState extends State<WorkHomePage> {
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 40),
               child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (_isPostsError && _posts.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.cloud_off, color: Colors.red.shade300, size: 60),
+                    const SizedBox(height: 16),
+                    Text(
+                      "Đang lỗi server",
+                      style: TextStyle(
+                        color: Colors.red.shade400,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           )
         else if (_posts.isEmpty)
@@ -816,14 +864,16 @@ class WorkHomePageState extends State<WorkHomePage> {
       ],
     );
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await _fetchPosts(refresh: true);
-          widget.onRefreshReels?.call();
-        },
-        child: scrollBody,
+    return GlobalErrorWrapper(
+      child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: RefreshIndicator(
+          onRefresh: () async {
+            await _fetchPosts(refresh: true);
+            widget.onRefreshReels?.call();
+          },
+          child: scrollBody,
+        ),
       ),
     );
   }
@@ -872,7 +922,9 @@ class _StatusInput extends StatelessWidget {
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF333537)
+                      : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -887,17 +939,15 @@ class _StatusInput extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Material(
-            color: const Color(0xFFEFF6FF),
+          _HoverIconButton(
+            onTap: () => _showCreatePost(context),
+            baseColor: const Color(0xFFEFF6FF),
             borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              onTap: () => _showCreatePost(context),
-              borderRadius: BorderRadius.circular(12),
-              child: const SizedBox(
-                width: 48,
-                height: 48,
-                child: Icon(Icons.add, color: Color(0xFF3B82F6)),
-              ),
+            padding: const EdgeInsets.all(0),
+            child: const SizedBox(
+              width: 48,
+              height: 48,
+              child: Icon(Icons.add, color: Color(0xFF3B82F6)),
             ),
           ),
         ],
@@ -1068,7 +1118,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                                 borderRadius: BorderRadius.circular(16),
                               )
                             : BoxDecoration(
-                                color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF8FAFC),
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? const Color(0xFF333537)
+                                    : const Color(0xFFF8FAFC),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(color: Colors.grey.shade200),
                               ),
@@ -1327,17 +1381,20 @@ class _EmojiGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: height,
-      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF333537)
+          : const Color(0xFFF1F5F9),
       padding: const EdgeInsets.all(12),
       child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 7,
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 44,
           mainAxisSpacing: 8,
           crossAxisSpacing: 8,
         ),
         itemCount: emojis.length,
-        itemBuilder: (context, index) => GestureDetector(
+        itemBuilder: (context, index) => _HoverIconButton(
           onTap: () => onSelected(emojis[index]),
+          padding: const EdgeInsets.all(0),
           child: Center(
             child: Text(emojis[index], style: const TextStyle(fontSize: 24)),
           ),
@@ -2355,7 +2412,9 @@ class _CommentBubble extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF333537)
+                : const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -2423,11 +2482,18 @@ class _CommentBubble extends StatelessWidget {
                     }
                   },
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.thumb_up, color: Colors.blue, size: 10),
+                        const Icon(
+                          Icons.thumb_up,
+                          color: Colors.blue,
+                          size: 10,
+                        ),
                         const SizedBox(width: 2),
                         Text(
                           likeCount.toString(),
@@ -2503,35 +2569,16 @@ class _CommentActions extends StatelessWidget {
         const SizedBox(width: 8),
         Text(time, style: const TextStyle(color: Colors.grey, fontSize: 10)),
         const SizedBox(width: 14),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: onLike,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Text(
-                "Thích",
-                style: TextStyle(
-                  color: effectiveLiked ? Colors.blue : Colors.blueGrey,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
+        _HoverTextButton(
+          text: "Thích",
+          onTap: onLike,
+          color: effectiveLiked ? Colors.blue : Colors.blueGrey,
         ),
-        const SizedBox(width: 14),
-        GestureDetector(
+        const SizedBox(width: 4),
+        _HoverTextButton(
+          text: "Phản hồi",
           onTap: onReply,
-          child: const Text(
-            "Phản hồi",
-            style: TextStyle(
-              color: Colors.blueGrey,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          color: Colors.blueGrey,
         ),
       ],
     );
@@ -2823,7 +2870,9 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF333537)
+                        : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -2889,8 +2938,10 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
                           ),
                         ),
                       ),
-                      GestureDetector(
+                      _HoverIconButton(
                         onTap: _toggleEmoji,
+                        padding: const EdgeInsets.all(6),
+                        borderRadius: BorderRadius.circular(20),
                         child: Icon(
                           _showEmoji
                               ? Icons.keyboard
@@ -2899,9 +2950,11 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
                           color: _showEmoji ? Colors.blue : Colors.blueGrey,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
+                      const SizedBox(width: 4),
+                      _HoverIconButton(
                         onTap: () => _pickImage(ImageSource.gallery),
+                        padding: const EdgeInsets.all(6),
+                        borderRadius: BorderRadius.circular(20),
                         child: Icon(
                           Icons.camera_alt_outlined,
                           size: 20,
@@ -2910,9 +2963,11 @@ class _QuickCommentInputState extends State<_QuickCommentInput> {
                               : Colors.blueGrey,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
+                      const SizedBox(width: 4),
+                      _HoverIconButton(
                         onTap: _submit,
+                        padding: const EdgeInsets.all(6),
+                        borderRadius: BorderRadius.circular(20),
                         child: const Icon(
                           Icons.send,
                           size: 20,
@@ -3054,7 +3109,11 @@ class _PostEngagement extends StatefulWidget {
   final int likes;
   final int comments;
   final List<dynamic> reactions;
-  const _PostEngagement({required this.likes, required this.comments, this.reactions = const []});
+  const _PostEngagement({
+    required this.likes,
+    required this.comments,
+    this.reactions = const [],
+  });
 
   @override
   State<_PostEngagement> createState() => _PostEngagementState();
@@ -3071,7 +3130,7 @@ class _PostEngagementState extends State<_PostEngagement> {
       _fetchUsers();
     }
   }
-  
+
   Future<void> _fetchUsers() async {
     final users = await ApiService.getUsers();
     if (mounted) {
@@ -3090,7 +3149,12 @@ class _PostEngagementState extends State<_PostEngagement> {
     String tooltipMessage = '';
     if (widget.reactions.isNotEmpty) {
       final names = widget.reactions
-          .map((r) => ReactionUtils.resolveUser(r, _usersList)?['fullName'] ?? ReactionUtils.resolveUser(r, _usersList)?['name'] ?? 'Người dùng')
+          .map(
+            (r) =>
+                ReactionUtils.resolveUser(r, _usersList)?['fullName'] ??
+                ReactionUtils.resolveUser(r, _usersList)?['name'] ??
+                'Người dùng',
+          )
           .take(5)
           .toList();
       tooltipMessage = names.join('\n');
@@ -3108,7 +3172,11 @@ class _PostEngagementState extends State<_PostEngagement> {
         children: [
           Tooltip(
             message: tooltipMessage,
-            textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+            textStyle: const TextStyle(color: Colors.black87, fontSize: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               onEnter: (_) => setState(() => _isHovered = true),
@@ -3135,7 +3203,9 @@ class _PostEngagementState extends State<_PostEngagement> {
                       style: TextStyle(
                         color: Colors.grey.shade600,
                         fontSize: 13,
-                        decoration: _isHovered ? TextDecoration.underline : TextDecoration.none,
+                        decoration: _isHovered
+                            ? TextDecoration.underline
+                            : TextDecoration.none,
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -3144,7 +3214,9 @@ class _PostEngagementState extends State<_PostEngagement> {
                       style: TextStyle(
                         color: Colors.grey.shade600,
                         fontSize: 13,
-                        decoration: _isHovered ? TextDecoration.underline : TextDecoration.none,
+                        decoration: _isHovered
+                            ? TextDecoration.underline
+                            : TextDecoration.none,
                       ),
                     ),
                   ],
@@ -3286,7 +3358,7 @@ class _HeroBanner extends StatelessWidget {
   }
 }
 
-class _ActionButton extends StatelessWidget {
+class _ActionButton extends StatefulWidget {
   final IconData icon;
   final String label;
   final Color color;
@@ -3297,27 +3369,148 @@ class _ActionButton extends StatelessWidget {
     required this.color,
     required this.onTap,
   });
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> {
+  bool _isHovered = false;
+
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                  fontSize: 11,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: _isHovered
+                  ? (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.15)
+                        : Colors.black.withOpacity(0.1))
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(widget.icon, size: 18, color: widget.color),
+                const SizedBox(width: 8),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: widget.color,
+                    fontSize: 11,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverIconButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  final Color? baseColor;
+  final BorderRadius? borderRadius;
+  final EdgeInsets? padding;
+
+  const _HoverIconButton({
+    required this.child,
+    required this.onTap,
+    this.baseColor,
+    this.borderRadius,
+    this.padding,
+  });
+
+  @override
+  State<_HoverIconButton> createState() => _HoverIconButtonState();
+}
+
+class _HoverIconButtonState extends State<_HoverIconButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hoverColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white.withOpacity(0.1)
+        : Colors.black.withOpacity(0.05);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: widget.padding ?? const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _isHovered ? hoverColor : (widget.baseColor ?? Colors.transparent),
+            borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
+          ),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverTextButton extends StatefulWidget {
+  final String text;
+  final VoidCallback onTap;
+  final Color color;
+  final double fontSize;
+
+  const _HoverTextButton({
+    required this.text,
+    required this.onTap,
+    required this.color,
+    this.fontSize = 10,
+  });
+
+  @override
+  State<_HoverTextButton> createState() => _HoverTextButtonState();
+}
+
+class _HoverTextButtonState extends State<_HoverTextButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? (Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white.withOpacity(0.15)
+                      : Colors.black.withOpacity(0.1))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            widget.text,
+            style: TextStyle(
+              color: widget.color,
+              fontSize: widget.fontSize,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ),
@@ -3486,7 +3679,9 @@ class _BuildMediaAttachmentsTool extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFF1F5F9),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF333537)
+            : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -3531,39 +3726,57 @@ class _MomentsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bool hasError =
+        reels.isNotEmpty && reels[0] is Map && reels[0]['error'] == true;
+    final validReels = hasError ? [] : reels;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Row(
                 children: [
                   Icon(
-                    Icons.video_call_outlined,
-                    color: Colors.indigo,
-                    size: 24,
+                    Icons.video_camera_back_outlined,
+                    color: Colors.blue,
+                    size: 20,
                   ),
                   SizedBox(width: 8),
                   Text(
                     "KHOẢNH KHẮC",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ],
               ),
-              Text(
-                "XEM TẤT CẢ >",
-                style: TextStyle(
-                  color: Colors.blue.shade700,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
+              TextButton(
+                onPressed: () => onNavigateToReels?.call(0),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  "XEM TẤT CẢ >",
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
         ),
+        const SizedBox(height: 12),
         SizedBox(
           height: 180,
           child: ListView(
@@ -3596,7 +3809,7 @@ class _MomentsSection extends StatelessWidget {
                   ),
                 )
               else
-                ...reels.asMap().entries.map((entry) {
+                ...validReels.asMap().entries.map((entry) {
                   final int idx = entry.key;
                   final reel = entry.value;
                   final author = reel['author'] is Map ? reel['author'] : null;

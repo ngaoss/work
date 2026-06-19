@@ -1353,7 +1353,7 @@ class _Tabs extends StatelessWidget {
   }
 }
 
-class _TabItem extends StatelessWidget {
+class _TabItem extends StatefulWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
@@ -1364,39 +1364,62 @@ class _TabItem extends StatelessWidget {
   });
 
   @override
+  State<_TabItem> createState() => _TabItemState();
+}
+
+class _TabItemState extends State<_TabItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 13,
-              color: isActive ? const Color(0xFF3B82F6) : Colors.grey.shade400,
-              letterSpacing: 0.5,
-            ),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white.withOpacity(0.05)
+                    : Colors.black.withOpacity(0.05))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
           ),
-          const SizedBox(height: 8),
-          if (isActive)
-            Container(
-              width: 40,
-              height: 3,
-              decoration: BoxDecoration(
-                color: const Color(0xFF3B82F6),
-                borderRadius: BorderRadius.circular(2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Column(
+            children: [
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  color: widget.isActive ? const Color(0xFF3B82F6) : Colors.grey.shade400,
+                  letterSpacing: 0.5,
+                ),
               ),
-            )
-          else
-            const SizedBox(height: 9),
-        ],
+              const SizedBox(height: 8),
+              if (widget.isActive)
+                Container(
+                  width: 40,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                )
+              else
+                const SizedBox(height: 3),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class _ChatItem extends StatelessWidget {
+class _ChatItem extends StatefulWidget {
   final Map<String, dynamic> chat;
   final Function(Map<String, dynamic>) onNavigate;
   final VoidCallback? onLongPress;
@@ -1409,7 +1432,15 @@ class _ChatItem extends StatelessWidget {
   });
 
   @override
+  State<_ChatItem> createState() => _ChatItemState();
+}
+
+class _ChatItemState extends State<_ChatItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
+    final chat = widget.chat;
     final String name = chat["name"] ?? "";
     final String status = chat["status"] ?? "";
     final String lastMsg = chat["lastMsg"] ?? "";
@@ -1422,28 +1453,29 @@ class _ChatItem extends StatelessWidget {
     final int unreadCount = chat["unreadCount"] ?? 0;
     final String? avatarSource = avatarPath?.trim();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => onNavigate(chat),
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(20),
-          splashColor: color?.withOpacity(0.1) ?? Colors.blue.withOpacity(0.1),
-          highlightColor:
-              color?.withOpacity(0.05) ?? Colors.blue.withOpacity(0.05),
-          child: Ink(
-            decoration: BoxDecoration(
-              color: hasUnread
-                  ? (Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white.withOpacity(0.04)
-                      : const Color(0xFFF1F5F9))
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-            child: Row(
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => widget.onNavigate(chat),
+        onLongPress: widget.onLongPress,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white.withOpacity(0.08)
+                    : Colors.black.withOpacity(0.05))
+                : (hasUnread
+                    ? (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.04)
+                        : const Color(0xFFF1F5F9))
+                    : Colors.transparent),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Row(
               children: [
                 Stack(
                   alignment: Alignment.bottomRight,
@@ -1659,7 +1691,6 @@ class _ChatItem extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }

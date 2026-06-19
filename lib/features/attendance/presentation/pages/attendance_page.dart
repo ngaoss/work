@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../../../core/api_service.dart';
-
+import '../../../../core/widgets/global_error_wrapper.dart';
 class AttendancePage extends StatefulWidget {
   const AttendancePage({super.key});
 
@@ -29,7 +29,23 @@ class _AttendancePageState extends State<AttendancePage> {
     if (!silent) {
       setState(() => _isPageLoading = true);
     }
-    final data = await ApiService.getMyAttendance();
+
+    String? period;
+    String? from;
+    String? to;
+
+    if (_selectedFilter == 'Hôm qua') {
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final formatted = "\${yesterday.year}-\${yesterday.month.toString().padLeft(2, '0')}-\${yesterday.day.toString().padLeft(2, '0')}";
+      from = formatted;
+      to = formatted;
+    } else if (_selectedFilter == 'Tuần này') {
+      period = 'week';
+    } else if (_selectedFilter == 'Tháng này') {
+      period = 'month';
+    }
+
+    final data = await ApiService.getMyAttendance(period: period, from: from, to: to);
     setState(() {
       final payload = data['data'];
       if (payload != null && payload['days'] is List) {
@@ -166,14 +182,15 @@ class _AttendancePageState extends State<AttendancePage> {
   Widget build(BuildContext context) {
     final bool isDesktop = MediaQuery.of(context).size.width > 1100;
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF252728)
-          : const Color(0xFFF8FAFC),
-      body: _isPageLoading && _history.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+    return GlobalErrorWrapper(
+      child: Scaffold(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF252728)
+            : const Color(0xFFF8FAFC),
+        body: _isPageLoading && _history.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -209,8 +226,9 @@ class _AttendancePageState extends State<AttendancePage> {
                 ],
               ),
             ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildCheckInCard() {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -326,10 +344,11 @@ class _AttendancePageState extends State<AttendancePage> {
                       fontSize: 14,
                     ),
                     onChanged: (String? newValue) {
-                      if (newValue != null) {
+                      if (newValue != null && newValue != _selectedFilter) {
                         setState(() {
                           _selectedFilter = newValue;
                         });
+                        _fetchAttendance();
                       }
                     },
                     items: _filters.map<DropdownMenuItem<String>>((

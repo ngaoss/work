@@ -107,8 +107,19 @@ class _ReelsPageState extends State<ReelsPage> {
         onPublish: (reel) async {
           final success = await ApiService.createReel(reel);
           if (success) {
-            _fetchReels();
-            widget.onRefresh?.call();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Đang xử lý Khoảnh khắc...'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+            for (int i = 0; i < 3; i++) {
+              await Future.delayed(const Duration(milliseconds: 2000));
+              _fetchReels();
+              widget.onRefresh?.call();
+            }
           }
         },
       ),

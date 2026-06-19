@@ -16,6 +16,7 @@ import '../../../../core/security.dart';
 import '../../../../core/api_service.dart';
 import '../../../../core/utils/notification_helper.dart';
 import '../../../../core/utils/update_helper.dart';
+import '../../../../core/widgets/global_error_wrapper.dart';
 
 class ChatShell extends StatefulWidget {
   const ChatShell({super.key});
@@ -749,87 +750,22 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                           ),
                           child: Row(
                             children: [
-                              GestureDetector(
-                                onTap: () =>
-                                    setStatePopup(() => currentFilter = 'all'),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: currentFilter == 'all'
-                                        ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF1E3A8A) : const Color(0xFFE8F3FF))
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    "Tất cả",
-                                    style: TextStyle(
-                                      color: currentFilter == 'all'
-                                          ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF93C5FD) : const Color(0xFF0064D1))
-                                          : (Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
+                              _HoverFilterTab(
+                                label: 'Tất cả',
+                                isActive: currentFilter == 'all',
+                                onTap: () => setStatePopup(() => currentFilter = 'all'),
                               ),
                               const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () => setStatePopup(
-                                  () => currentFilter = 'unread',
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: currentFilter == 'unread'
-                                        ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF1E3A8A) : const Color(0xFFE8F3FF))
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    "Chưa đọc",
-                                    style: TextStyle(
-                                      color: currentFilter == 'unread'
-                                          ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF93C5FD) : const Color(0xFF0064D1))
-                                          : (Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
+                              _HoverFilterTab(
+                                label: 'Chưa đọc',
+                                isActive: currentFilter == 'unread',
+                                onTap: () => setStatePopup(() => currentFilter = 'unread'),
                               ),
                               const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () => setStatePopup(
-                                  () => currentFilter = 'group',
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: currentFilter == 'group'
-                                        ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF1E3A8A) : const Color(0xFFE8F3FF))
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    "Nhóm",
-                                    style: TextStyle(
-                                      color: currentFilter == 'group'
-                                          ? (Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF93C5FD) : const Color(0xFF0064D1))
-                                          : (Theme.of(ctx).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
+                              _HoverFilterTab(
+                                label: 'Nhóm',
+                                isActive: currentFilter == 'group',
+                                onTap: () => setStatePopup(() => currentFilter = 'group'),
                               ),
                             ],
                           ),
@@ -1019,16 +955,7 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                                         (chat['unreadCount'] as num? ?? 0) > 0;
                                   }
 
-                                  return InkWell(
-                                    highlightColor: Theme.of(ctx).brightness == Brightness.dark
-                                        ? Colors.white.withOpacity(0.05)
-                                        : Colors.black.withOpacity(0.05),
-                                    splashColor: Theme.of(ctx).brightness == Brightness.dark
-                                        ? Colors.white.withOpacity(0.05)
-                                        : Colors.black.withOpacity(0.05),
-                                    hoverColor: Theme.of(ctx).brightness == Brightness.dark
-                                        ? Colors.white.withOpacity(0.025)
-                                        : Colors.black.withOpacity(0.025),
+                                  return _HoverableItem(
                                     onTap: () {
                                       Navigator.pop(ctx);
                                       final chatId =
@@ -1606,12 +1533,13 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
       final bool isReels = _currentIndex == 1;
       final bool isFullScreen = isMessaging || isReels;
 
-      return Scaffold(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF252728)
-            : const Color(0xFFF8FAFC),
-        body: Stack(
-          children: [
+      return GlobalErrorWrapper(
+        child: Scaffold(
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF252728)
+              : const Color(0xFFF8FAFC),
+          body: Stack(
+            children: [
             Row(
               children: [
                 if (!isFullScreen)
@@ -1713,14 +1641,16 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
                   }).toList(),
                 ),
               ),
-          ],
+            ],
+          ),
         ),
       );
     }
 
-    return Scaffold(
-      key: _scaffoldKey,
-      appBar: AppBar(
+    return GlobalErrorWrapper(
+      child: Scaffold(
+        key: _scaffoldKey,
+        appBar: AppBar(
         leading: IconButton(
           icon: Icon(
             Icons.menu,
@@ -1850,8 +1780,9 @@ class _ChatShellState extends State<ChatShell> with WidgetsBindingObserver {
           },
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildAppLogo() {
     return GestureDetector(
@@ -1933,6 +1864,7 @@ class _TopActionState extends State<_TopAction>
     with SingleTickerProviderStateMixin {
   late AnimationController _bounceController;
   late Animation<double> _bounceAnim;
+  bool _isHovered = false;
 
   @override
   void initState() {
@@ -1985,22 +1917,30 @@ class _TopActionState extends State<_TopAction>
     super.dispose();
   }
 
-  @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: widget.onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        margin: const EdgeInsets.only(left: 8),
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: widget.isActive
-              ? const Color(0xFF3B82F6).withOpacity(0.1)
-              : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1F20) : const Color(0xFFF1F5F9)),
-          shape: BoxShape.circle,
-        ),
-        child: Stack(
+    final baseColor = widget.isActive
+        ? const Color(0xFF3B82F6).withOpacity(0.1)
+        : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1F20) : const Color(0xFFF1F5F9));
+        
+    final hoverColor = widget.isActive
+        ? const Color(0xFF3B82F6).withOpacity(0.2)
+        : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF333537) : const Color(0xFFE2E8F0));
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          margin: const EdgeInsets.only(left: 8),
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: _isHovered ? hoverColor : baseColor,
+            shape: BoxShape.circle,
+          ),
+          child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
@@ -2059,7 +1999,8 @@ class _TopActionState extends State<_TopAction>
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -2222,7 +2163,7 @@ class _LogoutButton extends StatelessWidget {
   }
 }
 
-class _DrawerItem extends StatelessWidget {
+class _DrawerItem extends StatefulWidget {
   final String label;
   final IconData icon;
   final bool isActive;
@@ -2236,18 +2177,35 @@ class _DrawerItem extends StatelessWidget {
   });
 
   @override
+  State<_DrawerItem> createState() => _DrawerItemState();
+}
+
+class _DrawerItemState extends State<_DrawerItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    final hoverColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white.withOpacity(0.05)
+        : Colors.black.withOpacity(0.05);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: isActive ? const Color(0xFF3B82F6) : Colors.transparent,
+            color: widget.isActive 
+                ? const Color(0xFF3B82F6) 
+                : (_isHovered ? hoverColor : Colors.transparent),
             borderRadius: BorderRadius.circular(16),
-            boxShadow: isActive
+            boxShadow: widget.isActive
                 ? [
                     BoxShadow(
                       color: const Color(0xFF3B82F6).withOpacity(0.3),
@@ -2260,8 +2218,8 @@ class _DrawerItem extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                icon,
-                color: isActive
+                widget.icon,
+                color: widget.isActive
                     ? Colors.white
                     : (Theme.of(context).brightness == Brightness.dark
                         ? Colors.white70
@@ -2270,14 +2228,14 @@ class _DrawerItem extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Text(
-                label,
+                widget.label,
                 style: TextStyle(
-                  color: isActive
+                  color: widget.isActive
                       ? Colors.white
                       : (Theme.of(context).brightness == Brightness.dark
                           ? Colors.white70
                           : Colors.blueGrey.shade700),
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                  fontWeight: widget.isActive ? FontWeight.bold : FontWeight.w600,
                   fontSize: 14,
                   letterSpacing: 0.2,
                 ),
@@ -2286,7 +2244,8 @@ class _DrawerItem extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -2885,6 +2844,103 @@ class _BlinkingUpdateButtonState extends State<_BlinkingUpdateButton>
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverFilterTab extends StatefulWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _HoverFilterTab({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  State<_HoverFilterTab> createState() => _HoverFilterTabState();
+}
+
+class _HoverFilterTabState extends State<_HoverFilterTab> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: widget.isActive
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1E3A8A)
+                    : const Color(0xFFE8F3FF))
+                : (_isHovered
+                    ? (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.05)
+                        : Colors.black.withOpacity(0.05))
+                    : Colors.transparent),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              color: widget.isActive
+                  ? (Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF93C5FD)
+                      : const Color(0xFF0064D1))
+                  : (Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white70
+                      : Colors.black54),
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverableItem extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+
+  const _HoverableItem({required this.child, required this.onTap});
+
+  @override
+  State<_HoverableItem> createState() => _HoverableItemState();
+}
+
+class _HoverableItemState extends State<_HoverableItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white.withOpacity(0.08)
+                    : Colors.black.withOpacity(0.05))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: widget.child,
         ),
       ),
     );

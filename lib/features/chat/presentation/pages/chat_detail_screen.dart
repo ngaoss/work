@@ -24,6 +24,7 @@ import 'package:flutter/gestures.dart';
 import '../../../../core/widgets/mention_text_controller.dart';
 import '../../../../core/widgets/mention_suggestions_overlay.dart';
 import '../../../../core/utils/reaction_utils.dart';
+import '../../../../core/widgets/global_error_wrapper.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -1388,436 +1389,459 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       },
       child: Stack(
         children: [
-          Scaffold(
-            appBar: AppBar(
-              elevation: 1,
-              automaticallyImplyLeading: !widget.isMini,
-              leading: widget.isMini
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.arrow_back_ios, size: 20),
-                      onPressed: () {
-                        final lastRecord = _messages.isNotEmpty
-                            ? _messages.first
-                            : null;
-                        String preview = "Bắt đầu trò chuyện...";
-                        String updatedTime =
-                            "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
-                        if (lastRecord != null) {
-                          updatedTime = lastRecord["time"] ?? updatedTime;
-                          if (lastRecord["isRecalled"] == true) {
-                            preview = "Tin nhắn đã được thu hồi";
-                          } else if (lastRecord["imagePath"] != null) {
-                            preview = lastRecord["isSender"]
-                                ? "Bạn: [Đã gửi một ảnh]"
-                                : "[Đã gửi một ảnh]";
-                          } else {
-                            final txt = (lastRecord["text"] ?? "").toString();
-                            preview = lastRecord["isSender"]
-                                ? "Bạn: $txt"
-                                : txt;
+          GlobalErrorWrapper(
+            child: Scaffold(
+              appBar: AppBar(
+                elevation: 1,
+                automaticallyImplyLeading: !widget.isMini,
+                leading: widget.isMini
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.arrow_back_ios, size: 20),
+                        onPressed: () {
+                          final lastRecord = _messages.isNotEmpty
+                              ? _messages.first
+                              : null;
+                          String preview = "Bắt đầu trò chuyện...";
+                          String updatedTime =
+                              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+                          if (lastRecord != null) {
+                            updatedTime = lastRecord["time"] ?? updatedTime;
+                            if (lastRecord["isRecalled"] == true) {
+                              preview = "Tin nhắn đã được thu hồi";
+                            } else if (lastRecord["imagePath"] != null) {
+                              preview = lastRecord["isSender"]
+                                  ? "Bạn: [Đã gửi một ảnh]"
+                                  : "[Đã gửi một ảnh]";
+                            } else {
+                              final txt = (lastRecord["text"] ?? "").toString();
+                              preview = lastRecord["isSender"]
+                                  ? "Bạn: $txt"
+                                  : txt;
+                            }
                           }
-                        }
-                        Navigator.pop(context, {
-                          "lastMsg": preview,
-                          "time": updatedTime,
-                          "messages": _messages,
-                          "members": _members,
-                          "name": _currentName,
-                          "color": _currentColor,
-                          "initials": _currentInitials,
-                          "avatarPath": _currentAvatarPath,
-                          "conversationId": _activeConversationId,
-                        });
-                      },
-                    ),
-              title: Row(
-                children: [
-                  _HeaderAvatar(
-                    isOnline: widget.isOnline,
-                    initials: _currentInitials,
-                    color: _themeColor,
-                    avatarPath: _currentAvatarPath,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _currentName,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          widget.isOnline ? "Đang hoạt động" : "Ngoại tuyến",
-                          style: TextStyle(
-                            color: widget.isOnline ? Colors.green : Colors.grey,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                if (!widget.isMini)
-                  IconButton(
-                    icon: Icon(
-                      Icons.more_horiz,
-                      color:
-                          _themeColor == Colors.white ||
-                              _themeColor == const Color(0xFFFFFFFF)
-                          ? Colors.blue
-                          : _themeColor,
-                    ),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChatInfoScreen(
-                            name: _currentName,
-                            avatarPath: _currentAvatarPath,
-                            conversationId: _activeConversationId,
-                            isGroup: widget.isGroup,
-                            isMuted: _isMuted,
-                            themeColor: _themeColor,
-                            initialMembers: _members,
-                            createdBy: widget.createdBy,
-                            onMuteToggle: (muted) {
-                              setState(() => _isMuted = muted);
-                              widget.onMuteToggle?.call(muted);
-                            },
-                            onThemeChanged: (newColor) {
-                              setState(() {
-                                _themeColor = newColor;
-                                _currentColor = newColor;
-                              });
-                            },
-                            onNameChanged: (newName) {
-                              setState(() => _currentName = newName);
-                            },
-                          ),
-                        ),
-                      ).then((result) {
-                        if (result == "deleted") {
                           Navigator.pop(context, {
-                            "deleted": true,
+                            "lastMsg": preview,
+                            "time": updatedTime,
+                            "messages": _messages,
+                            "members": _members,
+                            "name": _currentName,
+                            "color": _currentColor,
+                            "initials": _currentInitials,
+                            "avatarPath": _currentAvatarPath,
                             "conversationId": _activeConversationId,
                           });
-                        }
-                      });
-                    },
-                  ),
-                if (widget.isMini)
-                  IconButton(
-                    icon: Icon(
-                      Icons.close,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white70
-                          : Colors.black54,
-                    ),
-                    iconSize: 20,
-                    onPressed: () {
-                      widget.onClose?.call();
-                    },
-                  ),
-                const SizedBox(width: 4),
-              ],
-            ),
-            body: WillPopScope(
-              onWillPop: () {
-                if (_showEmoji) {
-                  setState(() => _showEmoji = false);
-                  return Future.value(false);
-                }
-                final lastRecord = _messages.isNotEmpty
-                    ? _messages.first
-                    : null;
-                String preview = "Bắt đầu trò chuyện...";
-                if (lastRecord != null) {
-                  if (lastRecord["isRecalled"] == true) {
-                    preview = "Tin nhắn đã được thu hồi";
-                  } else if (lastRecord["imagePath"] != null) {
-                    preview = lastRecord["isSender"]
-                        ? "Bạn: [Đã gửi một ảnh]"
-                        : "[Đã gửi một ảnh]";
-                  } else {
-                    final txt = (lastRecord["text"] ?? "").toString();
-                    preview = lastRecord["isSender"] ? "Bạn: $txt" : txt;
-                  }
-                }
-                Navigator.pop(context, {
-                  "lastMsg": preview,
-                  "time": "Vừa xong",
-                  "messages": _messages,
-                  "name": _currentName,
-                  "avatarPath": _currentAvatarPath,
-                  "conversationId": _activeConversationId,
-                  "isMuted": _isMuted,
-                });
-                return Future.value(false);
-              },
-              child: Stack(
-                children: [
-                  Column(
-                    children: [
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: () async {
-                            // Reset to page 1 and reload
-                            _currentPage = 1;
-                            _hasMoreMessages = true;
-                            await _loadMessages();
-                          },
-                          child: ListView.builder(
-                            controller: _scrollController,
-                            reverse: true,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            cacheExtent: 3000,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 24,
-                            ),
-                            itemCount:
-                                _messages.length + (_isLoadingMore ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              // Show loading spinner at the end of the list (which is the top when reverse: true)
-                              if (_isLoadingMore && index == _messages.length) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16),
-                                  child: Center(
-                                    child: SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              Colors.blue,
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              if (index >= _messages.length)
-                                return const SizedBox.shrink();
-
-                              final msg = _messages[index];
-                              // Build replyTo preview if present
-                              Map<String, dynamic>? replyData;
-                              final rawReply = msg["replyTo"];
-                              if (rawReply is Map) {
-                                final replyText =
-                                    (rawReply["text"] ??
-                                            rawReply["content"] ??
-                                            "")
-                                        .toString();
-                                final replySender =
-                                    (rawReply["sender"]?["fullName"] ??
-                                            rawReply["sender"]?["name"] ??
-                                            "")
-                                        .toString();
-                                replyData = {
-                                  "id": (rawReply["_id"] ?? rawReply["id"])
-                                      ?.toString(),
-                                  "text": replyText,
-                                  "senderName": replySender,
-                                };
-                              }
-                              return GestureDetector(
-                                onLongPress: (Theme.of(context).platform == TargetPlatform.windows ||
-                                        Theme.of(context).platform == TargetPlatform.macOS ||
-                                        Theme.of(context).platform == TargetPlatform.linux)
-                                    ? null
-                                    : () => _showOptions(context, msg),
-                                child: _ChatBubble(
-                                  message: msg["isRecalled"] == true
-                                      ? (msg["isSystemRecall"] == true
-                                            ? msg["text"]
-                                            : "Tin nhắn đã được thu hồi")
-                                      : (msg["text"] ?? ""),
-                                  isSender: msg["isSender"],
-                                  isSystem: msg["isSystem"] ?? false,
-                                  isEdited: msg["isEdited"] ?? false,
-                                  isRecalled: msg["isRecalled"] == true,
-                                  isSystemRecall: msg["isSystemRecall"] == true,
-                                  imagePath: msg["isRecalled"] == true
-                                      ? null
-                                      : msg["imagePath"],
-                                  images: msg["isRecalled"] == true
-                                      ? null
-                                      : (msg["images"] as List<dynamic>?)
-                                            ?.map((e) => e.toString())
-                                            .toList(),
-                                  fileName: msg["isRecalled"] == true
-                                      ? null
-                                      : msg["fileName"],
-                                  fileSize: msg["fileSize"],
-                                  fileUrl: msg["fileUrl"],
-                                  replyTo: replyData,
-                                  survey: msg["survey"],
-                                  reactions: msg["reactions"],
-                                  readBy: index == 0 ? msg["readBy"] : null,
-                                  onVote: (choiceIndex) async {
-                                    final success = await ApiService.voteSurvey(
-                                      msg["id"].toString(),
-                                      choiceIndex,
-                                    );
-                                    if (success) {
-                                      _loadMessages(isPolling: true);
-                                    }
-                                  },
-                                  onReact: (emoji) => _reactToMessage(
-                                    msg["id"].toString(),
-                                    emoji,
-                                  ),
-                                  senderName: msg["isSender"]
-                                      ? "Bạn"
-                                      : (msg["senderName"] ?? _currentName),
-                                  senderInitials: msg["isSender"]
-                                      ? "ME"
-                                      : (msg["senderInitials"] ??
-                                            (widget.initials ??
-                                                (_currentName.isNotEmpty
-                                                    ? _currentName.substring(
-                                                        0,
-                                                        1,
-                                                      )
-                                                    : "?"))),
-                                  senderAvatarPath: msg["isSender"]
-                                      ? ApiService.resolveImageUrl(
-                                          AuthService()
-                                                  .userProfile
-                                                  .value?["profilePicture"] ??
-                                              AuthService()
-                                                  .userProfile
-                                                  .value?["avatar"],
-                                        )
-                                      : msg["senderAvatarPath"],
-                                  bubbleColor: _themeColor,
-                                  time: msg["time"] ?? "Vừa xong",
-                                  onReply: () => _startReplying(msg),
-                                  onRecall: msg["isSender"] == true
-                                      ? () => _recallMessage(msg)
-                                      : null,
-                                  onMore: () => _showOptions(context, msg),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
+                        },
                       ),
-                      if (_editingMessageId != null)
-                        _EditingBanner(
-                          themeColor: _themeColor,
-                          onCancel: () => setState(() {
-                            _editingMessageId = null;
-                            _controller.clear();
-                          }),
-                        ),
-                      if (_replyingTo != null)
-                        _ReplyBanner(
-                          themeColor: _themeColor,
-                          replyToName:
-                              _replyingTo!["senderName"] ?? "Người dùng",
-                          replyToText: _replyingTo!["text"] ?? "",
-                          onCancel: () => setState(() => _replyingTo = null),
-                        ),
-
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
+                title: Row(
+                  children: [
+                    _HeaderAvatar(
+                      isOnline: widget.isOnline,
+                      initials: _currentInitials,
+                      color: _themeColor,
+                      avatarPath: _currentAvatarPath,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (_showMentions && _filteredMembers.isNotEmpty)
-                            MentionSuggestionsOverlay(
-                              suggestions: _filteredMembers,
-                              onSelect: _insertMention,
-                              themeColor: _themeColor,
-                              selectedIndex: _mentionSelectedIndex,
+                          Text(
+                            _currentName,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
                             ),
-                          _ChatInputArea(
-                            controller: _controller,
-                            focusNode: _focusNode,
-                            isEmojiVisible: _showEmoji,
-                            selectedFiles: _selectedFiles,
-                            onEmoji: _toggleEmoji,
-                            onGallery: () => _pickMedia(ImageSource.gallery),
-                            onFile: _pickFile,
-                            onSurvey: _showSurveyCreator,
-                            onSend: _sendMessage,
-                            onRemoveFile: (index) =>
-                                setState(() => _selectedFiles.removeAt(index)),
-                            themeColor: _themeColor,
-                            isMentionShowing: _showMentions,
-                            onMentionUp: () => setState(() {
-                              _mentionSelectedIndex =
-                                  (_mentionSelectedIndex -
-                                      1 +
-                                      _filteredMembers.length) %
-                                  _filteredMembers.length;
-                            }),
-                            onMentionDown: () => setState(() {
-                              _mentionSelectedIndex =
-                                  (_mentionSelectedIndex + 1) %
-                                  _filteredMembers.length;
-                            }),
-                            onMentionSelect: () {
-                              if (_filteredMembers.isNotEmpty) {
-                                _insertMention(
-                                  _filteredMembers[_mentionSelectedIndex],
-                                );
-                              }
-                            },
-                            onMentionCancel: () =>
-                                setState(() => _showMentions = false),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            widget.isOnline ? "Đang hoạt động" : "Ngoại tuyến",
+                            style: TextStyle(
+                              color: widget.isOnline
+                                  ? Colors.green
+                                  : Colors.grey,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
-                      if (_showEmoji &&
-                          MediaQuery.of(context).size.width <= 600)
-                        _EmojiPickerSheet(onSelected: _insertEmoji),
-                    ],
-                  ),
-                  // Desktop floating emoji picker
-                  if (_showEmoji && MediaQuery.of(context).size.width > 600)
-                    Positioned(
-                      bottom: 64,
-                      right: 16,
-                      child: Material(
-                        elevation: 12,
-                        shadowColor: Colors.black26,
-                        borderRadius: BorderRadius.circular(16),
-                        clipBehavior: Clip.antiAlias,
-                        child: Container(
-                          width: 320,
-                          height: 250,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.grey.shade200),
+                    ),
+                  ],
+                ),
+                actions: [
+                  if (!widget.isMini)
+                    IconButton(
+                      icon: Icon(
+                        Icons.more_horiz,
+                        color:
+                            _themeColor == Colors.white ||
+                                _themeColor == const Color(0xFFFFFFFF)
+                            ? Colors.blue
+                            : _themeColor,
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatInfoScreen(
+                              name: _currentName,
+                              avatarPath: _currentAvatarPath,
+                              conversationId: _activeConversationId,
+                              isGroup: widget.isGroup,
+                              isMuted: _isMuted,
+                              themeColor: _themeColor,
+                              initialMembers: _members,
+                              createdBy: widget.createdBy,
+                              onMuteToggle: (muted) {
+                                setState(() => _isMuted = muted);
+                                widget.onMuteToggle?.call(muted);
+                              },
+                              onThemeChanged: (newColor) {
+                                setState(() {
+                                  _themeColor = newColor;
+                                  _currentColor = newColor;
+                                });
+                              },
+                              onNameChanged: (newName) {
+                                setState(() => _currentName = newName);
+                              },
+                              onAvatarChanged: (newAvatar) {
+                                setState(() => _currentAvatarPath = newAvatar);
+                                // We also need to notify the global state if any.
+                                // For now, this updates the UI inside ChatDetailScreen.
+                              },
+                            ),
                           ),
-                          child: _EmojiPickerSheet(
-                            onSelected: (emoji) {
-                              _insertEmoji(emoji);
-                              // keep picker open after selection
+                        ).then((result) {
+                          if (result == "deleted") {
+                            Navigator.pop(context, {
+                              "deleted": true,
+                              "conversationId": _activeConversationId,
+                            });
+                          }
+                        });
+                      },
+                    ),
+                  if (widget.isMini)
+                    IconButton(
+                      icon: Icon(
+                        Icons.close,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white70
+                            : Colors.black54,
+                      ),
+                      iconSize: 20,
+                      onPressed: () {
+                        widget.onClose?.call();
+                      },
+                    ),
+                  const SizedBox(width: 4),
+                ],
+              ),
+              body: WillPopScope(
+                onWillPop: () {
+                  if (_showEmoji) {
+                    setState(() => _showEmoji = false);
+                    return Future.value(false);
+                  }
+                  final lastRecord = _messages.isNotEmpty
+                      ? _messages.first
+                      : null;
+                  String preview = "Bắt đầu trò chuyện...";
+                  if (lastRecord != null) {
+                    if (lastRecord["isRecalled"] == true) {
+                      preview = "Tin nhắn đã được thu hồi";
+                    } else if (lastRecord["imagePath"] != null) {
+                      preview = lastRecord["isSender"]
+                          ? "Bạn: [Đã gửi một ảnh]"
+                          : "[Đã gửi một ảnh]";
+                    } else {
+                      final txt = (lastRecord["text"] ?? "").toString();
+                      preview = lastRecord["isSender"] ? "Bạn: $txt" : txt;
+                    }
+                  }
+                  Navigator.pop(context, {
+                    "lastMsg": preview,
+                    "time": "Vừa xong",
+                    "messages": _messages,
+                    "name": _currentName,
+                    "avatarPath": _currentAvatarPath,
+                    "conversationId": _activeConversationId,
+                    "isMuted": _isMuted,
+                  });
+                  return Future.value(false);
+                },
+                child: Stack(
+                  children: [
+                    Column(
+                      children: [
+                        Expanded(
+                          child: RefreshIndicator(
+                            onRefresh: () async {
+                              // Reset to page 1 and reload
+                              _currentPage = 1;
+                              _hasMoreMessages = true;
+                              await _loadMessages();
                             },
+                            child: ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              cacheExtent: 3000,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 24,
+                              ),
+                              itemCount:
+                                  _messages.length + (_isLoadingMore ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                // Show loading spinner at the end of the list (which is the top when reverse: true)
+                                if (_isLoadingMore &&
+                                    index == _messages.length) {
+                                  return const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 16),
+                                    child: Center(
+                                      child: SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.blue,
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                if (index >= _messages.length)
+                                  return const SizedBox.shrink();
+
+                                final msg = _messages[index];
+                                // Build replyTo preview if present
+                                Map<String, dynamic>? replyData;
+                                final rawReply = msg["replyTo"];
+                                if (rawReply is Map) {
+                                  final replyText =
+                                      (rawReply["text"] ??
+                                              rawReply["content"] ??
+                                              "")
+                                          .toString();
+                                  final replySender =
+                                      (rawReply["sender"]?["fullName"] ??
+                                              rawReply["sender"]?["name"] ??
+                                              "")
+                                          .toString();
+                                  replyData = {
+                                    "id": (rawReply["_id"] ?? rawReply["id"])
+                                        ?.toString(),
+                                    "text": replyText,
+                                    "senderName": replySender,
+                                  };
+                                }
+                                return GestureDetector(
+                                  onLongPress:
+                                      (Theme.of(context).platform ==
+                                              TargetPlatform.windows ||
+                                          Theme.of(context).platform ==
+                                              TargetPlatform.macOS ||
+                                          Theme.of(context).platform ==
+                                              TargetPlatform.linux)
+                                      ? null
+                                      : () => _showOptions(context, msg),
+                                  child: _ChatBubble(
+                                    message: msg["isRecalled"] == true
+                                        ? (msg["isSystemRecall"] == true
+                                              ? msg["text"]
+                                              : "Tin nhắn đã được thu hồi")
+                                        : (msg["text"] ?? ""),
+                                    isSender: msg["isSender"],
+                                    isSystem: msg["isSystem"] ?? false,
+                                    isEdited: msg["isEdited"] ?? false,
+                                    isRecalled: msg["isRecalled"] == true,
+                                    isSystemRecall:
+                                        msg["isSystemRecall"] == true,
+                                    imagePath: msg["isRecalled"] == true
+                                        ? null
+                                        : msg["imagePath"],
+                                    images: msg["isRecalled"] == true
+                                        ? null
+                                        : (msg["images"] as List<dynamic>?)
+                                              ?.map((e) => e.toString())
+                                              .toList(),
+                                    fileName: msg["isRecalled"] == true
+                                        ? null
+                                        : msg["fileName"],
+                                    fileSize: msg["fileSize"],
+                                    fileUrl: msg["fileUrl"],
+                                    replyTo: replyData,
+                                    survey: msg["survey"],
+                                    reactions: msg["reactions"],
+                                    readBy: index == 0 ? msg["readBy"] : null,
+                                    onVote: (choiceIndex) async {
+                                      final success =
+                                          await ApiService.voteSurvey(
+                                            msg["id"].toString(),
+                                            choiceIndex,
+                                          );
+                                      if (success) {
+                                        _loadMessages(isPolling: true);
+                                      }
+                                    },
+                                    onReact: (emoji) => _reactToMessage(
+                                      msg["id"].toString(),
+                                      emoji,
+                                    ),
+                                    senderName: msg["isSender"]
+                                        ? "Bạn"
+                                        : (msg["senderName"] ?? _currentName),
+                                    senderInitials: msg["isSender"]
+                                        ? "ME"
+                                        : (msg["senderInitials"] ??
+                                              (widget.initials ??
+                                                  (_currentName.isNotEmpty
+                                                      ? _currentName.substring(
+                                                          0,
+                                                          1,
+                                                        )
+                                                      : "?"))),
+                                    senderAvatarPath: msg["isSender"]
+                                        ? ApiService.resolveImageUrl(
+                                            AuthService()
+                                                    .userProfile
+                                                    .value?["profilePicture"] ??
+                                                AuthService()
+                                                    .userProfile
+                                                    .value?["avatar"],
+                                          )
+                                        : msg["senderAvatarPath"],
+                                    bubbleColor: _themeColor,
+                                    time: msg["time"] ?? "Vừa xong",
+                                    onReply: () => _startReplying(msg),
+                                    onRecall: msg["isSender"] == true
+                                        ? () => _recallMessage(msg)
+                                        : null,
+                                    onMore: () => _showOptions(context, msg),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        if (_editingMessageId != null)
+                          _EditingBanner(
+                            themeColor: _themeColor,
+                            onCancel: () => setState(() {
+                              _editingMessageId = null;
+                              _controller.clear();
+                            }),
+                          ),
+                        if (_replyingTo != null)
+                          _ReplyBanner(
+                            themeColor: _themeColor,
+                            replyToName:
+                                _replyingTo!["senderName"] ?? "Người dùng",
+                            replyToText: _replyingTo!["text"] ?? "",
+                            onCancel: () => setState(() => _replyingTo = null),
+                          ),
+
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_showMentions && _filteredMembers.isNotEmpty)
+                              MentionSuggestionsOverlay(
+                                suggestions: _filteredMembers,
+                                onSelect: _insertMention,
+                                themeColor: _themeColor,
+                                selectedIndex: _mentionSelectedIndex,
+                              ),
+                            _ChatInputArea(
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              isEmojiVisible: _showEmoji,
+                              selectedFiles: _selectedFiles,
+                              onEmoji: _toggleEmoji,
+                              onGallery: () => _pickMedia(ImageSource.gallery),
+                              onFile: _pickFile,
+                              onSurvey: _showSurveyCreator,
+                              onSend: _sendMessage,
+                              onRemoveFile: (index) => setState(
+                                () => _selectedFiles.removeAt(index),
+                              ),
+                              themeColor: _themeColor,
+                              isMentionShowing: _showMentions,
+                              onMentionUp: () => setState(() {
+                                _mentionSelectedIndex =
+                                    (_mentionSelectedIndex -
+                                        1 +
+                                        _filteredMembers.length) %
+                                    _filteredMembers.length;
+                              }),
+                              onMentionDown: () => setState(() {
+                                _mentionSelectedIndex =
+                                    (_mentionSelectedIndex + 1) %
+                                    _filteredMembers.length;
+                              }),
+                              onMentionSelect: () {
+                                if (_filteredMembers.isNotEmpty) {
+                                  _insertMention(
+                                    _filteredMembers[_mentionSelectedIndex],
+                                  );
+                                }
+                              },
+                              onMentionCancel: () =>
+                                  setState(() => _showMentions = false),
+                            ),
+                          ],
+                        ),
+                        if (_showEmoji &&
+                            MediaQuery.of(context).size.width <= 600)
+                          _EmojiPickerSheet(onSelected: _insertEmoji),
+                      ],
+                    ),
+                    // Desktop floating emoji picker
+                    if (_showEmoji && MediaQuery.of(context).size.width > 600)
+                      Positioned(
+                        bottom: 64,
+                        right: 16,
+                        child: Material(
+                          elevation: 12,
+                          shadowColor: Colors.black26,
+                          borderRadius: BorderRadius.circular(16),
+                          clipBehavior: Clip.antiAlias,
+                          child: Container(
+                            width: 320,
+                            height: 250,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.grey.shade900
+                                    : Colors.grey.shade900,
+                              ),
+                            ),
+                            child: _EmojiPickerSheet(
+                              onSelected: (emoji) {
+                                _insertEmoji(emoji);
+                                // keep picker open after selection
+                              },
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ), // end Scaffold
+            ), // end Scaffold
+          ), // end GlobalErrorWrapper
           if (_isDragging)
             Container(
               color: Colors.blue.withOpacity(0.2),
@@ -2356,7 +2380,12 @@ class _ChatBubbleState extends State<_ChatBubble> {
           ),
         );
       },
-      onLongPress: (Theme.of(context).platform == TargetPlatform.windows || Theme.of(context).platform == TargetPlatform.macOS || Theme.of(context).platform == TargetPlatform.linux) ? null : widget.onMore,
+      onLongPress:
+          (Theme.of(context).platform == TargetPlatform.windows ||
+              Theme.of(context).platform == TargetPlatform.macOS ||
+              Theme.of(context).platform == TargetPlatform.linux)
+          ? null
+          : widget.onMore,
       child: Container(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.7,
@@ -2439,7 +2468,12 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   ),
                 );
               },
-              onLongPress: (Theme.of(context).platform == TargetPlatform.windows || Theme.of(context).platform == TargetPlatform.macOS || Theme.of(context).platform == TargetPlatform.linux) ? null : widget.onMore,
+              onLongPress:
+                  (Theme.of(context).platform == TargetPlatform.windows ||
+                      Theme.of(context).platform == TargetPlatform.macOS ||
+                      Theme.of(context).platform == TargetPlatform.linux)
+                  ? null
+                  : widget.onMore,
               child: _isNetworkUrl(path)
                   ? CachedNetworkImage(
                       imageUrl: ApiService.resolveImageUrl(path),
@@ -2555,7 +2589,8 @@ class _ChatBubbleState extends State<_ChatBubble> {
   @override
   Widget build(BuildContext context) {
     if (isSystem) {
-      final isDesktop = Theme.of(context).platform == TargetPlatform.windows ||
+      final isDesktop =
+          Theme.of(context).platform == TargetPlatform.windows ||
           Theme.of(context).platform == TargetPlatform.macOS ||
           Theme.of(context).platform == TargetPlatform.linux;
 
@@ -2567,23 +2602,23 @@ class _ChatBubbleState extends State<_ChatBubble> {
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: isDesktop 
-            ? SelectableText(
-                message,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.blueGrey.shade400,
-                  fontWeight: FontWeight.bold,
+          child: isDesktop
+              ? SelectableText(
+                  message,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.blueGrey.shade400,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+              : Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.blueGrey.shade400,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              )
-            : Text(
-                message,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.blueGrey.shade400,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
         ),
       );
     }
@@ -3170,7 +3205,8 @@ class _LinkifiedSelectableText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = Theme.of(context).platform == TargetPlatform.windows ||
+    final isDesktop =
+        Theme.of(context).platform == TargetPlatform.windows ||
         Theme.of(context).platform == TargetPlatform.macOS ||
         Theme.of(context).platform == TargetPlatform.linux;
 
@@ -3187,7 +3223,9 @@ class _LinkifiedSelectableText extends StatelessWidget {
     );
 
     if (isRecalled) {
-      return isDesktop ? SelectableText(text, style: style) : Text(text, style: style);
+      return isDesktop
+          ? SelectableText(text, style: style)
+          : Text(text, style: style);
     }
 
     // Regex for URLs and Mentions
@@ -3368,6 +3406,66 @@ class _SurveyBubble extends StatelessWidget {
     this.onVote,
   });
 
+  void _showVotersDialog(BuildContext context, String optionText, List votes) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(
+            'Đã bình chọn: $optionText',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: 300,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: votes.length,
+              itemBuilder: (context, index) {
+                final voter = votes[index];
+                final String name = voter is Map
+                    ? (voter['fullName'] ?? voter['name'] ?? 'Người dùng')
+                    : 'Người dùng';
+                final String? avatarId = voter is Map
+                    ? voter['profilePicture']
+                    : null;
+
+                ImageProvider? avatarProvider;
+                if (avatarId != null && avatarId.isNotEmpty) {
+                  if (avatarId.startsWith('http')) {
+                    avatarProvider = CachedNetworkImageProvider(avatarId);
+                  } else {
+                    final resolved = ApiService.resolveImageUrl(avatarId);
+                    if (resolved.startsWith('http')) {
+                      avatarProvider = CachedNetworkImageProvider(resolved);
+                    }
+                  }
+                }
+
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundImage: avatarProvider,
+                    backgroundColor: Colors.blueGrey.shade100,
+                    child: avatarProvider == null
+                        ? const Icon(Icons.person, color: Colors.white)
+                        : null,
+                  ),
+                  title: Text(name, style: const TextStyle(fontSize: 14)),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Đóng'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final List options = survey["options"] ?? [];
@@ -3444,6 +3542,9 @@ class _SurveyBubble extends StatelessWidget {
                 percent: percent,
                 isVotedByMe: isVotedByMe,
                 onTap: () => onVote?.call(index),
+                onShowVoters: count > 0
+                    ? () => _showVotersDialog(context, text, votes)
+                    : null,
               ),
             );
           }),
@@ -3471,6 +3572,7 @@ class _SurveyOption extends StatefulWidget {
   final double percent;
   final bool isVotedByMe;
   final VoidCallback onTap;
+  final VoidCallback? onShowVoters;
 
   const _SurveyOption({
     required this.text,
@@ -3478,6 +3580,7 @@ class _SurveyOption extends StatefulWidget {
     required this.percent,
     required this.isVotedByMe,
     required this.onTap,
+    this.onShowVoters,
   });
 
   @override
@@ -3486,6 +3589,7 @@ class _SurveyOption extends StatefulWidget {
 
 class _SurveyOptionState extends State<_SurveyOption> {
   bool _isHovered = false;
+  bool _isPercentHovered = false;
 
   @override
   Widget build(BuildContext context) {
@@ -3548,14 +3652,33 @@ class _SurveyOptionState extends State<_SurveyOption> {
                       ),
                     ),
                   ),
-                  Text(
-                    "${widget.count} (${(widget.percent * 100).round()}%)",
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 9,
-                      color: widget.isVotedByMe
-                          ? const Color(0xFF2563EB)
-                          : Colors.blueGrey.shade400,
+                  MouseRegion(
+                    cursor: widget.onShowVoters != null
+                        ? SystemMouseCursors.click
+                        : SystemMouseCursors.basic,
+                    onEnter: (_) => setState(() => _isPercentHovered = true),
+                    onExit: (_) => setState(() => _isPercentHovered = false),
+                    child: GestureDetector(
+                      onTap: widget.onShowVoters,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        color: Colors.transparent,
+                        child: Text(
+                          "${widget.count} (${(widget.percent * 100).round()}%)",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 9,
+                            color: widget.isVotedByMe
+                                ? const Color(0xFF2563EB)
+                                : Colors.blueGrey.shade400,
+                            decoration:
+                                (widget.onShowVoters != null &&
+                                    _isPercentHovered)
+                                ? TextDecoration.underline
+                                : TextDecoration.none,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],

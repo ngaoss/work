@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/api_service.dart';
 import '../../../chat/presentation/pages/chat_detail_screen.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
+import '../../../../core/widgets/global_error_wrapper.dart';
 
 class PersonnelPage extends StatefulWidget {
   const PersonnelPage({super.key});
@@ -52,12 +53,13 @@ class _PersonnelPageState extends State<PersonnelPage> {
   Widget build(BuildContext context) {
     final bool isDesktop = MediaQuery.of(context).size.width > 900;
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 1200),
-          child: CustomScrollView(
+    return GlobalErrorWrapper(
+      child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 1200),
+            child: CustomScrollView(
             slivers: [
               // 1. Header Section
               SliverToBoxAdapter(
@@ -228,8 +230,9 @@ class _PersonnelPageState extends State<PersonnelPage> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _UserCard extends StatelessWidget {

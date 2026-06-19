@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/api_service.dart';
+import '../../../../core/widgets/global_error_wrapper.dart';
 
 class CommunityPage extends StatefulWidget {
   const CommunityPage({super.key});
@@ -43,10 +44,11 @@ class _CommunityPageState extends State<CommunityPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDesktop = MediaQuery.of(context).size.width > 900;
 
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF252728) : const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: Column(
+    return GlobalErrorWrapper(
+      child: Scaffold(
+        backgroundColor: isDark ? const Color(0xFF252728) : const Color(0xFFF8FAFC),
+        body: SafeArea(
+          child: Column(
           children: [
             // Header
             Padding(
@@ -178,8 +180,9 @@ class _CommunityPageState extends State<CommunityPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _GroupCard extends StatelessWidget {

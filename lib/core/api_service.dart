@@ -72,6 +72,7 @@ class ApiService {
 
     _socket!.onConnect((_) {
       debugPrint('ApiService Socket connected! (ID: ${_socket!.id})');
+      isGlobalServerError.value = false;
     });
 
     _socket!.onConnectError((err) {
@@ -80,10 +81,14 @@ class ApiService {
 
     _socket!.onReconnect((_) {
       debugPrint('ApiService Socket Reconnected');
+      isGlobalServerError.value = false;
     });
 
     _socket!.onReconnectAttempt((attempt) {
       debugPrint('ApiService Socket Reconnect Attempt: $attempt');
+      if (attempt >= 2) {
+        isGlobalServerError.value = true;
+      }
     });
 
     _socket!.onReconnectError((err) {
@@ -314,6 +319,8 @@ class ApiService {
     return {if (token != null) 'Authorization': 'Bearer $token'};
   }
 
+  static final ValueNotifier<bool> isGlobalServerError = ValueNotifier(false);
+
   static Future<Map<String, String>> _getHeaders() async {
     final token = AuthService().authToken.value;
     return {
@@ -406,10 +413,11 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final data = _processResponse(response, 'getUsers');
+      if (data == null) return [{'error': true}];
       return extractList(data);
     } catch (e) {
       debugPrint('ApiService error (getUsers): $e');
-      return [];
+      return [{'error': true}];
     }
   }
 
@@ -442,6 +450,7 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getPosts');
+      if (res == null) return {'posts': [], 'totalPages': 0, 'error': true};
       if (res is Map<String, dynamic>) {
         return {
           'posts': extractList(res),
@@ -455,7 +464,7 @@ class ApiService {
       return {'posts': extractList(res), 'totalPages': 1};
     } catch (e) {
       debugPrint('ApiService error (getPosts): $e');
-      return {'posts': [], 'totalPages': 0};
+      return {'posts': [], 'totalPages': 0, 'error': true};
     }
   }
 
@@ -624,10 +633,11 @@ class ApiService {
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getReels');
+      if (res == null) return [{'error': true}];
       return extractList(res);
     } catch (e) {
       debugPrint('ApiService error (getReels): $e');
-      return [];
+      return [{'error': true}];
     }
   }
 
@@ -776,10 +786,23 @@ class ApiService {
   }
 
   // --- Attendance ---
-  static Future<Map<String, dynamic>> getMyAttendance() async {
+  static Future<Map<String, dynamic>> getMyAttendance({
+    String? period,
+    String? from,
+    String? to,
+  }) async {
     try {
+      String url = '$baseUrl/attendance/me';
+      List<String> queryParams = [];
+      if (period != null) queryParams.add('period=$period');
+      if (from != null) queryParams.add('from=$from');
+      if (to != null) queryParams.add('to=$to');
+      if (queryParams.isNotEmpty) {
+        url += '?${queryParams.join('&')}';
+      }
+
       final response = await http.get(
-        Uri.parse('$baseUrl/attendance/me'),
+        Uri.parse(url),
         headers: await _getHeaders(),
       );
       final res = _processResponse(response, 'getMyAttendance');
@@ -1322,11 +1345,14 @@ class ApiService {
     Map<String, dynamic> updates,
   ) async {
     try {
+      debugPrint('ApiService: updateGroupInfo start. id: $conversationId, updates: $updates');
       final response = await http.put(
         Uri.parse('$baseUrl/chats/$conversationId'),
         headers: await _getHeaders(),
         body: jsonEncode(updates),
       );
+      debugPrint('ApiService: updateGroupInfo response status: ${response.statusCode}');
+      debugPrint('ApiService: updateGroupInfo response body: ${response.body}');
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (e) {
       debugPrint('ApiService error (updateGroupInfo): $e');
